@@ -1,0 +1,10 @@
+.DS_Store
+__pycache__/
+*.pyc
+song.mp3
+*.mp3
+*.wav
+*.m4a
+*.webm
+*.tmp
+

@@ -28,3 +28,11 @@ def stream_song(url: str = Query(..., description="Direct YouTube audio URL")):
         return StreamingResponse(audio_pipe, media_type="audio/mpeg")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Streaming failed: {str(e)}")
+
+
+@app.get("/play")
+def play_song(query: str = Query(..., description="Song name or YouTube query")):
+    try:
+        return YTDLPService.play(query)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Playback failed: {str(e)}")
