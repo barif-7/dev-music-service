@@ -1,17 +1,55 @@
-import yt_dlp
-import subprocess
 import signal
+import subprocess
+import threading
 import time
-from urllib.parse import urlencode
 from typing import Optional
+from urllib.parse import urlencode
+
+import yt_dlp
 
 
 class YTDLPService:
     _active_process = None
     _last_played = None
 
+    _cache_lock = threading.Lock()
+    _search_cache = {}
+    _stream_cache = {}
+    _SEARCH_TTL_SECONDS = 300
+    _STREAM_TTL_SECONDS = 600
+
     @staticmethod
-    def _search_entries(query: str):
+    def _normalize_query(query: str):
+        return " ".join(query.split()).lower()
+
+    @staticmethod
+    def _cache_get(cache: dict, key):
+        now = time.monotonic()
+        with YTDLPService._cache_lock:
+            entry = cache.get(key)
+            if not entry:
+                return None
+
+            value, expires_at = entry
+            if expires_at <= now:
+                cache.pop(key, None)
+                return None
+
+            return value
+
+    @staticmethod
+    def _cache_set(cache: dict, key, value, ttl_seconds: int):
+        with YTDLPService._cache_lock:
+            cache[key] = (value, time.monotonic() + ttl_seconds)
+        return value
+
+    @staticmethod
+    def _search_entries(query: str, limit: int = 5):
+        cache_key = YTDLPService._normalize_query(query)
+        cached = YTDLPService._cache_get(YTDLPService._search_cache, cache_key)
+        if cached is not None and len(cached) >= limit:
+            return cached[:limit]
+
         ydl_opts = {
             "format": "bestaudio/best",
             "quiet": True,
@@ -19,14 +57,20 @@ class YTDLPService:
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(f"ytsearch5:{query}", download=False)
+            info = ydl.extract_info(f"ytsearch{max(1, limit)}:{query}", download=False)
             entries = [e for e in (info.get("entries") or []) if e]
 
+        YTDLPService._cache_set(
+            YTDLPService._search_cache,
+            cache_key,
+            entries,
+            YTDLPService._SEARCH_TTL_SECONDS,
+        )
         return entries
 
     @staticmethod
     def _first_search_result(query: str):
-        entries = YTDLPService._search_entries(query)
+        entries = YTDLPService._search_entries(query, limit=1)
         if not entries:
             return None
 
@@ -34,6 +78,11 @@ class YTDLPService:
 
     @staticmethod
     def _extract_audio_source(webpage_url: str):
+        cached = YTDLPService._cache_get(YTDLPService._stream_cache, webpage_url)
+        if cached is not None:
+            direct_url, headers = cached
+            return direct_url, dict(headers)
+
         ydl_opts = {
             "format": "bestaudio/best",
             "quiet": True,
@@ -53,7 +102,14 @@ class YTDLPService:
 
             headers = info.get("http_headers") or {}
 
-        return direct_url, headers
+        cached_value = (direct_url, dict(headers))
+        YTDLPService._cache_set(
+            YTDLPService._stream_cache,
+            webpage_url,
+            cached_value,
+            YTDLPService._STREAM_TTL_SECONDS,
+        )
+        return direct_url, dict(headers)
 
     @staticmethod
     def _http_args(headers: dict, referer: str):
