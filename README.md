@@ -2,6 +2,8 @@
 
 FastAPI music service used for TUI playback flows.
 
+It also serves a tiny single-page front end with autocomplete and player controls.
+
 - Source of truth: `../docs/project-status.md`
 - Main folder: `dev-music-service/`
 - Keep this service separate from the web repos.

@@ -1,12 +1,13 @@
 from fastapi import FastAPI, Query, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, HTMLResponse
+from frontend import INDEX_HTML
 from services.ytdlp_service import YTDLPService
 
 app = FastAPI()
 
 @app.get("/")
 def root():
-    return {"status": "ok", "message": "Music API is running."}
+    return HTMLResponse(INDEX_HTML)
 
 
 @app.get("/search")
