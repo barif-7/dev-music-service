@@ -3,6 +3,7 @@ import subprocess
 import signal
 import time
 from urllib.parse import urlencode
+from typing import Optional
 
 
 class YTDLPService:
@@ -77,7 +78,7 @@ class YTDLPService:
         return args
 
     @staticmethod
-    def _start_playback(webpage_url: str, metadata: dict | None = None):
+    def _start_playback(webpage_url: str, metadata: Optional[dict] = None):
         direct_url, headers = YTDLPService._extract_audio_source(webpage_url)
 
         process = subprocess.Popen(
