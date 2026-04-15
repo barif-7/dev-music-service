@@ -36,3 +36,19 @@ def play_song(query: str = Query(..., description="Song name or YouTube query"))
         return YTDLPService.play(query)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Playback failed: {str(e)}")
+
+
+@app.get("/stop")
+def stop_song():
+    try:
+        return YTDLPService.stop()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Stop failed: {str(e)}")
+
+
+@app.get("/resume")
+def resume_song():
+    try:
+        return YTDLPService.resume()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Resume failed: {str(e)}")

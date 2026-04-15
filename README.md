@@ -12,12 +12,15 @@ FastAPI music service used for TUI playback flows.
 - `GET /search?query=...` returns the top YouTube audio matches.
 - `GET /stream?url=...` streams a track as MP3.
 - `GET /play?query=...` launches local playback with `ffplay` and returns the PID.
+- `GET /stop` stops the current local playback.
+- `GET /resume` restarts the most recently played track.
 
 ## TUI flow
 
 1. Search for a track.
 2. Pick a result.
 3. Stream it or play it locally.
+4. Stop or resume playback as needed.
 
 ## Local requirements
 

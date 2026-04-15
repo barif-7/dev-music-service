@@ -1,9 +1,13 @@
 import yt_dlp
 import subprocess
+import signal
+import time
 from urllib.parse import urlencode
 
 
 class YTDLPService:
+    _active_process = None
+    _last_played = None
 
     @staticmethod
     def _search_entries(query: str):
@@ -73,6 +77,53 @@ class YTDLPService:
         return args
 
     @staticmethod
+    def _start_playback(webpage_url: str, metadata: dict | None = None):
+        direct_url, headers = YTDLPService._extract_audio_source(webpage_url)
+
+        process = subprocess.Popen(
+            [
+                "ffplay",
+                "-nodisp",
+                "-autoexit",
+                "-loglevel",
+                "error",
+                *YTDLPService._http_args(headers, webpage_url),
+                direct_url,
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+
+        YTDLPService._active_process = process
+        YTDLPService._last_played = {
+            **(metadata or {}),
+            "webpage_url": webpage_url,
+            "pid": process.pid,
+        }
+
+        return process
+
+    @staticmethod
+    def _stop_active_process():
+        process = YTDLPService._active_process
+        if not process:
+            return None
+
+        if process.poll() is None:
+            try:
+                process.send_signal(signal.SIGTERM)
+                process.wait(timeout=2)
+            except Exception:
+                try:
+                    process.kill()
+                except Exception:
+                    pass
+
+        YTDLPService._active_process = None
+        return process
+
+    @staticmethod
     def search(query: str):
         try:
             entries = YTDLPService._search_entries(query)
@@ -103,25 +154,48 @@ class YTDLPService:
         if not webpage_url:
             raise Exception("Failed to resolve track URL")
 
-        direct_url, headers = YTDLPService._extract_audio_source(webpage_url)
-
-        process = subprocess.Popen(
-            [
-                "ffplay",
-                "-nodisp",
-                "-autoexit",
-                "-loglevel",
-                "error",
-                *YTDLPService._http_args(headers, webpage_url),
-                direct_url,
-            ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+        YTDLPService._stop_active_process()
+        process = YTDLPService._start_playback(
+            webpage_url,
+            {
+                "title": entry.get("title", "Unknown Title"),
+                "duration": entry.get("duration") or 0,
+                "query": query,
+            },
         )
 
         return {
             "title": entry.get("title", "Unknown Title"),
             "duration": entry.get("duration") or 0,
+            "webpage_url": webpage_url,
+            "pid": process.pid,
+        }
+
+    @staticmethod
+    def stop():
+        process = YTDLPService._active_process
+        if not process:
+            return {"playing": False, "message": "No active playback"}
+
+        pid = process.pid
+        YTDLPService._stop_active_process()
+        return {"playing": False, "stopped_pid": pid}
+
+    @staticmethod
+    def resume():
+        last = YTDLPService._last_played
+        if not last:
+            raise Exception("Nothing to resume")
+
+        YTDLPService._stop_active_process()
+        webpage_url = last.get("webpage_url")
+        if not webpage_url:
+            raise Exception("Missing playback URL")
+
+        process = YTDLPService._start_playback(webpage_url, last)
+        return {
+            "title": last.get("title", "Unknown Title"),
+            "duration": last.get("duration") or 0,
             "webpage_url": webpage_url,
             "pid": process.pid,
         }
