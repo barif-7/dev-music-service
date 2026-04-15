@@ -414,6 +414,11 @@ INDEX_HTML = """<!doctype html>
     let activeIndex = -1;
     let currentQuery = '';
     let currentTrack = null;
+    const audio = new Audio();
+    audio.preload = 'none';
+    audio.crossOrigin = 'anonymous';
+
+    const progressFill = document.querySelector('.progress > div');
 
     const fmtDuration = (secs) => {
       const s = Number(secs || 0);
@@ -431,6 +436,15 @@ INDEX_HTML = """<!doctype html>
     const setTrack = (title, meta) => {
       trackTitle.textContent = title || 'Nothing playing yet';
       trackMeta.textContent = meta || 'Search for a track, pick a result, then hit Play.';
+    };
+
+    const syncProgress = () => {
+      if (!Number.isFinite(audio.duration) || audio.duration <= 0) {
+        progressFill.style.width = '0%';
+        return;
+      }
+      const pct = Math.max(0, Math.min(100, (audio.currentTime / audio.duration) * 100));
+      progressFill.style.width = `${pct}%`;
     };
 
     const renderSuggestions = () => {
@@ -473,6 +487,19 @@ INDEX_HTML = """<!doctype html>
       });
     };
 
+    const startPlayback = async (item) => {
+      if (!item) return;
+      currentTrack = item;
+      setStatus('Playing', 'good');
+      message.textContent = 'Buffering audio...';
+      setTrack(item.title, `Duration ${fmtDuration(item.duration)}`);
+
+      audio.src = item.url;
+      audio.currentTime = 0;
+      await audio.play();
+      message.textContent = 'Playing in the browser.';
+    };
+
     const search = async (query) => {
       currentQuery = query;
       if (!query || query.length < 2) {
@@ -495,29 +522,43 @@ INDEX_HTML = """<!doctype html>
 
     const playQuery = async (query, item = null) => {
       if (!query) return;
-      setStatus('Playing', 'good');
-      message.textContent = 'Starting playback...';
-      setTrack(item?.title || query, item ? `Duration ${fmtDuration(item.duration)}` : `Query: ${query}`);
-      currentTrack = item || { title: query };
-      const res = await fetch(`/play?query=${encodeURIComponent(query)}`);
-      const data = await res.json();
-      setTrack(data.title || query, `PID ${data.pid || 'n/a'} · ${fmtDuration(data.duration)}`);
-      message.textContent = 'Playback started.';
+      if (!item) {
+        if (!currentResults.length || currentQuery !== query) {
+          await search(query);
+        }
+        item = currentResults[0];
+      }
+
+      if (!item) {
+        setStatus('Ready');
+        message.textContent = 'No playable result found.';
+        return;
+      }
+
+      await startPlayback(item);
     };
 
     const stopPlayback = async () => {
-      const res = await fetch('/stop');
-      const data = await res.json();
+      audio.pause();
+      audio.currentTime = 0;
+      await fetch('/stop');
       setStatus('Stopped');
-      message.textContent = data.message || 'Playback stopped.';
+      message.textContent = 'Playback stopped.';
+      syncProgress();
     };
 
     const resumePlayback = async () => {
-      const res = await fetch('/resume');
-      const data = await res.json();
-      setStatus('Playing', 'good');
-      setTrack(data.title || 'Resumed track', `PID ${data.pid || 'n/a'} · ${fmtDuration(data.duration)}`);
-      message.textContent = 'Playback resumed.';
+      if (audio.src) {
+        setStatus('Playing', 'good');
+        await audio.play();
+        message.textContent = 'Playback resumed in the browser.';
+        return;
+      }
+
+      await fetch('/resume');
+      if (currentTrack) {
+        await startPlayback(currentTrack);
+      }
     };
 
     input.addEventListener('input', (e) => {
@@ -557,6 +598,22 @@ INDEX_HTML = """<!doctype html>
       await navigator.clipboard.writeText(input.value.trim());
       message.textContent = 'Copied query to clipboard.';
     });
+
+    audio.addEventListener('timeupdate', syncProgress);
+    audio.addEventListener('ended', () => {
+      setStatus('Ready');
+      message.textContent = 'Track finished.';
+      progressFill.style.width = '100%';
+    });
+    audio.addEventListener('pause', () => {
+      if (audio.currentTime > 0) {
+        setStatus('Paused');
+      }
+    });
+    audio.addEventListener('play', () => {
+      setStatus('Playing', 'good');
+    });
+    audio.addEventListener('loadedmetadata', syncProgress);
 
     document.addEventListener('click', (e) => {
       if (!suggestions.contains(e.target) && e.target !== input) {
