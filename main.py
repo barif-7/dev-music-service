@@ -1,55 +1,85 @@
-from fastapi import FastAPI, Query, HTTPException
-from fastapi.responses import StreamingResponse, HTMLResponse
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import HTMLResponse, StreamingResponse
+
 from frontend import INDEX_HTML
-from services.ytdlp_service import YTDLPService
+from services.local_playback_service import LocalPlaybackService
+from services.music_service import MusicService, MusicServiceError
 
 app = FastAPI()
+
+
+def fail_with_http_error(exc: Exception) -> None:
+    if isinstance(exc, MusicServiceError):
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    raise HTTPException(status_code=500, detail=str(exc)) from exc
+
 
 @app.get("/")
 def root():
     return HTMLResponse(INDEX_HTML)
 
 
+@app.get("/health")
+def health():
+    return {
+        "status": "ok",
+        "mode": "browser-first",
+        "local_integration": "openclaw-cli-optional",
+    }
+
+
+@app.get("/api/search")
 @app.get("/search")
 def search_song(query: str = Query(..., description="Song name or YouTube query")):
     try:
-        results = YTDLPService.search(query)
-        return results
-    except Exception as e:
-        print("Search error:", e)  # Debug output
-        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+        return [result.model_dump() for result in MusicService.search(query)]
+    except Exception as exc:
+        fail_with_http_error(exc)
 
+
+@app.get("/api/stream")
 @app.get("/stream")
-def stream_song(url: str = Query(..., description="Direct YouTube audio URL")):
-    """
-    Stream a YouTube song as MP3.
-    """
+def stream_song(url: str = Query(..., description="Track webpage URL")):
     try:
-        audio_pipe = YTDLPService.stream_audio(url)
-        return StreamingResponse(audio_pipe, media_type="audio/mpeg")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Streaming failed: {str(e)}")
+        return StreamingResponse(MusicService.stream_audio(url), media_type="audio/mpeg")
+    except Exception as exc:
+        fail_with_http_error(exc)
 
 
+@app.get("/api/browser/playback")
+def browser_playback(
+    url: str = Query(..., description="Track webpage URL"),
+    title: str = Query("Unknown Title", description="Track title"),
+    duration: int = Query(0, description="Track duration in seconds"),
+):
+    try:
+        return MusicService.build_browser_state(url, title, duration).model_dump()
+    except Exception as exc:
+        fail_with_http_error(exc)
+
+
+@app.get("/api/integrations/openclaw/play")
 @app.get("/play")
 def play_song(query: str = Query(..., description="Song name or YouTube query")):
     try:
-        return YTDLPService.play(query)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Playback failed: {str(e)}")
+        return LocalPlaybackService.play_query(query).model_dump()
+    except Exception as exc:
+        fail_with_http_error(exc)
 
 
+@app.get("/api/integrations/openclaw/stop")
 @app.get("/stop")
 def stop_song():
     try:
-        return YTDLPService.stop()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Stop failed: {str(e)}")
+        return LocalPlaybackService.stop().model_dump()
+    except Exception as exc:
+        fail_with_http_error(exc)
 
 
+@app.get("/api/integrations/openclaw/resume")
 @app.get("/resume")
 def resume_song():
     try:
-        return YTDLPService.resume()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Resume failed: {str(e)}")
+        return LocalPlaybackService.resume().model_dump()
+    except Exception as exc:
+        fail_with_http_error(exc)

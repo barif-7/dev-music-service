@@ -1,6 +1,32 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
 
 class SongSearchResult(BaseModel):
     title: str
-    url: str # URL to invoke streaming response from the server.
-    duration: int # seconds
+    webpage_url: str
+    stream_url: str
+    duration: int = Field(default=0, description="Track duration in seconds")
+
+
+class BrowserPlaybackState(BaseModel):
+    mode: str = "browser"
+    title: str
+    duration: int = 0
+    webpage_url: str
+    stream_url: str
+
+
+class LocalPlaybackState(BaseModel):
+    mode: str = "local"
+    title: str
+    duration: int = 0
+    webpage_url: str
+    pid: int
+    integration: str = "openclaw-cli"
+
+
+class PlaybackStatus(BaseModel):
+    playing: bool
+    mode: str
+    message: str | None = None
+    pid: int | None = None
