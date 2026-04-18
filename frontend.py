@@ -6,29 +6,30 @@ INDEX_HTML = """<!doctype html>
   <title>Dev Music Service</title>
   <style>
     :root {
-      --bg1: #0b1020;
-      --bg2: #1a1140;
+      --bg1: #09111c;
+      --bg2: #14283b;
       --bg3: #0a5c46;
-      --card: rgba(12, 16, 34, 0.72);
+      --card: rgba(8, 16, 28, 0.76);
       --card-2: rgba(255, 255, 255, 0.08);
-      --text: #f4f7fb;
-      --muted: #aab4c5;
-      --accent: #1db954;
-      --accent-2: #6c5ce7;
+      --text: #f3f7fb;
+      --muted: #a8b5c4;
+      --accent: #2de59d;
+      --warn: #ffd166;
       --border: rgba(255, 255, 255, 0.12);
-      --shadow: 0 30px 80px rgba(0, 0, 0, 0.4);
+      --shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
     }
 
     * { box-sizing: border-box; }
+
     body {
       margin: 0;
       min-height: 100vh;
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-family: "Segoe UI", Arial, sans-serif;
       color: var(--text);
       background:
-        radial-gradient(circle at top left, rgba(108, 92, 231, 0.45), transparent 30%),
-        radial-gradient(circle at top right, rgba(29, 185, 84, 0.22), transparent 24%),
-        linear-gradient(135deg, var(--bg1), var(--bg2) 55%, var(--bg3));
+        radial-gradient(circle at top left, rgba(45, 229, 157, 0.15), transparent 24%),
+        radial-gradient(circle at top right, rgba(255, 209, 102, 0.18), transparent 20%),
+        linear-gradient(140deg, var(--bg1), var(--bg2) 58%, var(--bg3));
       overflow-x: hidden;
     }
 
@@ -65,7 +66,7 @@ INDEX_HTML = """<!doctype html>
 
     h1 {
       margin: 14px 0 10px;
-      font-size: clamp(38px, 7vw, 72px);
+      font-size: clamp(38px, 7vw, 70px);
       line-height: 0.95;
       letter-spacing: -0.05em;
     }
@@ -109,8 +110,8 @@ INDEX_HTML = """<!doctype html>
     .bars span {
       width: 100%;
       border-radius: 999px 999px 4px 4px;
-      background: linear-gradient(180deg, #7cf7a4, #1db954);
-      opacity: 0.88;
+      background: linear-gradient(180deg, #aaf9c7, var(--accent));
+      opacity: 0.9;
       animation: bounce 1.5s ease-in-out infinite;
     }
 
@@ -161,8 +162,8 @@ INDEX_HTML = """<!doctype html>
     }
 
     input:focus {
-      border-color: rgba(29, 185, 84, 0.75);
-      box-shadow: 0 0 0 4px rgba(29, 185, 84, 0.14);
+      border-color: rgba(45, 229, 157, 0.75);
+      box-shadow: 0 0 0 4px rgba(45, 229, 157, 0.12);
     }
 
     button {
@@ -181,8 +182,8 @@ INDEX_HTML = """<!doctype html>
     button:active { transform: translateY(0); }
 
     .primary {
-      background: linear-gradient(135deg, #1db954, #2ee59d);
-      box-shadow: 0 18px 40px rgba(29, 185, 84, 0.22);
+      background: linear-gradient(135deg, #1bbd7a, var(--accent));
+      box-shadow: 0 18px 40px rgba(45, 229, 157, 0.2);
     }
 
     .ghost {
@@ -215,8 +216,7 @@ INDEX_HTML = """<!doctype html>
       cursor: pointer;
     }
 
-    .suggestion:hover, .suggestion.active { background: rgba(29, 185, 84, 0.12); }
-
+    .suggestion:hover, .suggestion.active { background: rgba(45, 229, 157, 0.12); }
     .suggestion strong { font-size: 15px; }
     .suggestion small { color: var(--muted); }
 
@@ -253,9 +253,9 @@ INDEX_HTML = """<!doctype html>
       gap: 8px;
       padding: 8px 12px;
       border-radius: 999px;
-      background: rgba(29, 185, 84, 0.14);
-      color: #a8f8c8;
-      border: 1px solid rgba(29, 185, 84, 0.28);
+      background: rgba(45, 229, 157, 0.14);
+      color: #b8f8d5;
+      border: 1px solid rgba(45, 229, 157, 0.28);
     }
 
     .track-title {
@@ -279,10 +279,10 @@ INDEX_HTML = """<!doctype html>
     }
 
     .progress > div {
-      width: 36%;
+      width: 0%;
       height: 100%;
       border-radius: inherit;
-      background: linear-gradient(90deg, #1db954, #7df3b3);
+      background: linear-gradient(90deg, #1bbd7a, #aaf9c7);
     }
 
     .actions {
@@ -307,16 +307,16 @@ INDEX_HTML = """<!doctype html>
       border: 1px solid transparent;
     }
 
-    .result:hover { border-color: rgba(29, 185, 84, 0.25); }
-
+    .result:hover { border-color: rgba(45, 229, 157, 0.25); }
     .result .info { min-width: 0; }
     .result .info strong { display: block; margin-bottom: 3px; }
     .result .info small { color: var(--muted); }
 
     .muted { color: var(--muted); }
+
     .footer {
       padding: 18px 4px 0;
-      color: rgba(255, 255, 255, 0.6);
+      color: rgba(255, 255, 255, 0.62);
       font-size: 13px;
     }
 
@@ -330,14 +330,14 @@ INDEX_HTML = """<!doctype html>
   <div class="wrap">
     <section class="hero">
       <div class="title">
-        <div class="eyebrow">🎵 Dev Music Service · local player</div>
-        <h1>Search, queue, and play music with a very small Spotify-ish shell.</h1>
-        <p class="subtitle">Gradient background, autocomplete search, one-click playback, and basic stop/resume controls, all backed by the local FastAPI service.</p>
+        <div class="eyebrow">Dev Music Service · browser-first</div>
+        <h1>Search in the browser, stream reliably, and keep local playback explicit.</h1>
+        <p class="subtitle">The main app path is browser playback. Local machine playback stays available for OpenClaw-style automation, but it is now a separate integration instead of the default UX.</p>
       </div>
       <aside class="side">
         <div class="metric">
           <small>Now serving</small>
-          <strong>Search · Stream · Play</strong>
+          <strong>Search · Stream · Browser audio</strong>
         </div>
         <div class="metric">
           <small>Playback status</small>
@@ -357,9 +357,9 @@ INDEX_HTML = """<!doctype html>
     <section class="panel">
       <div class="search-wrap">
         <div class="search-row">
-          <input id="searchInput" placeholder="Search a song, artist, or vibe..." autocomplete="off" />
+          <input id="searchInput" placeholder="Search a song, artist, or mood..." autocomplete="off" />
           <button class="primary" id="playBtn">Play</button>
-          <button class="ghost" id="stopBtn">Stop</button>
+          <button class="ghost" id="pauseBtn">Pause</button>
           <button class="ghost" id="resumeBtn">Resume</button>
         </div>
         <div class="suggestions" id="suggestions"></div>
@@ -372,11 +372,12 @@ INDEX_HTML = """<!doctype html>
             <span id="message">Type to search.</span>
           </div>
           <h2 class="track-title" id="trackTitle">Nothing playing yet</h2>
-          <p class="track-meta" id="trackMeta">Search for a track, pick a result, then hit Play.</p>
+          <p class="track-meta" id="trackMeta">Search for a track, pick a result, then play it in the browser.</p>
           <div class="progress" aria-hidden="true"><div></div></div>
           <div class="actions">
             <button class="primary" id="playTop">Play current search</button>
             <button class="ghost" id="copyBtn">Copy current query</button>
+            <button class="ghost" id="sendLocalBtn">Send to local player</button>
           </div>
         </div>
 
@@ -389,7 +390,7 @@ INDEX_HTML = """<!doctype html>
         </div>
       </div>
 
-      <div class="footer">Tip: type a few letters, click a suggestion, or just press Enter to play the current query.</div>
+      <div class="footer">Tip: browser playback is the default. Use the local-player button only when you explicitly want the OpenClaw integration path.</div>
     </section>
   </div>
 
@@ -404,10 +405,12 @@ INDEX_HTML = """<!doctype html>
     const sideStatus = document.getElementById('sideStatus');
     const message = document.getElementById('message');
     const playBtn = document.getElementById('playBtn');
-    const stopBtn = document.getElementById('stopBtn');
+    const pauseBtn = document.getElementById('pauseBtn');
     const resumeBtn = document.getElementById('resumeBtn');
     const playTop = document.getElementById('playTop');
     const copyBtn = document.getElementById('copyBtn');
+    const sendLocalBtn = document.getElementById('sendLocalBtn');
+    const progressFill = document.querySelector('.progress > div');
 
     let timer = null;
     let currentResults = [];
@@ -418,24 +421,28 @@ INDEX_HTML = """<!doctype html>
     audio.preload = 'none';
     audio.crossOrigin = 'anonymous';
 
-    const progressFill = document.querySelector('.progress > div');
-
     const fmtDuration = (secs) => {
-      const s = Number(secs || 0);
-      const m = Math.floor(s / 60);
-      const r = String(s % 60).padStart(2, '0');
-      return s ? `${m}:${r}` : 'live';
+      const total = Number(secs || 0);
+      const mins = Math.floor(total / 60);
+      const remainder = String(total % 60).padStart(2, '0');
+      return total ? `${mins}:${remainder}` : 'live';
     };
 
     const setStatus = (label, tone = 'idle') => {
       statusPill.textContent = label;
       sideStatus.textContent = label;
-      statusPill.style.background = tone === 'good' ? 'rgba(29,185,84,0.14)' : tone === 'warn' ? 'rgba(255,193,7,0.14)' : 'rgba(255,255,255,0.08)';
+      if (tone === 'good') {
+        statusPill.style.background = 'rgba(45, 229, 157, 0.14)';
+      } else if (tone === 'warn') {
+        statusPill.style.background = 'rgba(255, 209, 102, 0.16)';
+      } else {
+        statusPill.style.background = 'rgba(255, 255, 255, 0.08)';
+      }
     };
 
     const setTrack = (title, meta) => {
       trackTitle.textContent = title || 'Nothing playing yet';
-      trackMeta.textContent = meta || 'Search for a track, pick a result, then hit Play.';
+      trackMeta.textContent = meta || 'Search for a track, pick a result, then play it in the browser.';
     };
 
     const syncProgress = () => {
@@ -443,6 +450,7 @@ INDEX_HTML = """<!doctype html>
         progressFill.style.width = '0%';
         return;
       }
+
       const pct = Math.max(0, Math.min(100, (audio.currentTime / audio.duration) * 100));
       progressFill.style.width = `${pct}%`;
     };
@@ -453,12 +461,13 @@ INDEX_HTML = """<!doctype html>
         suggestions.classList.remove('visible');
         return;
       }
+
       currentResults.slice(0, 6).forEach((item, idx) => {
         const row = document.createElement('div');
         row.className = 'suggestion' + (idx === activeIndex ? ' active' : '');
-        row.innerHTML = `<div><strong>${item.title}</strong><br><small>${fmtDuration(item.duration)}</small></div><small>Play</small>`;
-        row.addEventListener('mousedown', (e) => {
-          e.preventDefault();
+        row.innerHTML = `<div><strong>${item.title}</strong><br><small>${fmtDuration(item.duration)}</small></div><small>Browser</small>`;
+        row.addEventListener('mousedown', (event) => {
+          event.preventDefault();
           input.value = item.title;
           currentQuery = item.title;
           playQuery(item.title, item);
@@ -466,6 +475,7 @@ INDEX_HTML = """<!doctype html>
         });
         suggestions.appendChild(row);
       });
+
       suggestions.classList.add('visible');
     };
 
@@ -488,13 +498,11 @@ INDEX_HTML = """<!doctype html>
     };
 
     const startPlayback = async (item) => {
-      if (!item) return;
       currentTrack = item;
       setStatus('Playing', 'good');
-      message.textContent = 'Buffering audio...';
+      message.textContent = 'Buffering browser audio...';
       setTrack(item.title, `Duration ${fmtDuration(item.duration)}`);
-
-      audio.src = item.url;
+      audio.src = item.stream_url;
       audio.currentTime = 0;
       await audio.play();
       message.textContent = 'Playing in the browser.';
@@ -509,10 +517,15 @@ INDEX_HTML = """<!doctype html>
         renderResults();
         return;
       }
+
       setStatus('Searching...', 'warn');
       message.textContent = 'Fetching results...';
-      const res = await fetch(`/search?query=${encodeURIComponent(query)}`);
-      currentResults = await res.json();
+      const response = await fetch(`/api/search?query=${encodeURIComponent(query)}`);
+      if (!response.ok) {
+        throw new Error(`Search failed with ${response.status}`);
+      }
+
+      currentResults = await response.json();
       activeIndex = -1;
       renderSuggestions();
       renderResults();
@@ -521,7 +534,10 @@ INDEX_HTML = """<!doctype html>
     };
 
     const playQuery = async (query, item = null) => {
-      if (!query) return;
+      if (!query) {
+        return;
+      }
+
       if (!item) {
         if (!currentResults.length || currentQuery !== query) {
           await search(query);
@@ -535,41 +551,66 @@ INDEX_HTML = """<!doctype html>
         return;
       }
 
-      await startPlayback(item);
+      try {
+        await fetch(`/api/browser/playback?url=${encodeURIComponent(item.webpage_url)}&title=${encodeURIComponent(item.title)}&duration=${encodeURIComponent(item.duration || 0)}`);
+        await startPlayback(item);
+      } catch (error) {
+        setStatus('Error', 'warn');
+        message.textContent = error.message || 'Playback failed.';
+      }
     };
 
-    const stopPlayback = async () => {
+    const pausePlayback = () => {
       audio.pause();
-      audio.currentTime = 0;
-      await fetch('/stop');
-      setStatus('Stopped');
-      message.textContent = 'Playback stopped.';
-      syncProgress();
+      setStatus('Paused', 'warn');
+      message.textContent = 'Browser playback paused.';
     };
 
     const resumePlayback = async () => {
-      if (audio.src) {
-        setStatus('Playing', 'good');
-        await audio.play();
-        message.textContent = 'Playback resumed in the browser.';
+      if (!audio.src) {
+        message.textContent = 'No browser track is buffered yet.';
         return;
       }
 
-      await fetch('/resume');
-      if (currentTrack) {
-        await startPlayback(currentTrack);
-      }
+      setStatus('Playing', 'good');
+      await audio.play();
+      message.textContent = 'Playback resumed in the browser.';
     };
 
-    input.addEventListener('input', (e) => {
-      const q = e.target.value.trim();
+    const sendToLocalPlayer = async () => {
+      const query = input.value.trim() || currentTrack?.title;
+      if (!query) {
+        message.textContent = 'Enter a query before sending to the local player.';
+        return;
+      }
+
+      const response = await fetch(`/api/integrations/openclaw/play?query=${encodeURIComponent(query)}`);
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.detail || `Local playback failed with ${response.status}`);
+      }
+
+      const data = await response.json();
+      setStatus('Local Output', 'warn');
+      message.textContent = `Sent to local player (PID ${data.pid}).`;
+    };
+
+    input.addEventListener('input', (event) => {
+      const query = event.target.value.trim();
       clearTimeout(timer);
-      timer = setTimeout(() => search(q), 220);
+      timer = setTimeout(async () => {
+        try {
+          await search(query);
+        } catch (error) {
+          setStatus('Error', 'warn');
+          message.textContent = error.message || 'Search failed.';
+        }
+      }, 220);
     });
 
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
         if (currentResults[activeIndex]) {
           const item = currentResults[activeIndex];
           input.value = item.title;
@@ -577,26 +618,34 @@ INDEX_HTML = """<!doctype html>
         } else {
           playQuery(input.value.trim());
         }
-      } else if (e.key === 'ArrowDown') {
-        e.preventDefault();
+      } else if (event.key === 'ArrowDown') {
+        event.preventDefault();
         activeIndex = Math.min(activeIndex + 1, Math.max(currentResults.length - 1, 0));
         renderSuggestions();
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
         activeIndex = Math.max(activeIndex - 1, 0);
         renderSuggestions();
-      } else if (e.key === 'Escape') {
+      } else if (event.key === 'Escape') {
         suggestions.classList.remove('visible');
       }
     });
 
     playBtn.addEventListener('click', () => playQuery(input.value.trim()));
     playTop.addEventListener('click', () => playQuery(input.value.trim()));
-    stopBtn.addEventListener('click', stopPlayback);
+    pauseBtn.addEventListener('click', pausePlayback);
     resumeBtn.addEventListener('click', resumePlayback);
     copyBtn.addEventListener('click', async () => {
       await navigator.clipboard.writeText(input.value.trim());
       message.textContent = 'Copied query to clipboard.';
+    });
+    sendLocalBtn.addEventListener('click', async () => {
+      try {
+        await sendToLocalPlayer();
+      } catch (error) {
+        setStatus('Error', 'warn');
+        message.textContent = error.message || 'Local playback failed.';
+      }
     });
 
     audio.addEventListener('timeupdate', syncProgress);
@@ -606,8 +655,8 @@ INDEX_HTML = """<!doctype html>
       progressFill.style.width = '100%';
     });
     audio.addEventListener('pause', () => {
-      if (audio.currentTime > 0) {
-        setStatus('Paused');
+      if (audio.currentTime > 0 && audio.currentTime < audio.duration) {
+        setStatus('Paused', 'warn');
       }
     });
     audio.addEventListener('play', () => {
@@ -615,14 +664,14 @@ INDEX_HTML = """<!doctype html>
     });
     audio.addEventListener('loadedmetadata', syncProgress);
 
-    document.addEventListener('click', (e) => {
-      if (!suggestions.contains(e.target) && e.target !== input) {
+    document.addEventListener('click', (event) => {
+      if (!suggestions.contains(event.target) && event.target !== input) {
         suggestions.classList.remove('visible');
       }
     });
 
     setStatus('Ready');
-    setTrack('Nothing playing yet', 'Search for a track, pick a result, then hit Play.');
+    setTrack('Nothing playing yet', 'Search for a track, pick a result, then play it in the browser.');
   </script>
 </body>
 </html>

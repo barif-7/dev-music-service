@@ -1,31 +1,32 @@
 # dev-music-service
 
-FastAPI music service used for TUI playback flows.
+FastAPI music service with a browser-first playback model.
 
-It also serves a tiny single-page front end with autocomplete and browser audio playback.
+The main product surface is the web app served from `/`, backed by search and streaming endpoints. Local machine playback is still supported, but it now lives behind explicit integration endpoints so browser playback stays the default path.
 
-- Source of truth: `../docs/project-status.md`
 - Main folder: `dev-music-service/`
 - Keep this service separate from the web repos.
 
 ## Runtime contract
 
-- `GET /` returns a basic health check.
-- `GET /search?query=...` returns the top YouTube audio matches.
-- `GET /stream?url=...` streams a track as MP3.
-- `GET /play?query=...` launches local playback with `ffplay` and returns the PID.
-- `GET /stop` stops the current local playback.
-- `GET /resume` restarts the most recently played track.
+- `GET /` serves the browser UI.
+- `GET /health` returns service health plus mode metadata.
+- `GET /api/search` and `GET /search` return the top YouTube audio matches.
+- `GET /api/stream` and `GET /stream` stream a track as MP3.
+- `GET /api/browser/playback` returns the browser playback payload used by the web app.
+- `GET /api/integrations/openclaw/play` launches local playback with `ffplay`.
+- `GET /api/integrations/openclaw/stop` stops current local playback.
+- `GET /api/integrations/openclaw/resume` restarts the most recent local playback.
+- Legacy `GET /play`, `GET /stop`, and `GET /resume` remain as compatibility shims.
 
-## TUI flow
+## Product direction
 
-1. Search for a track.
-2. Pick a result.
-3. Stream it or play it locally.
-4. Stop or resume playback as needed.
+1. Browser playback is the primary interaction model.
+2. Streaming stays server-backed so the frontend can play reliably through a plain audio element.
+3. OpenClaw and other local automation paths use explicit integration endpoints instead of blending into the browser UX.
 
 ## Local requirements
 
-- Python service dependencies: `fastapi`, `yt_dlp`, `uvicorn`
-- Playback tools: `ffmpeg`, `ffplay`
-- Keep temporary media out of the repo when possible.
+- Python dependencies: `fastapi`, `yt_dlp`, `uvicorn`
+- Streaming tool: `ffmpeg`
+- Optional local integration tool: `ffplay`

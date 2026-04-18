@@ -1,12 +1,13 @@
 # Status
 
-- Purpose: local music search and playback service.
+- Purpose: browser-first music search and playback service with optional local playback integration.
 - Status: active runtime service.
 - Priority: high.
 - Main folder: `dev-music-service/`.
-- Runtime contract: `GET /` health, `GET /search`, `GET /stream`, `GET /play`, `GET /stop`, `GET /resume`.
-- Playback behavior: `play` shells out to `ffplay`; `stream` pipes MP3 via `ffmpeg`; `stop` and `resume` manage the current local player session.
+- Runtime contract: `GET /` browser app, `GET /health`, `GET /api/search`, `GET /api/stream`, `GET /api/browser/playback`, `GET /api/integrations/openclaw/play`, `GET /api/integrations/openclaw/stop`, `GET /api/integrations/openclaw/resume`.
+- Compatibility contract: `GET /search`, `GET /stream`, `GET /play`, `GET /stop`, `GET /resume`.
+- Playback behavior: browser playback is primary; local `ffplay` control is kept as an explicit integration layer.
 - Next actions:
-  - keep the API contract stable,
-  - note any playback or stop/resume changes,
-  - avoid path moves until scripts are audited.
+  - verify browser streaming against a real YouTube result,
+  - verify local integration endpoints on a machine with `ffplay`,
+  - keep compatibility endpoints until external scripts are audited.
