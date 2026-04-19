@@ -419,7 +419,6 @@ INDEX_HTML = """<!doctype html>
     let currentTrack = null;
     const audio = new Audio();
     audio.preload = 'none';
-    audio.crossOrigin = 'anonymous';
 
     const fmtDuration = (secs) => {
       const total = Number(secs || 0);

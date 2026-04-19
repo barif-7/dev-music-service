@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import subprocess
 import threading
 import time
-from typing import Iterator
 from urllib.parse import urlencode
 
 import yt_dlp
@@ -179,40 +177,6 @@ class MusicService:
         return args
 
     @staticmethod
-    def open_stream_process(webpage_url: str) -> subprocess.Popen:
-        direct_url, headers = MusicService._extract_audio_source(webpage_url)
-        return subprocess.Popen(
-            [
-                "ffmpeg",
-                "-loglevel",
-                "error",
-                *MusicService.ffmpeg_http_args(headers, webpage_url),
-                "-i",
-                direct_url,
-                "-f",
-                "mp3",
-                "-vn",
-                "pipe:1",
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-
-    @staticmethod
-    def stream_audio(webpage_url: str, chunk_size: int = 64 * 1024) -> Iterator[bytes]:
-        process = MusicService.open_stream_process(webpage_url)
-        if process.stdout is None:
-            raise StreamResolutionError("ffmpeg did not expose stdout")
-
-        try:
-            while True:
-                chunk = process.stdout.read(chunk_size)
-                if not chunk:
-                    break
-                yield chunk
-        finally:
-            if process.stdout:
-                process.stdout.close()
-            if process.poll() is None:
-                process.kill()
-            process.wait(timeout=2)
+    def resolve_stream_url(webpage_url: str) -> str:
+        direct_url, _headers = MusicService._extract_audio_source(webpage_url)
+        return direct_url

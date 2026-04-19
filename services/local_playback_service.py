@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import signal
 import subprocess
 
@@ -11,8 +12,19 @@ class LocalPlaybackService:
     _active_process: subprocess.Popen | None = None
     _last_state: LocalPlaybackState | None = None
 
+    @staticmethod
+    def _local_playback_available() -> bool:
+        return not os.getenv("VERCEL")
+
+    @classmethod
+    def _ensure_local_playback_available(cls) -> None:
+        if cls._local_playback_available():
+            return
+        raise SearchServiceError("Local playback is unavailable in the Vercel runtime")
+
     @classmethod
     def _start_playback(cls, state: LocalPlaybackState) -> LocalPlaybackState:
+        cls._ensure_local_playback_available()
         direct_url, headers = MusicService._extract_audio_source(state.webpage_url)
         process = subprocess.Popen(
             [
@@ -36,6 +48,7 @@ class LocalPlaybackService:
 
     @classmethod
     def play_query(cls, query: str) -> LocalPlaybackState:
+        cls._ensure_local_playback_available()
         result = MusicService.first_result(query)
         cls.stop()
         return cls._start_playback(
@@ -49,6 +62,7 @@ class LocalPlaybackService:
 
     @classmethod
     def stop(cls) -> PlaybackStatus:
+        cls._ensure_local_playback_available()
         process = cls._active_process
         if not process:
             return PlaybackStatus(playing=False, mode="local", message="No active local playback")
@@ -74,6 +88,7 @@ class LocalPlaybackService:
 
     @classmethod
     def resume(cls) -> LocalPlaybackState:
+        cls._ensure_local_playback_available()
         if not cls._last_state:
             raise SearchServiceError("Nothing to resume")
 

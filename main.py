@@ -1,5 +1,7 @@
+import os
+
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from frontend import INDEX_HTML
 from services.local_playback_service import LocalPlaybackService
@@ -24,7 +26,8 @@ def health():
     return {
         "status": "ok",
         "mode": "browser-first",
-        "local_integration": "openclaw-cli-optional",
+        "stream_delivery": "redirect",
+        "local_integration": "disabled-on-vercel" if os.getenv("VERCEL") else "openclaw-cli-optional",
     }
 
 
@@ -41,7 +44,7 @@ def search_song(query: str = Query(..., description="Song name or YouTube query"
 @app.get("/stream")
 def stream_song(url: str = Query(..., description="Track webpage URL")):
     try:
-        return StreamingResponse(MusicService.stream_audio(url), media_type="audio/mpeg")
+        return RedirectResponse(MusicService.resolve_stream_url(url), status_code=307)
     except Exception as exc:
         fail_with_http_error(exc)
 

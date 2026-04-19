@@ -12,7 +12,7 @@ The main product surface is the web app served from `/`, backed by search and st
 - `GET /` serves the browser UI.
 - `GET /health` returns service health plus mode metadata.
 - `GET /api/search` and `GET /search` return the top YouTube audio matches.
-- `GET /api/stream` and `GET /stream` stream a track as MP3.
+- `GET /api/stream` and `GET /stream` resolve a playable audio URL and redirect the browser to it.
 - `GET /api/browser/playback` returns the browser playback payload used by the web app.
 - `GET /api/integrations/openclaw/play` launches local playback with `ffplay`.
 - `GET /api/integrations/openclaw/stop` stops current local playback.
@@ -28,5 +28,10 @@ The main product surface is the web app served from `/`, backed by search and st
 ## Local requirements
 
 - Python dependencies: `fastapi`, `yt_dlp`, `uvicorn`
-- Streaming tool: `ffmpeg`
 - Optional local integration tool: `ffplay`
+
+## Deployment notes
+
+- Vercel uses the FastAPI app exposed from `app.py`.
+- Browser playback is Vercel-safe because `/stream` redirects to the resolved provider URL instead of shelling out to `ffmpeg`.
+- Local playback endpoints remain local-machine-only and return an error when invoked in the Vercel runtime.
