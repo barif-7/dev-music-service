@@ -238,6 +238,60 @@ INDEX_HTML = """<!doctype html>
       gap: 14px;
     }
 
+    .player-head {
+      display: grid;
+      grid-template-columns: 112px 1fr;
+      gap: 16px;
+      align-items: center;
+    }
+
+    .cover {
+      width: 72px;
+      height: 72px;
+      flex: 0 0 72px;
+      display: grid;
+      place-items: center;
+      border-radius: 18px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background:
+        linear-gradient(135deg, rgba(45, 229, 157, 0.34), rgba(255, 209, 102, 0.22)),
+        radial-gradient(circle at 30% 15%, rgba(255, 255, 255, 0.28), transparent 38%),
+        rgba(255, 255, 255, 0.08);
+      color: rgba(255, 255, 255, 0.88);
+      font-weight: 900;
+      letter-spacing: -0.08em;
+      text-transform: uppercase;
+    }
+
+    .cover img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .cover.large {
+      width: 112px;
+      height: 112px;
+      border-radius: 26px;
+      font-size: 34px;
+      box-shadow: 0 22px 50px rgba(0, 0, 0, 0.26);
+    }
+
+    .cover.small {
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      font-size: 16px;
+    }
+
+    .cover-meta {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 8px;
+    }
+
     .status-line {
       display: flex;
       align-items: center;
@@ -322,6 +376,7 @@ INDEX_HTML = """<!doctype html>
 
     @media (max-width: 960px) {
       .hero, .grid, .search-row { grid-template-columns: 1fr; }
+      .player-head { grid-template-columns: 1fr; }
       .side { justify-self: stretch; width: 100%; }
     }
   </style>
@@ -371,8 +426,14 @@ INDEX_HTML = """<!doctype html>
             <span class="pill" id="statusPill">Ready</span>
             <span id="message">Type to search.</span>
           </div>
-          <h2 class="track-title" id="trackTitle">Nothing playing yet</h2>
-          <p class="track-meta" id="trackMeta">Search for a track, pick a result, then play it in the browser.</p>
+          <div class="player-head">
+            <div class="cover large" id="trackCover">DM</div>
+            <div>
+              <h2 class="track-title" id="trackTitle">Nothing playing yet</h2>
+              <p class="track-meta" id="trackMeta">Search for a track, pick a result, then play it in the browser.</p>
+              <div class="cover-meta" id="coverMeta">Cover art will prefer MusicBrainz.</div>
+            </div>
+          </div>
           <div class="progress" aria-hidden="true"><div></div></div>
           <div class="actions">
             <button class="primary" id="playTop">Play current search</button>
@@ -401,6 +462,8 @@ INDEX_HTML = """<!doctype html>
     const resultCount = document.getElementById('resultCount');
     const trackTitle = document.getElementById('trackTitle');
     const trackMeta = document.getElementById('trackMeta');
+    const trackCover = document.getElementById('trackCover');
+    const coverMeta = document.getElementById('coverMeta');
     const statusPill = document.getElementById('statusPill');
     const sideStatus = document.getElementById('sideStatus');
     const message = document.getElementById('message');
@@ -441,6 +504,8 @@ INDEX_HTML = """<!doctype html>
       album: suggestion?.album || playable.album,
       artist: suggestion?.artist || playable.artist,
       thumbnail: suggestion?.thumbnail || playable.thumbnail,
+      artwork_source: suggestion?.artwork_source || playable.artwork_source || (playable.thumbnail ? 'youtube' : null),
+      artwork_confidence: suggestion?.artwork_confidence || playable.artwork_confidence || (playable.thumbnail ? 'video' : null),
       release_year: suggestion?.release_year || playable.release_year,
       duration: suggestion?.duration || playable.duration,
       confidence: suggestion?.confidence || playable.confidence || 0,
@@ -457,6 +522,60 @@ INDEX_HTML = """<!doctype html>
       } else {
         statusPill.style.background = 'rgba(255, 255, 255, 0.08)';
       }
+    };
+
+    const coverInitials = (item = {}) => {
+      const source = item.artist || item.title || 'Dev Music';
+      return source.split(/\\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || 'DM';
+    };
+
+    const coverLabel = (item = {}) => {
+      if (item.artwork_source === 'cover_art_archive') {
+        return `MusicBrainz ${item.artwork_confidence || 'release'} art`;
+      }
+      if (item.artwork_source === 'youtube') {
+        return 'YouTube video thumbnail fallback';
+      }
+      return 'Generated cover fallback';
+    };
+
+    const escapeAttr = (value = '') => String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    const coverMarkup = (item = {}, size = 'small') => {
+      const initials = coverInitials(item);
+      if (!item.thumbnail) {
+        return `<div class="cover ${size}" title="Generated cover fallback">${initials}</div>`;
+      }
+      return `
+        <div class="cover ${size}" title="${escapeAttr(coverLabel(item))}">
+          <img src="${escapeAttr(item.thumbnail)}" alt="${escapeAttr(item.title || 'Cover art')} cover" referrerpolicy="no-referrer" onerror="this.remove(); this.parentElement.textContent='${escapeAttr(initials)}'; this.parentElement.title='Generated cover fallback';" />
+        </div>
+      `;
+    };
+
+    const setCover = (item = {}) => {
+      trackCover.innerHTML = '';
+      trackCover.title = coverLabel(item);
+      if (!item.thumbnail) {
+        trackCover.textContent = coverInitials(item);
+      } else {
+        const img = document.createElement('img');
+        img.src = item.thumbnail;
+        img.alt = `${item.title || 'Track'} cover`;
+        img.referrerPolicy = 'no-referrer';
+        img.addEventListener('error', () => {
+          img.remove();
+          trackCover.textContent = coverInitials(item);
+          trackCover.title = 'Generated cover fallback';
+          coverMeta.textContent = 'Generated cover fallback.';
+        });
+        trackCover.appendChild(img);
+      }
+      coverMeta.textContent = `${coverLabel(item)}.`;
     };
 
     const setTrack = (title, meta) => {
@@ -484,7 +603,7 @@ INDEX_HTML = """<!doctype html>
       currentResults.slice(0, 6).forEach((item, idx) => {
         const row = document.createElement('div');
         row.className = 'suggestion' + (idx === activeIndex ? ' active' : '');
-        row.innerHTML = `<div><strong>${item.title}</strong><br><small>${albumMeta(item)} · ${fmtDuration(item.duration)}</small></div><small>${item.source || 'metadata'}</small>`;
+        row.innerHTML = `${coverMarkup(item)}<div><strong>${item.title}</strong><br><small>${albumMeta(item)} · ${fmtDuration(item.duration)}</small></div><small>${item.source || 'metadata'}</small>`;
         row.addEventListener('mousedown', (event) => {
           event.preventDefault();
           input.value = item.query || item.title;
@@ -505,6 +624,7 @@ INDEX_HTML = """<!doctype html>
         const row = document.createElement('div');
         row.className = 'result';
         row.innerHTML = `
+          ${coverMarkup(item)}
           <div class="info">
             <strong>${item.title}</strong>
             <small>${albumMeta(item)} · ${fmtDuration(item.duration)}</small>
@@ -540,6 +660,7 @@ INDEX_HTML = """<!doctype html>
       setStatus('Playing', 'good');
       message.textContent = 'Buffering browser audio...';
       setTrack(item.title, `${albumMeta(item)} · Duration ${fmtDuration(item.duration)}`);
+      setCover(item);
       audio.src = item.stream_url;
       audio.currentTime = 0;
       await audio.play();
@@ -593,6 +714,8 @@ INDEX_HTML = """<!doctype html>
         if (playableItem.album) playbackParams.set('album', playableItem.album);
         if (playableItem.artist) playbackParams.set('artist', playableItem.artist);
         if (playableItem.thumbnail) playbackParams.set('thumbnail', playableItem.thumbnail);
+        if (playableItem.artwork_source) playbackParams.set('artwork_source', playableItem.artwork_source);
+        if (playableItem.artwork_confidence) playbackParams.set('artwork_confidence', playableItem.artwork_confidence);
         if (playableItem.release_year) playbackParams.set('release_year', String(playableItem.release_year));
         await fetch(`/api/browser/playback?${playbackParams.toString()}`);
         await startPlayback(playableItem);
@@ -714,6 +837,7 @@ INDEX_HTML = """<!doctype html>
 
     setStatus('Ready');
     setTrack('Nothing playing yet', 'Search for a track, pick a result, then play it in the browser.');
+    setCover({ title: 'Dev Music', artist: 'Dev Music' });
   </script>
 </body>
 </html>

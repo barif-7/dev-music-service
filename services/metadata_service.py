@@ -159,6 +159,19 @@ class MetadataService:
         return None
 
     @staticmethod
+    def _artwork_confidence(release: dict) -> str | None:
+        if not release:
+            return None
+
+        release_group = release.get("release-group") or {}
+        primary_type = release_group.get("primary-type")
+        if primary_type == "Album":
+            return "album"
+        if primary_type in {"Single", "EP"}:
+            return primary_type.lower()
+        return "release"
+
+    @staticmethod
     def _safe_musicbrainz_phrase(value: str) -> str:
         return value.replace('"', "").strip()
 
@@ -168,30 +181,42 @@ class MetadataService:
         return " ".join(without_artist.replace("-", " ").split())
 
     @staticmethod
-    def _artist_candidates(query: str, limit: int = 3) -> list[dict]:
-        payload = MetadataService._musicbrainz_json(
-            MetadataService._MUSICBRAINZ_ARTIST_URL,
-            {"query": query, "fmt": "json", "limit": limit},
-        )
+    def _artist_search_terms(query: str) -> list[str]:
+        terms = [query]
+        words = query.split()
+        for size in range(1, min(3, len(words)) + 1):
+            terms.append(" ".join(words[:size]))
+        return list(dict.fromkeys(terms))
 
+    @staticmethod
+    def _artist_candidates(query: str, limit: int = 8) -> list[dict]:
         candidates: list[dict] = []
+        seen: set[str] = set()
         normalized_query = MetadataService._normalize(query)
-        for artist in payload.get("artists") or []:
-            name = artist.get("name")
-            artist_id = artist.get("id")
-            score = int(artist.get("score") or 0)
-            if not name or not artist_id or score < 80:
-                continue
 
-            normalized_name = MetadataService._normalize(name)
-            if normalized_name not in normalized_query:
-                continue
+        for term in MetadataService._artist_search_terms(query):
+            payload = MetadataService._musicbrainz_json(
+                MetadataService._MUSICBRAINZ_ARTIST_URL,
+                {"query": term, "fmt": "json", "limit": limit},
+            )
 
-            remainder = MetadataService._query_without_artist(query, name)
-            if len(remainder) < 2:
-                continue
+            for artist in payload.get("artists") or []:
+                name = artist.get("name")
+                artist_id = artist.get("id")
+                score = int(artist.get("score") or 0)
+                if not name or not artist_id or score < 80 or artist_id in seen:
+                    continue
 
-            candidates.append({"id": artist_id, "name": name, "remainder": remainder, "score": score})
+                normalized_name = MetadataService._normalize(name)
+                if normalized_name not in normalized_query:
+                    continue
+
+                remainder = MetadataService._query_without_artist(query, name)
+                if len(remainder) < 2:
+                    continue
+
+                seen.add(artist_id)
+                candidates.append({"id": artist_id, "name": name, "remainder": remainder, "score": score})
 
         return candidates
 
@@ -237,6 +262,8 @@ class MetadataService:
             artist=artist,
             album=album,
             thumbnail=MetadataService._cover_art_url(release),
+            artwork_source="cover_art_archive" if release else None,
+            artwork_confidence=MetadataService._artwork_confidence(release),
             release_year=release_year,
             duration=MetadataService._duration_seconds(recording.get("length")),
             confidence=MetadataService._confidence(recording, release),

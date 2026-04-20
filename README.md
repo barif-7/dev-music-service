@@ -35,4 +35,5 @@ The main product surface is the web app served from `/`, backed by search and st
 
 - Vercel uses the FastAPI app exposed from `app.py`.
 - Browser playback is Vercel-safe because `/stream` redirects to the resolved provider URL instead of shelling out to `ffmpeg`.
+- Cover art prefers MusicBrainz/Cover Art Archive metadata, falls back to YouTube thumbnails during playback resolution, then to a generated placeholder.
 - Local playback endpoints remain local-machine-only and return an error when invoked in the Vercel runtime.

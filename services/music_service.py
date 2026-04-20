@@ -125,6 +125,8 @@ class MusicService:
                     album=MusicService._album_from_entry(entry),
                     artist=entry.get("artist") or entry.get("channel") or entry.get("uploader"),
                     thumbnail=entry.get("thumbnail"),
+                    artwork_source="youtube" if entry.get("thumbnail") else None,
+                    artwork_confidence="video" if entry.get("thumbnail") else None,
                     release_year=MusicService._extract_year(entry),
                 )
             )
@@ -147,6 +149,8 @@ class MusicService:
         album: str | None = None,
         artist: str | None = None,
         thumbnail: str | None = None,
+        artwork_source: str | None = None,
+        artwork_confidence: str | None = None,
         release_year: int | None = None,
     ) -> BrowserPlaybackState:
         return BrowserPlaybackState(
@@ -157,6 +161,8 @@ class MusicService:
             album=album,
             artist=artist,
             thumbnail=thumbnail,
+            artwork_source=artwork_source,
+            artwork_confidence=artwork_confidence,
             release_year=release_year,
         )
 

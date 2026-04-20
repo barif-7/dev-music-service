@@ -7,6 +7,8 @@ class AutocompleteSuggestion(BaseModel):
     artist: str | None = None
     album: str | None = None
     thumbnail: str | None = None
+    artwork_source: str | None = None
+    artwork_confidence: str | None = None
     release_year: int | None = None
     duration: int = Field(default=0, description="Track duration in seconds")
     confidence: int = Field(default=0, description="Metadata match confidence from 0 to 100")
@@ -23,6 +25,8 @@ class SongSearchResult(BaseModel):
     album: str | None = None
     artist: str | None = None
     thumbnail: str | None = None
+    artwork_source: str | None = None
+    artwork_confidence: str | None = None
     release_year: int | None = None
 
 
@@ -35,6 +39,8 @@ class BrowserPlaybackState(BaseModel):
     album: str | None = None
     artist: str | None = None
     thumbnail: str | None = None
+    artwork_source: str | None = None
+    artwork_confidence: str | None = None
     release_year: int | None = None
 
 

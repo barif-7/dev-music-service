@@ -72,6 +72,8 @@ def browser_playback(
     album: str | None = Query(None, description="Album name, if available"),
     artist: str | None = Query(None, description="Artist name, if available"),
     thumbnail: str | None = Query(None, description="Artwork thumbnail URL, if available"),
+    artwork_source: str | None = Query(None, description="Artwork provider, if available"),
+    artwork_confidence: str | None = Query(None, description="Artwork confidence level, if available"),
     release_year: int | None = Query(None, description="Release or upload year, if available"),
 ):
     try:
@@ -82,6 +84,8 @@ def browser_playback(
             album=album,
             artist=artist,
             thumbnail=thumbnail,
+            artwork_source=artwork_source,
+            artwork_confidence=artwork_confidence,
             release_year=release_year,
         ).model_dump()
     except Exception as exc:
