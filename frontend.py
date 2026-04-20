@@ -768,6 +768,11 @@ INDEX_HTML = """<!doctype html>
       return '';
     };
 
+    const errorDetail = async (response, fallback) => {
+      const payload = await response.json().catch(() => ({}));
+      return payload.detail || fallback;
+    };
+
     const renderSpotifyPreview = (payload) => {
       const summary = document.createElement('div');
       summary.className = 'muted';
@@ -797,8 +802,7 @@ INDEX_HTML = """<!doctype html>
       spotifyPreview.innerHTML = '';
       const response = await fetch(`/api/import/spotify/playlists/${encodeURIComponent(playlist.id)}/preview?limit=25`);
       if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload.detail || `Playlist import failed with ${response.status}`);
+        throw new Error(await errorDetail(response, `Playlist import failed with ${response.status}`));
       }
       renderSpotifyPreview(await response.json());
       setSpotifyStatus('Review the MusicBrainz matches below.');
@@ -810,8 +814,7 @@ INDEX_HTML = """<!doctype html>
       spotifyPreview.innerHTML = '';
       const response = await fetch('/api/import/spotify/playlists?limit=20');
       if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload.detail || `Could not load Spotify playlists (${response.status})`);
+        throw new Error(await errorDetail(response, `Could not load Spotify playlists (${response.status})`));
       }
       const playlists = await response.json();
       if (!playlists.length) {
@@ -1132,8 +1135,7 @@ INDEX_HTML = """<!doctype html>
 
       const response = await fetch(`/api/integrations/openclaw/play?query=${encodeURIComponent(query)}`);
       if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload.detail || `Local playback failed with ${response.status}`);
+        throw new Error(await errorDetail(response, `Local playback failed with ${response.status}`));
       }
 
       const data = await response.json();

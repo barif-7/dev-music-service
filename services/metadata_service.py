@@ -6,6 +6,7 @@ import ssl
 import threading
 import time
 from urllib.parse import urlencode
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 import certifi
@@ -77,8 +78,12 @@ class MetadataService:
         )
 
         MetadataService._throttle_musicbrainz_request()
-        with urlopen(request, timeout=4, context=MetadataService._SSL_CONTEXT) as response:
-            return json.loads(response.read().decode("utf-8"))
+        try:
+            with urlopen(request, timeout=4, context=MetadataService._SSL_CONTEXT) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            raise MetadataServiceError(f"MusicBrainz request to {url} failed with {exc.code}: {body}") from exc
 
     @staticmethod
     def _artist_credit_name(artist_credit: list[dict] | None) -> str | None:

@@ -6,6 +6,7 @@ import json
 import os
 import secrets
 from urllib.parse import urlencode
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from fastapi import Request as FastAPIRequest
@@ -107,8 +108,12 @@ class SpotifyImportService:
             },
             method="POST",
         )
-        with urlopen(request, timeout=8) as response:
-            return json.loads(response.read().decode("utf-8"))
+        try:
+            with urlopen(request, timeout=8) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            raise SpotifyImportError(f"Spotify token request failed with {exc.code}: {body}") from exc
 
     @staticmethod
     def callback(request: FastAPIRequest, code: str | None, state: str | None, error: str | None) -> HTMLResponse:
@@ -178,8 +183,12 @@ class SpotifyImportService:
                 "Authorization": f"Bearer {access_token}",
             },
         )
-        with urlopen(request, timeout=10) as response:
-            return json.loads(response.read().decode("utf-8"))
+        try:
+            with urlopen(request, timeout=10) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            raise SpotifyImportError(f"Spotify API request to {path} failed with {exc.code}: {body}") from exc
 
     @staticmethod
     def is_connected(request: FastAPIRequest) -> bool:

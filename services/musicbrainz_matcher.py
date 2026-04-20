@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from models import ImportedTrack, MusicBrainzTrackMatch
-from services.metadata_service import MetadataService
+from services.metadata_service import MetadataService, MetadataServiceError
 
 
 class MusicBrainzMatcher:
@@ -90,13 +90,16 @@ class MusicBrainzMatcher:
     def match_track(track: ImportedTrack) -> MusicBrainzTrackMatch:
         candidates: list[MusicBrainzTrackMatch] = []
 
-        if track.isrc:
-            for recording in MusicBrainzMatcher._recordings_by_isrc(track.isrc):
-                candidates.append(MusicBrainzMatcher._match_from_recording(track, recording, "isrc"))
+        try:
+            if track.isrc:
+                for recording in MusicBrainzMatcher._recordings_by_isrc(track.isrc):
+                    candidates.append(MusicBrainzMatcher._match_from_recording(track, recording, "isrc"))
 
-        if not candidates:
-            for recording in MusicBrainzMatcher._recordings_by_text(track):
-                candidates.append(MusicBrainzMatcher._match_from_recording(track, recording, "artist_title_duration"))
+            if not candidates:
+                for recording in MusicBrainzMatcher._recordings_by_text(track):
+                    candidates.append(MusicBrainzMatcher._match_from_recording(track, recording, "artist_title_duration"))
+        except MetadataServiceError:
+            return MusicBrainzTrackMatch(match_reason="musicbrainz_error")
 
         if not candidates:
             return MusicBrainzTrackMatch(match_reason="unmatched")
