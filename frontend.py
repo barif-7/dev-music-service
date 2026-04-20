@@ -435,6 +435,18 @@ INDEX_HTML = """<!doctype html>
       return parts.join(' · ') || 'Album metadata unavailable';
     };
 
+    const mergeMetadata = (playable, suggestion) => ({
+      ...playable,
+      title: suggestion?.title || playable.title,
+      album: suggestion?.album || playable.album,
+      artist: suggestion?.artist || playable.artist,
+      thumbnail: suggestion?.thumbnail || playable.thumbnail,
+      release_year: suggestion?.release_year || playable.release_year,
+      duration: suggestion?.duration || playable.duration,
+      confidence: suggestion?.confidence || playable.confidence || 0,
+      source: suggestion?.source || playable.source || 'youtube',
+    });
+
     const setStatus = (label, tone = 'idle') => {
       statusPill.textContent = label;
       sideStatus.textContent = label;
@@ -472,12 +484,12 @@ INDEX_HTML = """<!doctype html>
       currentResults.slice(0, 6).forEach((item, idx) => {
         const row = document.createElement('div');
         row.className = 'suggestion' + (idx === activeIndex ? ' active' : '');
-        row.innerHTML = `<div><strong>${item.title}</strong><br><small>${albumMeta(item)} · ${fmtDuration(item.duration)}</small></div><small>Browser</small>`;
+        row.innerHTML = `<div><strong>${item.title}</strong><br><small>${albumMeta(item)} · ${fmtDuration(item.duration)}</small></div><small>${item.source || 'metadata'}</small>`;
         row.addEventListener('mousedown', (event) => {
           event.preventDefault();
-          input.value = item.title;
-          currentQuery = item.title;
-          playQuery(item.title, item);
+          input.value = item.query || item.title;
+          currentQuery = item.query || item.title;
+          playQuery(item.query || item.title, item);
           suggestions.classList.remove('visible');
         });
         suggestions.appendChild(row);
@@ -488,7 +500,7 @@ INDEX_HTML = """<!doctype html>
 
     const renderResults = () => {
       results.innerHTML = '';
-      resultCount.textContent = `${currentResults.length} track${currentResults.length === 1 ? '' : 's'}`;
+      resultCount.textContent = `${currentResults.length} suggestion${currentResults.length === 1 ? '' : 's'}`;
       currentResults.forEach((item) => {
         const row = document.createElement('div');
         row.className = 'result';
@@ -499,9 +511,28 @@ INDEX_HTML = """<!doctype html>
           </div>
           <button class="ghost">Play</button>
         `;
-        row.querySelector('button').addEventListener('click', () => playQuery(item.title, item));
+        row.querySelector('button').addEventListener('click', () => playQuery(item.query || item.title, item));
         results.appendChild(row);
       });
+    };
+
+    const resolvePlayableItem = async (query, suggestion = null) => {
+      if (suggestion?.webpage_url && suggestion?.stream_url) {
+        return suggestion;
+      }
+
+      const searchQuery = suggestion?.query || query;
+      const response = await fetch(`/api/search?query=${encodeURIComponent(searchQuery)}&limit=1`);
+      if (!response.ok) {
+        throw new Error(`Playback lookup failed with ${response.status}`);
+      }
+
+      const candidates = await response.json();
+      if (!candidates.length) {
+        throw new Error('No playable result found.');
+      }
+
+      return mergeMetadata(candidates[0], suggestion);
     };
 
     const startPlayback = async (item) => {
@@ -526,10 +557,10 @@ INDEX_HTML = """<!doctype html>
       }
 
       setStatus('Searching...', 'warn');
-      message.textContent = 'Fetching results...';
-      const response = await fetch(`/api/search?query=${encodeURIComponent(query)}`);
+      message.textContent = 'Fetching metadata matches...';
+      const response = await fetch(`/api/autocomplete?query=${encodeURIComponent(query)}`);
       if (!response.ok) {
-        throw new Error(`Search failed with ${response.status}`);
+        throw new Error(`Autocomplete failed with ${response.status}`);
       }
 
       currentResults = await response.json();
@@ -537,7 +568,7 @@ INDEX_HTML = """<!doctype html>
       renderSuggestions();
       renderResults();
       setStatus('Ready');
-      message.textContent = currentResults.length ? 'Pick a result or hit Play.' : 'No matches found.';
+      message.textContent = currentResults.length ? 'Pick a metadata match or hit Play.' : 'No matches found.';
     };
 
     const playQuery = async (query, item = null) => {
@@ -552,24 +583,19 @@ INDEX_HTML = """<!doctype html>
         item = currentResults[0];
       }
 
-      if (!item) {
-        setStatus('Ready');
-        message.textContent = 'No playable result found.';
-        return;
-      }
-
       try {
+        const playableItem = await resolvePlayableItem(query, item);
         const playbackParams = new URLSearchParams({
-          url: item.webpage_url,
-          title: item.title,
-          duration: String(item.duration || 0),
+          url: playableItem.webpage_url,
+          title: playableItem.title,
+          duration: String(playableItem.duration || 0),
         });
-        if (item.album) playbackParams.set('album', item.album);
-        if (item.artist) playbackParams.set('artist', item.artist);
-        if (item.thumbnail) playbackParams.set('thumbnail', item.thumbnail);
-        if (item.release_year) playbackParams.set('release_year', String(item.release_year));
+        if (playableItem.album) playbackParams.set('album', playableItem.album);
+        if (playableItem.artist) playbackParams.set('artist', playableItem.artist);
+        if (playableItem.thumbnail) playbackParams.set('thumbnail', playableItem.thumbnail);
+        if (playableItem.release_year) playbackParams.set('release_year', String(playableItem.release_year));
         await fetch(`/api/browser/playback?${playbackParams.toString()}`);
-        await startPlayback(item);
+        await startPlayback(playableItem);
       } catch (error) {
         setStatus('Error', 'warn');
         message.textContent = error.message || 'Playback failed.';
@@ -621,7 +647,7 @@ INDEX_HTML = """<!doctype html>
           setStatus('Error', 'warn');
           message.textContent = error.message || 'Search failed.';
         }
-      }, 220);
+      }, 650);
     });
 
     input.addEventListener('keydown', (event) => {
@@ -629,8 +655,8 @@ INDEX_HTML = """<!doctype html>
         event.preventDefault();
         if (currentResults[activeIndex]) {
           const item = currentResults[activeIndex];
-          input.value = item.title;
-          playQuery(item.title, item);
+          input.value = item.query || item.title;
+          playQuery(item.query || item.title, item);
         } else {
           playQuery(input.value.trim());
         }

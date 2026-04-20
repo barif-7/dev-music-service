@@ -11,7 +11,8 @@ The main product surface is the web app served from `/`, backed by search and st
 
 - `GET /` serves the browser UI.
 - `GET /health` returns service health plus mode metadata.
-- `GET /api/search` and `GET /search` return the top YouTube audio matches.
+- `GET /api/autocomplete` returns MusicBrainz-backed song suggestions indexed by artist.
+- `GET /api/search` and `GET /search` resolve the first YouTube audio match for a normalized query.
 - `GET /api/stream` and `GET /stream` resolve a playable audio URL and redirect the browser to it.
 - `GET /api/browser/playback` returns the browser playback payload used by the web app.
 - `GET /api/integrations/openclaw/play` launches local playback with `ffplay`.

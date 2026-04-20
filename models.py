@@ -1,6 +1,20 @@
 from pydantic import BaseModel, Field
 
 
+class AutocompleteSuggestion(BaseModel):
+    title: str
+    query: str
+    artist: str | None = None
+    album: str | None = None
+    thumbnail: str | None = None
+    release_year: int | None = None
+    duration: int = Field(default=0, description="Track duration in seconds")
+    confidence: int = Field(default=0, description="Metadata match confidence from 0 to 100")
+    source: str = "musicbrainz"
+    recording_mbid: str | None = None
+    release_mbid: str | None = None
+
+
 class SongSearchResult(BaseModel):
     title: str
     webpage_url: str

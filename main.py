@@ -5,13 +5,14 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from frontend import INDEX_HTML
 from services.local_playback_service import LocalPlaybackService
+from services.metadata_service import MetadataService, MetadataServiceError
 from services.music_service import MusicService, MusicServiceError
 
 app = FastAPI()
 
 
 def fail_with_http_error(exc: Exception) -> None:
-    if isinstance(exc, MusicServiceError):
+    if isinstance(exc, (MusicServiceError, MetadataServiceError)):
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -33,9 +34,23 @@ def health():
 
 @app.get("/api/search")
 @app.get("/search")
-def search_song(query: str = Query(..., description="Song name or YouTube query")):
+def search_song(
+    query: str = Query(..., description="Resolved song query"),
+    limit: int = Query(1, ge=1, le=5, description="Number of YouTube candidates to resolve"),
+):
     try:
-        return [result.model_dump() for result in MusicService.search(query)]
+        return [result.model_dump() for result in MusicService.search(query, limit=limit)]
+    except Exception as exc:
+        fail_with_http_error(exc)
+
+
+@app.get("/api/autocomplete")
+def autocomplete_song(
+    query: str = Query(..., description="Song title, artist, or combined metadata query"),
+    limit: int = Query(6, ge=1, le=10, description="Number of metadata suggestions to return"),
+):
+    try:
+        return [suggestion.model_dump() for suggestion in MetadataService.autocomplete(query, limit=limit)]
     except Exception as exc:
         fail_with_http_error(exc)
 
