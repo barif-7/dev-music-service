@@ -1,18 +1,19 @@
 import os
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from frontend import INDEX_HTML
 from services.local_playback_service import LocalPlaybackService
 from services.metadata_service import MetadataService, MetadataServiceError
 from services.music_service import MusicService, MusicServiceError
+from services.spotify_import_service import SpotifyImportError, SpotifyImportService
 
 app = FastAPI()
 
 
 def fail_with_http_error(exc: Exception) -> None:
-    if isinstance(exc, (MusicServiceError, MetadataServiceError)):
+    if isinstance(exc, (MusicServiceError, MetadataServiceError, SpotifyImportError)):
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -29,7 +30,65 @@ def health():
         "mode": "browser-first",
         "stream_delivery": "redirect",
         "local_integration": "disabled-on-vercel" if os.getenv("VERCEL") else "openclaw-cli-optional",
+        "spotify_import": "configured" if os.getenv("SPOTIFY_CLIENT_ID") else "missing-client-id",
     }
+
+
+@app.get("/api/import/spotify/start")
+def spotify_start(request: Request):
+    try:
+        return SpotifyImportService.start_auth(request)
+    except Exception as exc:
+        fail_with_http_error(exc)
+
+
+@app.get("/api/import/spotify/callback")
+def spotify_callback(
+    request: Request,
+    code: str | None = Query(None),
+    state: str | None = Query(None),
+    error: str | None = Query(None),
+):
+    try:
+        return SpotifyImportService.callback(request, code, state, error)
+    except Exception as exc:
+        fail_with_http_error(exc)
+
+
+@app.get("/api/import/spotify/status")
+def spotify_status(request: Request):
+    return {
+        "configured": bool(os.getenv("SPOTIFY_CLIENT_ID")),
+        "connected": SpotifyImportService.is_connected(request),
+    }
+
+
+@app.get("/api/import/spotify/playlists")
+def spotify_playlists(
+    request: Request,
+    limit: int = Query(20, ge=1, le=50, description="Number of playlists to return"),
+):
+    try:
+        return [playlist.model_dump() for playlist in SpotifyImportService.list_playlists(request, limit=limit)]
+    except Exception as exc:
+        fail_with_http_error(exc)
+
+
+@app.get("/api/import/spotify/playlists/{playlist_id}/preview")
+def spotify_playlist_preview(
+    playlist_id: str,
+    request: Request,
+    limit: int = Query(25, ge=1, le=50, description="Number of tracks to import and match"),
+):
+    try:
+        return SpotifyImportService.preview_playlist(request, playlist_id, limit=limit).model_dump()
+    except Exception as exc:
+        fail_with_http_error(exc)
+
+
+@app.post("/api/import/spotify/disconnect")
+def spotify_disconnect():
+    return SpotifyImportService.clear_connection()
 
 
 @app.get("/api/search")

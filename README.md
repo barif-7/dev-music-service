@@ -15,6 +15,9 @@ The main product surface is the web app served from `/`, backed by search and st
 - `GET /api/search` and `GET /search` resolve the first YouTube audio match for a normalized query.
 - `GET /api/stream` and `GET /stream` resolve a playable audio URL and redirect the browser to it.
 - `GET /api/browser/playback` returns the browser playback payload used by the web app.
+- `GET /api/import/spotify/start` starts read-only Spotify playlist import auth.
+- `GET /api/import/spotify/playlists` lists authenticated Spotify playlists.
+- `GET /api/import/spotify/playlists/{playlist_id}/preview` maps playlist tracks to MusicBrainz.
 - `GET /api/integrations/openclaw/play` launches local playback with `ffplay`.
 - `GET /api/integrations/openclaw/stop` stops current local playback.
 - `GET /api/integrations/openclaw/resume` restarts the most recent local playback.
@@ -37,3 +40,10 @@ The main product surface is the web app served from `/`, backed by search and st
 - Browser playback is Vercel-safe because `/stream` redirects to the resolved provider URL instead of shelling out to `ffmpeg`.
 - Cover art prefers MusicBrainz/Cover Art Archive metadata, falls back to YouTube thumbnails during playback resolution, then to a generated placeholder.
 - Local playback endpoints remain local-machine-only and return an error when invoked in the Vercel runtime.
+
+## Spotify import setup
+
+- Create a Spotify app and set the redirect URI to your deployed callback URL, for example `https://your-app.vercel.app/api/import/spotify/callback`.
+- Set `SPOTIFY_CLIENT_ID` in the deployment environment.
+- Optionally set `SPOTIFY_REDIRECT_URI` if automatic callback URL detection does not match the registered Spotify redirect URI exactly.
+- Requested scopes are read-only: `playlist-read-private` and `playlist-read-collaborative`.

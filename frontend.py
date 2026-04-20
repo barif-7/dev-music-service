@@ -137,6 +137,89 @@ INDEX_HTML = """<!doctype html>
       backdrop-filter: blur(18px);
     }
 
+    .import-panel {
+      display: grid;
+      gap: 14px;
+      padding: 18px;
+      border: 1px solid rgba(45, 229, 157, 0.18);
+      background:
+        linear-gradient(135deg, rgba(45, 229, 157, 0.1), rgba(255, 255, 255, 0.04)),
+        rgba(255, 255, 255, 0.04);
+      border-radius: 24px;
+    }
+
+    .import-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .import-head h2 {
+      margin: 0;
+      font-size: 18px;
+      letter-spacing: -0.02em;
+    }
+
+    .import-head p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .import-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .playlist-list, .import-preview {
+      display: grid;
+      gap: 10px;
+    }
+
+    .playlist-row, .import-track {
+      display: grid;
+      grid-template-columns: 48px 1fr auto;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.04);
+      border-radius: 18px;
+    }
+
+    .playlist-row strong, .import-track strong {
+      display: block;
+      margin-bottom: 3px;
+    }
+
+    .playlist-row small, .import-track small {
+      color: var(--muted);
+    }
+
+    .match-badge {
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .match-badge.good {
+      color: #b8f8d5;
+      background: rgba(45, 229, 157, 0.14);
+      border: 1px solid rgba(45, 229, 157, 0.26);
+    }
+
+    .match-badge.warn {
+      color: #ffe2a3;
+      background: rgba(255, 209, 102, 0.12);
+      border: 1px solid rgba(255, 209, 102, 0.22);
+    }
+
     .search-wrap {
       position: relative;
       display: grid;
@@ -500,6 +583,22 @@ INDEX_HTML = """<!doctype html>
         <div class="suggestions" id="suggestions"></div>
       </div>
 
+      <section class="import-panel" id="spotifyImport">
+        <div class="import-head">
+          <div>
+            <h2>Import a Spotify playlist</h2>
+            <p>Connect read-only, fetch playlist tracks, then map them to MusicBrainz using ISRC and metadata.</p>
+          </div>
+          <div class="import-actions">
+            <button class="ghost" id="spotifyConnectBtn">Connect Spotify</button>
+            <button class="ghost" id="spotifyLoadBtn">Load playlists</button>
+          </div>
+        </div>
+        <div class="muted" id="spotifyStatus">Spotify import is checking configuration...</div>
+        <div class="playlist-list" id="spotifyPlaylists"></div>
+        <div class="import-preview" id="spotifyPreview"></div>
+      </section>
+
       <div class="grid">
         <div class="card now-playing">
           <div class="status-line">
@@ -571,6 +670,12 @@ INDEX_HTML = """<!doctype html>
     const elapsedTime = document.getElementById('elapsedTime');
     const durationTime = document.getElementById('durationTime');
     const equalizer = document.getElementById('equalizer');
+    const spotifyImport = document.getElementById('spotifyImport');
+    const spotifyConnectBtn = document.getElementById('spotifyConnectBtn');
+    const spotifyLoadBtn = document.getElementById('spotifyLoadBtn');
+    const spotifyStatus = document.getElementById('spotifyStatus');
+    const spotifyPlaylists = document.getElementById('spotifyPlaylists');
+    const spotifyPreview = document.getElementById('spotifyPreview');
 
     let timer = null;
     let currentResults = [];
@@ -651,6 +756,117 @@ INDEX_HTML = """<!doctype html>
     const setEqualizerState = (state) => {
       equalizer.classList.toggle('playing', state === 'playing');
       equalizer.classList.toggle('paused', state !== 'playing');
+    };
+
+    const setSpotifyStatus = (text) => {
+      spotifyStatus.textContent = text;
+    };
+
+    const matchTone = (confidence) => {
+      if (confidence >= 80) return 'good';
+      if (confidence > 0) return 'warn';
+      return '';
+    };
+
+    const renderSpotifyPreview = (payload) => {
+      const summary = document.createElement('div');
+      summary.className = 'muted';
+      summary.textContent = `${payload.playlist.name}: ${payload.matched_count} matched, ${payload.low_confidence_count} low-confidence, ${payload.unmatched_count} unmatched.`;
+      spotifyPreview.innerHTML = '';
+      spotifyPreview.appendChild(summary);
+
+      payload.tracks.forEach((item) => {
+        const source = item.source;
+        const match = item.musicbrainz;
+        const row = document.createElement('div');
+        row.className = 'import-track';
+        row.innerHTML = `
+          ${coverMarkup({ title: source.title, artist: source.artist_names?.[0], thumbnail: match.artwork_url || source.artwork_url, artwork_source: match.artwork_url ? 'cover_art_archive' : 'spotify', artwork_confidence: match.artwork_url ? 'match' : 'playlist' })}
+          <div>
+            <strong>${source.title}</strong>
+            <small>${(source.artist_names || []).join(', ')} · ${source.album || 'Unknown album'}<br />MusicBrainz: ${match.title || 'No match'}${match.artist ? ` · ${match.artist}` : ''}</small>
+          </div>
+          <span class="match-badge ${matchTone(match.confidence)}">${match.confidence ? `${match.confidence}%` : 'unmatched'}</span>
+        `;
+        spotifyPreview.appendChild(row);
+      });
+    };
+
+    const previewSpotifyPlaylist = async (playlist) => {
+      setSpotifyStatus(`Mapping "${playlist.name}" to MusicBrainz...`);
+      spotifyPreview.innerHTML = '';
+      const response = await fetch(`/api/import/spotify/playlists/${encodeURIComponent(playlist.id)}/preview?limit=25`);
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.detail || `Playlist import failed with ${response.status}`);
+      }
+      renderSpotifyPreview(await response.json());
+      setSpotifyStatus('Review the MusicBrainz matches below.');
+    };
+
+    const loadSpotifyPlaylists = async () => {
+      setSpotifyStatus('Loading Spotify playlists...');
+      spotifyPlaylists.innerHTML = '';
+      spotifyPreview.innerHTML = '';
+      const response = await fetch('/api/import/spotify/playlists?limit=20');
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.detail || `Could not load Spotify playlists (${response.status})`);
+      }
+      const playlists = await response.json();
+      if (!playlists.length) {
+        setSpotifyStatus('No Spotify playlists found.');
+        return;
+      }
+
+      playlists.forEach((playlist) => {
+        const row = document.createElement('div');
+        row.className = 'playlist-row';
+        row.innerHTML = `
+          ${coverMarkup({ title: playlist.name, artist: playlist.owner, thumbnail: playlist.thumbnail, artwork_source: 'spotify', artwork_confidence: 'playlist' })}
+          <div>
+            <strong>${playlist.name}</strong>
+            <small>${playlist.track_count} tracks${playlist.owner ? ` · ${playlist.owner}` : ''}</small>
+          </div>
+          <button class="ghost">Map</button>
+        `;
+        row.querySelector('button').addEventListener('click', async () => {
+          try {
+            await previewSpotifyPlaylist(playlist);
+          } catch (error) {
+            setSpotifyStatus(error.message || 'Playlist mapping failed.');
+          }
+        });
+        spotifyPlaylists.appendChild(row);
+      });
+      setSpotifyStatus('Choose a playlist to map.');
+    };
+
+    const refreshSpotifyStatus = async () => {
+      const response = await fetch('/api/import/spotify/status');
+      if (!response.ok) {
+        spotifyImport.hidden = true;
+        return;
+      }
+      const status = await response.json();
+      if (!status.configured) {
+        spotifyImport.hidden = false;
+        spotifyConnectBtn.disabled = true;
+        spotifyLoadBtn.disabled = true;
+        setSpotifyStatus('Spotify import needs SPOTIFY_CLIENT_ID configured in the deployment environment.');
+        return;
+      }
+
+      spotifyConnectBtn.disabled = false;
+      spotifyLoadBtn.disabled = !status.connected;
+      setSpotifyStatus(status.connected ? 'Spotify connected. Load playlists to start importing.' : 'Connect Spotify to import playlists.');
+    };
+
+    const connectSpotify = () => {
+      const popup = window.open('/api/import/spotify/start', 'spotify-auth', 'width=520,height=720');
+      if (!popup) {
+        setSpotifyStatus('Popup was blocked. Allow popups and try again.');
+      }
     };
 
     const coverInitials = (item = {}) => {
@@ -997,6 +1213,26 @@ INDEX_HTML = """<!doctype html>
         message.textContent = error.message || 'Local playback failed.';
       }
     });
+    spotifyConnectBtn.addEventListener('click', connectSpotify);
+    spotifyLoadBtn.addEventListener('click', async () => {
+      try {
+        await loadSpotifyPlaylists();
+      } catch (error) {
+        setSpotifyStatus(error.message || 'Could not load Spotify playlists.');
+      }
+    });
+
+    window.addEventListener('message', async (event) => {
+      if (event.origin !== window.location.origin || event.data?.type !== 'spotify-connected') {
+        return;
+      }
+      await refreshSpotifyStatus();
+      try {
+        await loadSpotifyPlaylists();
+      } catch (error) {
+        setSpotifyStatus(error.message || 'Could not load Spotify playlists.');
+      }
+    });
 
     audio.addEventListener('timeupdate', syncProgress);
     audio.addEventListener('ended', () => {
@@ -1033,6 +1269,7 @@ INDEX_HTML = """<!doctype html>
     syncToggleLabel();
     setEqualizerState('paused');
     applyRuntimeMode();
+    refreshSpotifyStatus();
   </script>
 </body>
 </html>
