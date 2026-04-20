@@ -347,6 +347,68 @@ INDEX_HTML = """<!doctype html>
       margin-top: -6px;
     }
 
+    .equalizer {
+      position: relative;
+      height: 96px;
+      padding: 18px;
+      display: flex;
+      align-items: end;
+      gap: 8px;
+      border-radius: 24px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03)),
+        radial-gradient(circle at 18% 0%, rgba(45, 229, 157, 0.22), transparent 38%),
+        radial-gradient(circle at 82% 100%, rgba(255, 209, 102, 0.18), transparent 34%);
+    }
+
+    .equalizer::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+      background-size: 100% 18px, 34px 100%;
+      mask-image: linear-gradient(180deg, transparent, black 18%, black 82%, transparent);
+      pointer-events: none;
+    }
+
+    .eq-bar {
+      position: relative;
+      z-index: 1;
+      flex: 1;
+      min-width: 7px;
+      height: calc(var(--level) * 1%);
+      border-radius: 999px 999px 5px 5px;
+      background: linear-gradient(180deg, #eaffbf 0%, #5df3b1 46%, #0fb778 100%);
+      box-shadow: 0 0 18px rgba(45, 229, 157, 0.24);
+      opacity: 0.55;
+      transform-origin: bottom;
+      transition: height 0.35s ease, opacity 0.25s ease, filter 0.25s ease;
+      animation: eqPulse var(--speed) ease-in-out infinite;
+      animation-delay: var(--delay);
+      animation-play-state: paused;
+    }
+
+    .equalizer.playing .eq-bar {
+      opacity: 0.95;
+      filter: saturate(1.18);
+      animation-play-state: running;
+    }
+
+    .equalizer.paused .eq-bar {
+      height: 18%;
+      opacity: 0.42;
+    }
+
+    @keyframes eqPulse {
+      0%, 100% { transform: scaleY(0.45); }
+      34% { transform: scaleY(1); }
+      62% { transform: scaleY(0.68); }
+    }
+
     .actions {
       display: flex;
       flex-wrap: wrap;
@@ -391,6 +453,12 @@ INDEX_HTML = """<!doctype html>
       .hero, .grid, .search-row { grid-template-columns: 1fr; }
       .player-head { grid-template-columns: 1fr; }
       .side { justify-self: stretch; width: 100%; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .bars span, .eq-bar {
+        animation: none;
+      }
     }
   </style>
 </head>
@@ -446,6 +514,20 @@ INDEX_HTML = """<!doctype html>
               <div class="cover-meta" id="coverMeta">Cover art will prefer MusicBrainz.</div>
             </div>
           </div>
+          <div class="equalizer paused" id="equalizer" aria-hidden="true">
+            <span class="eq-bar" style="--level: 42; --speed: 1.1s; --delay: -0.1s"></span>
+            <span class="eq-bar" style="--level: 68; --speed: 1.35s; --delay: -0.45s"></span>
+            <span class="eq-bar" style="--level: 36; --speed: 0.95s; --delay: -0.2s"></span>
+            <span class="eq-bar" style="--level: 88; --speed: 1.55s; --delay: -0.75s"></span>
+            <span class="eq-bar" style="--level: 54; --speed: 1.15s; --delay: -0.35s"></span>
+            <span class="eq-bar" style="--level: 74; --speed: 1.45s; --delay: -0.6s"></span>
+            <span class="eq-bar" style="--level: 48; --speed: 1s; --delay: -0.15s"></span>
+            <span class="eq-bar" style="--level: 92; --speed: 1.7s; --delay: -0.85s"></span>
+            <span class="eq-bar" style="--level: 62; --speed: 1.25s; --delay: -0.5s"></span>
+            <span class="eq-bar" style="--level: 38; --speed: 1.05s; --delay: -0.25s"></span>
+            <span class="eq-bar" style="--level: 78; --speed: 1.5s; --delay: -0.7s"></span>
+            <span class="eq-bar" style="--level: 50; --speed: 1.2s; --delay: -0.4s"></span>
+          </div>
           <div class="progress" aria-hidden="true"><div></div></div>
           <div class="time-row"><span id="elapsedTime">0:00</span><span id="durationTime">0:00</span></div>
           <div class="actions">
@@ -488,6 +570,7 @@ INDEX_HTML = """<!doctype html>
     const progressFill = document.querySelector('.progress > div');
     const elapsedTime = document.getElementById('elapsedTime');
     const durationTime = document.getElementById('durationTime');
+    const equalizer = document.getElementById('equalizer');
 
     let timer = null;
     let currentResults = [];
@@ -563,6 +646,11 @@ INDEX_HTML = """<!doctype html>
     const syncToggleLabel = () => {
       toggleBtn.textContent = audio.paused ? 'Resume' : 'Pause';
       toggleBtn.disabled = isResolvingPlayback || !audio.src;
+    };
+
+    const setEqualizerState = (state) => {
+      equalizer.classList.toggle('playing', state === 'playing');
+      equalizer.classList.toggle('paused', state !== 'playing');
     };
 
     const coverInitials = (item = {}) => {
@@ -714,6 +802,7 @@ INDEX_HTML = """<!doctype html>
     const startPlayback = async (item) => {
       currentTrack = item;
       setStatus('Playing', 'good');
+      setEqualizerState('playing');
       message.textContent = 'Loading audio...';
       setTrack(item.title, `${albumMeta(item)} · Duration ${fmtDuration(item.duration)}`);
       setCover(item);
@@ -773,6 +862,7 @@ INDEX_HTML = """<!doctype html>
       try {
         setPlaybackBusy(true);
         setStatus('Loading...', 'warn');
+        setEqualizerState('paused');
         message.textContent = 'Resolving the top stream...';
         const playableItem = await resolvePlayableItem(query, item);
         const playbackParams = new URLSearchParams({
@@ -805,11 +895,13 @@ INDEX_HTML = """<!doctype html>
 
       if (audio.paused) {
         setStatus('Playing', 'good');
+        setEqualizerState('playing');
         await audio.play();
         message.textContent = 'Playback resumed in the browser.';
       } else {
         audio.pause();
         setStatus('Paused', 'warn');
+        setEqualizerState('paused');
         message.textContent = 'Browser playback paused.';
       }
       syncToggleLabel();
@@ -911,16 +1003,19 @@ INDEX_HTML = """<!doctype html>
       setStatus('Ready');
       message.textContent = 'Track finished.';
       progressFill.style.width = '100%';
+      setEqualizerState('paused');
       syncToggleLabel();
     });
     audio.addEventListener('pause', () => {
       if (audio.currentTime > 0 && audio.currentTime < audio.duration) {
         setStatus('Paused', 'warn');
       }
+      setEqualizerState('paused');
       syncToggleLabel();
     });
     audio.addEventListener('play', () => {
       setStatus('Playing', 'good');
+      setEqualizerState('playing');
       syncToggleLabel();
     });
     audio.addEventListener('loadedmetadata', syncProgress);
@@ -936,6 +1031,7 @@ INDEX_HTML = """<!doctype html>
     setCover({ title: 'Dev Music', artist: 'Dev Music' });
     syncProgress();
     syncToggleLabel();
+    setEqualizerState('paused');
     applyRuntimeMode();
   </script>
 </body>
