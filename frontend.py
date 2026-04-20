@@ -427,6 +427,14 @@ INDEX_HTML = """<!doctype html>
       return total ? `${mins}:${remainder}` : 'live';
     };
 
+    const albumMeta = (item) => {
+      const parts = [];
+      if (item.artist) parts.push(item.artist);
+      if (item.album) parts.push(item.album);
+      if (item.release_year) parts.push(item.release_year);
+      return parts.join(' · ') || 'Album metadata unavailable';
+    };
+
     const setStatus = (label, tone = 'idle') => {
       statusPill.textContent = label;
       sideStatus.textContent = label;
@@ -464,7 +472,7 @@ INDEX_HTML = """<!doctype html>
       currentResults.slice(0, 6).forEach((item, idx) => {
         const row = document.createElement('div');
         row.className = 'suggestion' + (idx === activeIndex ? ' active' : '');
-        row.innerHTML = `<div><strong>${item.title}</strong><br><small>${fmtDuration(item.duration)}</small></div><small>Browser</small>`;
+        row.innerHTML = `<div><strong>${item.title}</strong><br><small>${albumMeta(item)} · ${fmtDuration(item.duration)}</small></div><small>Browser</small>`;
         row.addEventListener('mousedown', (event) => {
           event.preventDefault();
           input.value = item.title;
@@ -487,7 +495,7 @@ INDEX_HTML = """<!doctype html>
         row.innerHTML = `
           <div class="info">
             <strong>${item.title}</strong>
-            <small>${fmtDuration(item.duration)}</small>
+            <small>${albumMeta(item)} · ${fmtDuration(item.duration)}</small>
           </div>
           <button class="ghost">Play</button>
         `;
@@ -500,7 +508,7 @@ INDEX_HTML = """<!doctype html>
       currentTrack = item;
       setStatus('Playing', 'good');
       message.textContent = 'Buffering browser audio...';
-      setTrack(item.title, `Duration ${fmtDuration(item.duration)}`);
+      setTrack(item.title, `${albumMeta(item)} · Duration ${fmtDuration(item.duration)}`);
       audio.src = item.stream_url;
       audio.currentTime = 0;
       await audio.play();
@@ -551,7 +559,16 @@ INDEX_HTML = """<!doctype html>
       }
 
       try {
-        await fetch(`/api/browser/playback?url=${encodeURIComponent(item.webpage_url)}&title=${encodeURIComponent(item.title)}&duration=${encodeURIComponent(item.duration || 0)}`);
+        const playbackParams = new URLSearchParams({
+          url: item.webpage_url,
+          title: item.title,
+          duration: String(item.duration || 0),
+        });
+        if (item.album) playbackParams.set('album', item.album);
+        if (item.artist) playbackParams.set('artist', item.artist);
+        if (item.thumbnail) playbackParams.set('thumbnail', item.thumbnail);
+        if (item.release_year) playbackParams.set('release_year', String(item.release_year));
+        await fetch(`/api/browser/playback?${playbackParams.toString()}`);
         await startPlayback(item);
       } catch (error) {
         setStatus('Error', 'warn');

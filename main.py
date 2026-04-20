@@ -54,9 +54,21 @@ def browser_playback(
     url: str = Query(..., description="Track webpage URL"),
     title: str = Query("Unknown Title", description="Track title"),
     duration: int = Query(0, description="Track duration in seconds"),
+    album: str | None = Query(None, description="Album name, if available"),
+    artist: str | None = Query(None, description="Artist name, if available"),
+    thumbnail: str | None = Query(None, description="Artwork thumbnail URL, if available"),
+    release_year: int | None = Query(None, description="Release or upload year, if available"),
 ):
     try:
-        return MusicService.build_browser_state(url, title, duration).model_dump()
+        return MusicService.build_browser_state(
+            url,
+            title,
+            duration,
+            album=album,
+            artist=artist,
+            thumbnail=thumbnail,
+            release_year=release_year,
+        ).model_dump()
     except Exception as exc:
         fail_with_http_error(exc)
 

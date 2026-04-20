@@ -20,5 +20,9 @@ class YTDLPService:
         return LocalPlaybackService.resume().model_dump()
 
     @staticmethod
+    def resolve_stream_url(youtube_url: str):
+        return MusicService.resolve_stream_url(youtube_url)
+
+    @staticmethod
     def stream_audio(youtube_url: str):
-        return MusicService.stream_audio(youtube_url)
+        return MusicService.resolve_stream_url(youtube_url)

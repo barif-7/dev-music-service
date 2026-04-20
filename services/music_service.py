@@ -54,6 +54,34 @@ class MusicService:
         return value
 
     @staticmethod
+    def _extract_year(entry: dict) -> int | None:
+        release_year = entry.get("release_year")
+        if isinstance(release_year, int):
+            return release_year
+
+        upload_date = entry.get("upload_date")
+        if isinstance(upload_date, str) and len(upload_date) >= 4 and upload_date[:4].isdigit():
+            return int(upload_date[:4])
+
+        release_date = entry.get("release_date")
+        if isinstance(release_date, str) and len(release_date) >= 4 and release_date[:4].isdigit():
+            return int(release_date[:4])
+
+        return None
+
+    @staticmethod
+    def _album_from_entry(entry: dict) -> str | None:
+        album = entry.get("album")
+        if isinstance(album, str) and album.strip():
+            return album.strip()
+
+        playlist = entry.get("playlist")
+        if isinstance(playlist, str) and playlist.strip():
+            return playlist.strip()
+
+        return None
+
+    @staticmethod
     def _search_entries(query: str, limit: int = 5) -> list[dict]:
         cache_key = MusicService._normalize_query(query)
         cached = MusicService._cache_get(MusicService._search_cache, cache_key)
@@ -94,6 +122,10 @@ class MusicService:
                     webpage_url=webpage_url,
                     stream_url=f"/stream?{urlencode({'url': webpage_url})}",
                     duration=entry.get("duration") or 0,
+                    album=MusicService._album_from_entry(entry),
+                    artist=entry.get("artist") or entry.get("channel") or entry.get("uploader"),
+                    thumbnail=entry.get("thumbnail"),
+                    release_year=MusicService._extract_year(entry),
                 )
             )
 
@@ -108,12 +140,24 @@ class MusicService:
         return results[0]
 
     @staticmethod
-    def build_browser_state(webpage_url: str, title: str, duration: int = 0) -> BrowserPlaybackState:
+    def build_browser_state(
+        webpage_url: str,
+        title: str,
+        duration: int = 0,
+        album: str | None = None,
+        artist: str | None = None,
+        thumbnail: str | None = None,
+        release_year: int | None = None,
+    ) -> BrowserPlaybackState:
         return BrowserPlaybackState(
             title=title,
             duration=duration,
             webpage_url=webpage_url,
             stream_url=f"/stream?{urlencode({'url': webpage_url})}",
+            album=album,
+            artist=artist,
+            thumbnail=thumbnail,
+            release_year=release_year,
         )
 
     @staticmethod

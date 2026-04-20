@@ -6,6 +6,10 @@ class SongSearchResult(BaseModel):
     webpage_url: str
     stream_url: str
     duration: int = Field(default=0, description="Track duration in seconds")
+    album: str | None = None
+    artist: str | None = None
+    thumbnail: str | None = None
+    release_year: int | None = None
 
 
 class BrowserPlaybackState(BaseModel):
@@ -14,6 +18,10 @@ class BrowserPlaybackState(BaseModel):
     duration: int = 0
     webpage_url: str
     stream_url: str
+    album: str | None = None
+    artist: str | None = None
+    thumbnail: str | None = None
+    release_year: int | None = None
 
 
 class LocalPlaybackState(BaseModel):
