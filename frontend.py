@@ -339,6 +339,14 @@ INDEX_HTML = """<!doctype html>
       background: linear-gradient(90deg, #1bbd7a, #aaf9c7);
     }
 
+    .time-row {
+      display: flex;
+      justify-content: space-between;
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: -6px;
+    }
+
     .actions {
       display: flex;
       flex-wrap: wrap;
@@ -362,6 +370,11 @@ INDEX_HTML = """<!doctype html>
     }
 
     .result:hover { border-color: rgba(45, 229, 157, 0.25); }
+    .result.selected {
+      border-color: rgba(45, 229, 157, 0.62);
+      background: rgba(45, 229, 157, 0.1);
+      box-shadow: inset 4px 0 0 rgba(45, 229, 157, 0.72);
+    }
     .result .info { min-width: 0; }
     .result .info strong { display: block; margin-bottom: 3px; }
     .result .info small { color: var(--muted); }
@@ -385,9 +398,9 @@ INDEX_HTML = """<!doctype html>
   <div class="wrap">
     <section class="hero">
       <div class="title">
-        <div class="eyebrow">Dev Music Service · browser-first</div>
-        <h1>Search in the browser, stream reliably, and keep local playback explicit.</h1>
-        <p class="subtitle">The main app path is browser playback. Local machine playback stays available for OpenClaw-style automation, but it is now a separate integration instead of the default UX.</p>
+        <div class="eyebrow">Dev Music Service · MusicBrainz matches</div>
+        <h1>Find a song. Play the best match.</h1>
+        <p class="subtitle">Search by song or artist, choose a trusted metadata match, and play the top resolved stream in the browser.</p>
       </div>
       <aside class="side">
         <div class="metric">
@@ -413,9 +426,8 @@ INDEX_HTML = """<!doctype html>
       <div class="search-wrap">
         <div class="search-row">
           <input id="searchInput" placeholder="Search a song, artist, or mood..." autocomplete="off" />
-          <button class="primary" id="playBtn">Play</button>
-          <button class="ghost" id="pauseBtn">Pause</button>
-          <button class="ghost" id="resumeBtn">Resume</button>
+          <button class="primary" id="playBtn">Play top match</button>
+          <button class="ghost" id="toggleBtn">Pause</button>
         </div>
         <div class="suggestions" id="suggestions"></div>
       </div>
@@ -435,8 +447,9 @@ INDEX_HTML = """<!doctype html>
             </div>
           </div>
           <div class="progress" aria-hidden="true"><div></div></div>
+          <div class="time-row"><span id="elapsedTime">0:00</span><span id="durationTime">0:00</span></div>
           <div class="actions">
-            <button class="primary" id="playTop">Play current search</button>
+            <button class="primary" id="playTop">Play selected song</button>
             <button class="ghost" id="copyBtn">Copy current query</button>
             <button class="ghost" id="sendLocalBtn">Send to local player</button>
           </div>
@@ -444,14 +457,14 @@ INDEX_HTML = """<!doctype html>
 
         <div class="card">
           <div class="status-line" style="margin-bottom:12px;">
-            <strong>Search results</strong>
-            <span class="muted" id="resultCount">0 tracks</span>
+            <strong>Song matches</strong>
+            <span class="muted" id="resultCount">0 matches</span>
           </div>
           <div class="list" id="results"></div>
         </div>
       </div>
 
-      <div class="footer">Tip: browser playback is the default. Use the local-player button only when you explicitly want the OpenClaw integration path.</div>
+      <div class="footer">Suggestions come from MusicBrainz. Playback resolves the top matching stream.</div>
     </section>
   </div>
 
@@ -468,18 +481,20 @@ INDEX_HTML = """<!doctype html>
     const sideStatus = document.getElementById('sideStatus');
     const message = document.getElementById('message');
     const playBtn = document.getElementById('playBtn');
-    const pauseBtn = document.getElementById('pauseBtn');
-    const resumeBtn = document.getElementById('resumeBtn');
+    const toggleBtn = document.getElementById('toggleBtn');
     const playTop = document.getElementById('playTop');
     const copyBtn = document.getElementById('copyBtn');
     const sendLocalBtn = document.getElementById('sendLocalBtn');
     const progressFill = document.querySelector('.progress > div');
+    const elapsedTime = document.getElementById('elapsedTime');
+    const durationTime = document.getElementById('durationTime');
 
     let timer = null;
     let currentResults = [];
     let activeIndex = -1;
     let currentQuery = '';
     let currentTrack = null;
+    let isResolvingPlayback = false;
     const audio = new Audio();
     audio.preload = 'none';
 
@@ -522,6 +537,32 @@ INDEX_HTML = """<!doctype html>
       } else {
         statusPill.style.background = 'rgba(255, 255, 255, 0.08)';
       }
+    };
+
+    const setPlaybackBusy = (busy) => {
+      isResolvingPlayback = busy;
+      playBtn.disabled = busy;
+      playTop.disabled = busy;
+      toggleBtn.disabled = busy || !audio.src;
+      if (busy) {
+        playBtn.textContent = 'Loading...';
+        playTop.textContent = 'Loading...';
+      } else {
+        playBtn.textContent = 'Play top match';
+        playTop.textContent = currentResults[activeIndex] ? 'Play selected song' : 'Play top match';
+      }
+    };
+
+    const refreshPlayLabels = () => {
+      if (!isResolvingPlayback) {
+        playBtn.textContent = 'Play top match';
+        playTop.textContent = currentResults[activeIndex] ? 'Play selected song' : 'Play top match';
+      }
+    };
+
+    const syncToggleLabel = () => {
+      toggleBtn.textContent = audio.paused ? 'Resume' : 'Pause';
+      toggleBtn.disabled = isResolvingPlayback || !audio.src;
     };
 
     const coverInitials = (item = {}) => {
@@ -586,11 +627,15 @@ INDEX_HTML = """<!doctype html>
     const syncProgress = () => {
       if (!Number.isFinite(audio.duration) || audio.duration <= 0) {
         progressFill.style.width = '0%';
+        elapsedTime.textContent = fmtDuration(Math.floor(audio.currentTime || 0));
+        durationTime.textContent = currentTrack?.duration ? fmtDuration(currentTrack.duration) : '0:00';
         return;
       }
 
       const pct = Math.max(0, Math.min(100, (audio.currentTime / audio.duration) * 100));
       progressFill.style.width = `${pct}%`;
+      elapsedTime.textContent = fmtDuration(Math.floor(audio.currentTime || 0));
+      durationTime.textContent = fmtDuration(Math.floor(audio.duration || currentTrack?.duration || 0));
     };
 
     const renderSuggestions = () => {
@@ -603,7 +648,7 @@ INDEX_HTML = """<!doctype html>
       currentResults.slice(0, 6).forEach((item, idx) => {
         const row = document.createElement('div');
         row.className = 'suggestion' + (idx === activeIndex ? ' active' : '');
-        row.innerHTML = `${coverMarkup(item)}<div><strong>${item.title}</strong><br><small>${albumMeta(item)} · ${fmtDuration(item.duration)}</small></div><small>${item.source || 'metadata'}</small>`;
+        row.innerHTML = `${coverMarkup(item)}<div><strong>${item.title}</strong><br><small>${albumMeta(item)} · ${fmtDuration(item.duration)}</small></div><small>MusicBrainz match</small>`;
         row.addEventListener('mousedown', (event) => {
           event.preventDefault();
           input.value = item.query || item.title;
@@ -619,10 +664,10 @@ INDEX_HTML = """<!doctype html>
 
     const renderResults = () => {
       results.innerHTML = '';
-      resultCount.textContent = `${currentResults.length} suggestion${currentResults.length === 1 ? '' : 's'}`;
-      currentResults.forEach((item) => {
+      resultCount.textContent = `${currentResults.length} match${currentResults.length === 1 ? '' : 'es'}`;
+      currentResults.forEach((item, idx) => {
         const row = document.createElement('div');
-        row.className = 'result';
+        row.className = 'result' + (idx === activeIndex ? ' selected' : '');
         row.innerHTML = `
           ${coverMarkup(item)}
           <div class="info">
@@ -631,9 +676,20 @@ INDEX_HTML = """<!doctype html>
           </div>
           <button class="ghost">Play</button>
         `;
-        row.querySelector('button').addEventListener('click', () => playQuery(item.query || item.title, item));
+        row.addEventListener('click', () => {
+          activeIndex = idx;
+          input.value = item.query || item.title;
+          renderSuggestions();
+          renderResults();
+        });
+        row.querySelector('button').addEventListener('click', (event) => {
+          event.stopPropagation();
+          activeIndex = idx;
+          playQuery(item.query || item.title, item);
+        });
         results.appendChild(row);
       });
+      refreshPlayLabels();
     };
 
     const resolvePlayableItem = async (query, suggestion = null) => {
@@ -658,13 +714,15 @@ INDEX_HTML = """<!doctype html>
     const startPlayback = async (item) => {
       currentTrack = item;
       setStatus('Playing', 'good');
-      message.textContent = 'Buffering browser audio...';
+      message.textContent = 'Loading audio...';
       setTrack(item.title, `${albumMeta(item)} · Duration ${fmtDuration(item.duration)}`);
       setCover(item);
       audio.src = item.stream_url;
       audio.currentTime = 0;
       await audio.play();
       message.textContent = 'Playing in the browser.';
+      syncProgress();
+      syncToggleLabel();
     };
 
     const search = async (query) => {
@@ -674,11 +732,12 @@ INDEX_HTML = """<!doctype html>
         activeIndex = -1;
         renderSuggestions();
         renderResults();
+        setPlaybackBusy(false);
         return;
       }
 
       setStatus('Searching...', 'warn');
-      message.textContent = 'Fetching metadata matches...';
+      message.textContent = 'Finding songs...';
       const response = await fetch(`/api/autocomplete?query=${encodeURIComponent(query)}`);
       if (!response.ok) {
         throw new Error(`Autocomplete failed with ${response.status}`);
@@ -686,10 +745,13 @@ INDEX_HTML = """<!doctype html>
 
       currentResults = await response.json();
       activeIndex = -1;
+      setStatus('Ready');
+      if (currentResults.length && activeIndex < 0) {
+        activeIndex = 0;
+      }
       renderSuggestions();
       renderResults();
-      setStatus('Ready');
-      message.textContent = currentResults.length ? 'Pick a metadata match or hit Play.' : 'No matches found.';
+      message.textContent = currentResults.length ? 'Choose a song to play.' : 'No matches found.';
     };
 
     const playQuery = async (query, item = null) => {
@@ -697,14 +759,21 @@ INDEX_HTML = """<!doctype html>
         return;
       }
 
+      if (isResolvingPlayback) {
+        return;
+      }
+
       if (!item) {
         if (!currentResults.length || currentQuery !== query) {
           await search(query);
         }
-        item = currentResults[0];
+        item = currentResults[activeIndex] || currentResults[0];
       }
 
       try {
+        setPlaybackBusy(true);
+        setStatus('Loading...', 'warn');
+        message.textContent = 'Resolving the top stream...';
         const playableItem = await resolvePlayableItem(query, item);
         const playbackParams = new URLSearchParams({
           url: playableItem.webpage_url,
@@ -722,24 +791,28 @@ INDEX_HTML = """<!doctype html>
       } catch (error) {
         setStatus('Error', 'warn');
         message.textContent = error.message || 'Playback failed.';
+      } finally {
+        setPlaybackBusy(false);
+        syncToggleLabel();
       }
     };
 
-    const pausePlayback = () => {
-      audio.pause();
-      setStatus('Paused', 'warn');
-      message.textContent = 'Browser playback paused.';
-    };
-
-    const resumePlayback = async () => {
+    const togglePlayback = async () => {
       if (!audio.src) {
         message.textContent = 'No browser track is buffered yet.';
         return;
       }
 
-      setStatus('Playing', 'good');
-      await audio.play();
-      message.textContent = 'Playback resumed in the browser.';
+      if (audio.paused) {
+        setStatus('Playing', 'good');
+        await audio.play();
+        message.textContent = 'Playback resumed in the browser.';
+      } else {
+        audio.pause();
+        setStatus('Paused', 'warn');
+        message.textContent = 'Browser playback paused.';
+      }
+      syncToggleLabel();
     };
 
     const sendToLocalPlayer = async () => {
@@ -758,6 +831,19 @@ INDEX_HTML = """<!doctype html>
       const data = await response.json();
       setStatus('Local Output', 'warn');
       message.textContent = `Sent to local player (PID ${data.pid}).`;
+    };
+
+    const applyRuntimeMode = async () => {
+      try {
+        const response = await fetch('/health');
+        if (!response.ok) return;
+        const health = await response.json();
+        if (health.local_integration === 'disabled-on-vercel') {
+          sendLocalBtn.hidden = true;
+        }
+      } catch (_error) {
+        sendLocalBtn.hidden = true;
+      }
     };
 
     input.addEventListener('input', (event) => {
@@ -787,19 +873,26 @@ INDEX_HTML = """<!doctype html>
         event.preventDefault();
         activeIndex = Math.min(activeIndex + 1, Math.max(currentResults.length - 1, 0));
         renderSuggestions();
+        renderResults();
       } else if (event.key === 'ArrowUp') {
         event.preventDefault();
         activeIndex = Math.max(activeIndex - 1, 0);
         renderSuggestions();
+        renderResults();
       } else if (event.key === 'Escape') {
         suggestions.classList.remove('visible');
       }
     });
 
-    playBtn.addEventListener('click', () => playQuery(input.value.trim()));
-    playTop.addEventListener('click', () => playQuery(input.value.trim()));
-    pauseBtn.addEventListener('click', pausePlayback);
-    resumeBtn.addEventListener('click', resumePlayback);
+    playBtn.addEventListener('click', () => {
+      const item = currentResults[activeIndex] || currentResults[0];
+      playQuery(item?.query || input.value.trim(), item);
+    });
+    playTop.addEventListener('click', () => {
+      const item = currentResults[activeIndex] || currentResults[0];
+      playQuery(item?.query || input.value.trim(), item);
+    });
+    toggleBtn.addEventListener('click', togglePlayback);
     copyBtn.addEventListener('click', async () => {
       await navigator.clipboard.writeText(input.value.trim());
       message.textContent = 'Copied query to clipboard.';
@@ -818,14 +911,17 @@ INDEX_HTML = """<!doctype html>
       setStatus('Ready');
       message.textContent = 'Track finished.';
       progressFill.style.width = '100%';
+      syncToggleLabel();
     });
     audio.addEventListener('pause', () => {
       if (audio.currentTime > 0 && audio.currentTime < audio.duration) {
         setStatus('Paused', 'warn');
       }
+      syncToggleLabel();
     });
     audio.addEventListener('play', () => {
       setStatus('Playing', 'good');
+      syncToggleLabel();
     });
     audio.addEventListener('loadedmetadata', syncProgress);
 
@@ -838,6 +934,9 @@ INDEX_HTML = """<!doctype html>
     setStatus('Ready');
     setTrack('Nothing playing yet', 'Search for a track, pick a result, then play it in the browser.');
     setCover({ title: 'Dev Music', artist: 'Dev Music' });
+    syncProgress();
+    syncToggleLabel();
+    applyRuntimeMode();
   </script>
 </body>
 </html>
