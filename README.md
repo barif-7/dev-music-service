@@ -44,6 +44,6 @@ The main product surface is the web app served from `/`, backed by search and st
 ## Spotify import setup
 
 - Create a Spotify app and set the redirect URI to your deployed callback URL, for example `https://your-app.vercel.app/api/import/spotify/callback`.
-- Set `SPOTIFY_CLIENT_ID` in the deployment environment.
+- The app includes the configured Spotify client ID. Set `SPOTIFY_CLIENT_ID` in the deployment environment only if you need to override it.
 - Optionally set `SPOTIFY_REDIRECT_URI` if automatic callback URL detection does not match the registered Spotify redirect URI exactly.
 - Requested scopes are read-only: `playlist-read-private` and `playlist-read-collaborative`.

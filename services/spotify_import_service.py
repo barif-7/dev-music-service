@@ -27,6 +27,7 @@ class SpotifyImportError(Exception):
 class SpotifyImportService:
     _ACCOUNTS_URL = "https://accounts.spotify.com"
     _API_URL = "https://api.spotify.com/v1"
+    _DEFAULT_CLIENT_ID = "65f51ed07c8a4338934eccb57f5130eb"
     _SCOPE = "playlist-read-private playlist-read-collaborative"
     _STATE_COOKIE = "spotify_oauth_state"
     _VERIFIER_COOKIE = "spotify_code_verifier"
@@ -34,10 +35,14 @@ class SpotifyImportService:
 
     @staticmethod
     def _client_id() -> str:
-        client_id = os.getenv("SPOTIFY_CLIENT_ID")
+        client_id = os.getenv("SPOTIFY_CLIENT_ID") or SpotifyImportService._DEFAULT_CLIENT_ID
         if not client_id:
             raise SpotifyImportError("SPOTIFY_CLIENT_ID is not configured")
         return client_id
+
+    @staticmethod
+    def is_configured() -> bool:
+        return bool(os.getenv("SPOTIFY_CLIENT_ID") or SpotifyImportService._DEFAULT_CLIENT_ID)
 
     @staticmethod
     def _cookie_secure() -> bool:

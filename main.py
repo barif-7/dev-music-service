@@ -30,7 +30,7 @@ def health():
         "mode": "browser-first",
         "stream_delivery": "redirect",
         "local_integration": "disabled-on-vercel" if os.getenv("VERCEL") else "openclaw-cli-optional",
-        "spotify_import": "configured" if os.getenv("SPOTIFY_CLIENT_ID") else "missing-client-id",
+        "spotify_import": "configured" if SpotifyImportService.is_configured() else "missing-client-id",
     }
 
 
@@ -58,7 +58,7 @@ def spotify_callback(
 @app.get("/api/import/spotify/status")
 def spotify_status(request: Request):
     return {
-        "configured": bool(os.getenv("SPOTIFY_CLIENT_ID")),
+        "configured": SpotifyImportService.is_configured(),
         "connected": SpotifyImportService.is_connected(request),
     }
 
