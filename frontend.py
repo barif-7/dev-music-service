@@ -55,9 +55,9 @@ INDEX_HTML = """<!doctype html>
       --good-bg: rgba(40, 240, 165, 0.13);
       --warn-bg: rgba(255, 209, 102, 0.13);
       --danger-bg: rgba(255, 129, 122, 0.12);
-      --radius-xl: 32px;
-      --radius-lg: 24px;
-      --radius-md: 18px;
+      --radius-xl: 8px;
+      --radius-lg: 8px;
+      --radius-md: 8px;
       --shadow: 0 34px 90px rgba(0, 0, 0, 0.42);
       --font: ui-sans-serif, "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif;
     }
@@ -99,7 +99,7 @@ INDEX_HTML = """<!doctype html>
       padding: 0 18px;
       color: var(--text);
       font-weight: 800;
-      letter-spacing: -0.01em;
+      letter-spacing: 0;
       cursor: pointer;
       transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease, opacity 0.16s ease;
       white-space: nowrap;
@@ -144,6 +144,7 @@ INDEX_HTML = """<!doctype html>
       gap: 18px;
       padding: 12px 0 18px;
       backdrop-filter: blur(18px);
+      background: rgba(5, 7, 13, 0.72);
     }
 
     .brand {
@@ -158,15 +159,15 @@ INDEX_HTML = """<!doctype html>
       height: 42px;
       display: grid;
       place-items: center;
-      border-radius: 14px;
+      border-radius: 8px;
       color: #03110b;
       font-weight: 950;
-      letter-spacing: -0.08em;
+      letter-spacing: 0;
       background: linear-gradient(135deg, #eaffbf, var(--accent));
       box-shadow: 0 16px 34px rgba(40, 240, 165, 0.18);
     }
 
-    .brand strong { display: block; letter-spacing: -0.04em; }
+    .brand strong { display: block; letter-spacing: 0; }
     .brand small { color: var(--muted); }
 
     .nav {
@@ -203,6 +204,35 @@ INDEX_HTML = """<!doctype html>
       justify-self: end;
     }
 
+    .top-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .theme-picker {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 760;
+    }
+
+    .theme-picker select {
+      max-width: 132px;
+      min-height: 34px;
+      padding: 0 8px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: var(--text);
+      background: var(--panel-soft);
+      font: inherit;
+    }
+
     .dot {
       width: 9px;
       height: 9px;
@@ -236,6 +266,7 @@ INDEX_HTML = """<!doctype html>
       align-content: space-between;
       gap: 24px;
       overflow: visible;
+      min-width: 0;
     }
 
     .eyebrow-row, .chips, .quick-actions, .meta-row, .card-head, .status-row, .player-actions, .quality-grid {
@@ -294,8 +325,8 @@ INDEX_HTML = """<!doctype html>
       max-width: 860px;
       margin: 20px 0 12px;
       font-size: clamp(46px, 7.8vw, 94px);
-      line-height: 0.88;
-      letter-spacing: -0.078em;
+      line-height: 0.95;
+      letter-spacing: 0;
     }
 
     .subtitle {
@@ -313,13 +344,13 @@ INDEX_HTML = """<!doctype html>
       padding: 14px;
       border: 1px solid var(--line-strong);
       background: rgba(3, 8, 15, 0.58);
-      border-radius: 26px;
+      border-radius: 8px;
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 22px 60px rgba(0, 0, 0, 0.28);
     }
 
     .search-row {
       display: grid;
-      grid-template-columns: 1fr auto auto;
+      grid-template-columns: minmax(220px, 1fr) auto auto;
       gap: 10px;
       align-items: center;
     }
@@ -333,7 +364,7 @@ INDEX_HTML = """<!doctype html>
       padding: 0 16px;
       border: 1px solid var(--line);
       background: rgba(255, 255, 255, 0.065);
-      border-radius: 999px;
+      border-radius: 8px;
       transition: 0.18s ease;
     }
 
@@ -377,7 +408,7 @@ INDEX_HTML = """<!doctype html>
       z-index: 20;
       border: 1px solid var(--line-strong);
       background: rgba(5, 9, 17, 0.97);
-      border-radius: 24px;
+      border-radius: 8px;
       box-shadow: var(--shadow);
     }
 
@@ -385,7 +416,7 @@ INDEX_HTML = """<!doctype html>
 
     .suggestion {
       display: grid;
-      grid-template-columns: auto 1fr auto;
+      grid-template-columns: auto minmax(0, 1fr) auto;
       align-items: center;
       gap: 12px;
       padding: 13px 14px;
@@ -394,7 +425,7 @@ INDEX_HTML = """<!doctype html>
     }
 
     .suggestion:hover, .suggestion.active { background: rgba(40, 240, 165, 0.1); }
-    .suggestion strong { display: block; margin-bottom: 3px; letter-spacing: -0.02em; }
+    .suggestion strong { display: block; margin-bottom: 3px; letter-spacing: 0; }
     .suggestion small { color: var(--muted); }
 
     .mini-player {
@@ -425,7 +456,10 @@ INDEX_HTML = """<!doctype html>
       display: block;
       margin-top: 5px;
       font-size: 18px;
-      letter-spacing: -0.03em;
+      letter-spacing: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .mini-meta {
@@ -438,7 +472,7 @@ INDEX_HTML = """<!doctype html>
       padding: 14px;
       border: 1px solid var(--line);
       background: rgba(255, 255, 255, 0.045);
-      border-radius: 18px;
+      border-radius: 8px;
     }
 
     .mini-stat strong {
@@ -455,7 +489,7 @@ INDEX_HTML = """<!doctype html>
       grid-template-columns: repeat(18, 1fr);
       gap: 5px;
       padding: 16px;
-      border-radius: 24px;
+      border-radius: 8px;
       overflow: hidden;
       border: 1px solid var(--line);
       background:
@@ -513,7 +547,7 @@ INDEX_HTML = """<!doctype html>
     .section-title {
       margin: 3px 0 0;
       font-size: 20px;
-      letter-spacing: -0.04em;
+      letter-spacing: 0;
     }
 
     .muted { color: var(--muted); }
@@ -523,6 +557,7 @@ INDEX_HTML = """<!doctype html>
       min-height: 560px;
       overflow: hidden;
       position: relative;
+      min-width: 0;
     }
 
     .player-card::after {
@@ -556,10 +591,10 @@ INDEX_HTML = """<!doctype html>
       place-items: center;
       flex: 0 0 auto;
       overflow: hidden;
-      border-radius: 16px;
+      border-radius: 8px;
       color: rgba(255, 255, 255, 0.92);
       font-weight: 950;
-      letter-spacing: -0.08em;
+      letter-spacing: 0;
       text-transform: uppercase;
       border: 1px solid rgba(255, 255, 255, 0.14);
       background:
@@ -579,7 +614,7 @@ INDEX_HTML = """<!doctype html>
       width: min(100%, 320px);
       aspect-ratio: 1;
       height: auto;
-      border-radius: 30px;
+      border-radius: 8px;
       font-size: 48px;
       box-shadow: 0 28px 70px rgba(0, 0, 0, 0.38);
     }
@@ -587,22 +622,22 @@ INDEX_HTML = """<!doctype html>
     .cover.small {
       width: 46px;
       height: 46px;
-      border-radius: 14px;
+      border-radius: 8px;
       font-size: 14px;
     }
 
     .cover.tiny {
       width: 34px;
       height: 34px;
-      border-radius: 11px;
+      border-radius: 8px;
       font-size: 11px;
     }
 
     .track-title {
       margin: 0;
       font-size: clamp(28px, 4vw, 46px);
-      line-height: 1;
-      letter-spacing: -0.062em;
+      line-height: 1.08;
+      letter-spacing: 0;
     }
 
     .track-meta {
@@ -652,7 +687,7 @@ INDEX_HTML = """<!doctype html>
       padding: 13px;
       border: 1px solid var(--line);
       background: rgba(255, 255, 255, 0.045);
-      border-radius: 17px;
+      border-radius: 8px;
       min-height: 74px;
     }
 
@@ -674,7 +709,7 @@ INDEX_HTML = """<!doctype html>
       margin: 18px 0;
       overflow: hidden;
       border: 1px solid var(--line);
-      border-radius: 26px;
+      border-radius: 8px;
       background:
         linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.025)),
         radial-gradient(circle at 20% 12%, rgba(40, 240, 165, 0.20), transparent 38%),
@@ -767,13 +802,13 @@ INDEX_HTML = """<!doctype html>
 
     .result {
       display: grid;
-      grid-template-columns: auto 1fr auto;
+      grid-template-columns: auto minmax(0, 1fr) auto;
       gap: 12px;
       align-items: center;
       padding: 13px;
       border: 1px solid rgba(255, 255, 255, 0.075);
       background: rgba(255, 255, 255, 0.04);
-      border-radius: 20px;
+      border-radius: 8px;
       cursor: pointer;
       transition: 0.16s ease;
     }
@@ -800,7 +835,7 @@ INDEX_HTML = """<!doctype html>
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      letter-spacing: -0.025em;
+      letter-spacing: 0;
     }
 
     .result-info small, .playlist-row small, .import-track small, .history-item small {
@@ -832,7 +867,7 @@ INDEX_HTML = """<!doctype html>
       padding: 18px;
       border: 1px dashed rgba(255, 255, 255, 0.16);
       background: rgba(255, 255, 255, 0.035);
-      border-radius: 20px;
+      border-radius: 8px;
       color: var(--muted);
       line-height: 1.55;
     }
@@ -889,13 +924,13 @@ INDEX_HTML = """<!doctype html>
 
     .playlist-row, .import-track, .history-item {
       display: grid;
-      grid-template-columns: auto 1fr auto;
+      grid-template-columns: auto minmax(0, 1fr) auto;
       gap: 12px;
       align-items: center;
       padding: 12px;
       border: 1px solid rgba(255, 255, 255, 0.075);
       background: rgba(255, 255, 255, 0.04);
-      border-radius: 18px;
+      border-radius: 8px;
     }
 
     .playlist-row button {
@@ -905,7 +940,7 @@ INDEX_HTML = """<!doctype html>
     }
 
     .import-track {
-      grid-template-columns: auto 1fr auto;
+      grid-template-columns: auto minmax(0, 1fr) auto;
     }
 
     .preview-summary {
@@ -918,14 +953,14 @@ INDEX_HTML = """<!doctype html>
       padding: 13px;
       border: 1px solid var(--line);
       background: rgba(255, 255, 255, 0.045);
-      border-radius: 17px;
+      border-radius: 8px;
     }
 
     .preview-stat strong {
       display: block;
       margin-top: 6px;
       font-size: 20px;
-      letter-spacing: -0.04em;
+      letter-spacing: 0;
     }
 
     .history-item {
@@ -957,6 +992,10 @@ INDEX_HTML = """<!doctype html>
         justify-self: start;
       }
 
+      .top-actions {
+        justify-content: space-between;
+      }
+
       .cover.large {
         width: min(280px, 100%);
       }
@@ -964,7 +1003,13 @@ INDEX_HTML = """<!doctype html>
 
     @media (max-width: 720px) {
       .wrap { width: min(100vw - 20px, 1440px); }
-      .hero-copy, .mini-player, .card { padding: 16px; border-radius: 24px; }
+      h1 { font-size: clamp(34px, 11vw, 52px); }
+      .top-actions {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+      .hero-copy, .mini-player, .card { padding: 16px; border-radius: 8px; }
+      .search-console { padding: 12px; }
       .search-row, .metadata-grid, .preview-summary, .mini-meta {
         grid-template-columns: 1fr;
       }
@@ -1008,14 +1053,10 @@ INDEX_HTML = """<!doctype html>
         <a href="#matches">Matches</a>
         <a href="#spotify">Spotify import</a>
       </nav>
-      <div class="shell-status"><span class="dot"></span><span id="runtimeStatus">Checking runtime</span></div>
-    </header>
-
-    <main>
-      <section class="hero">
-        <div class="theme-picker" style="margin-top:12px;">
-          <label for="themeSelect" style="color:var(--muted);font-size:13px;">Theme:</label>
-          <select id="themeSelect" style="margin-left:8px;background:var(--panel-soft);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:4px;">
+      <div class="top-actions">
+        <label class="theme-picker" for="themeSelect">
+          Theme
+          <select id="themeSelect">
             <option value="default">Default</option>
             <option value="sunset">Sunset</option>
             <option value="aurora">Aurora</option>
@@ -1023,7 +1064,13 @@ INDEX_HTML = """<!doctype html>
             <option value="forest">Forest</option>
             <option value="neon">Neon</option>
           </select>
-        </div>
+        </label>
+        <div class="shell-status"><span class="dot"></span><span id="runtimeStatus">Checking runtime</span></div>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
         <div class="surface hero-copy" id="search">
           <div>
             <div class="eyebrow-row">
