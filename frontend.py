@@ -1226,9 +1226,15 @@ INDEX_HTML = """<!doctype html>
     let currentQuery = '';
     let currentTrack = null;
     let isResolvingPlayback = false;
+    let audioGesturePrimed = false;
+    let audioGesturePrimePromise = null;
+    let suppressAudioEvents = false;
     let sessionHistory = [];
     const audio = new Audio();
     audio.preload = 'none';
+    audio.setAttribute('playsinline', '');
+    audio.setAttribute('webkit-playsinline', '');
+    const silentAudioDataUri = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQQAAAAAAA==';
 
     const fmtDuration = (secs) => {
       const total = Number(secs || 0);
@@ -1654,6 +1660,7 @@ INDEX_HTML = """<!doctype html>
         });
         row.querySelector('.primary').addEventListener('click', (event) => {
           event.stopPropagation();
+          primeAudioForUserGesture();
           activeIndex = idx;
           playQuery(item.query || item.title, item);
         });
@@ -1681,7 +1688,44 @@ INDEX_HTML = """<!doctype html>
       return mergeMetadata(candidates[0], suggestion);
     };
 
+    const primeAudioForUserGesture = () => {
+      if (audioGesturePrimed || audioGesturePrimePromise) return;
+      audioGesturePrimed = true;
+      suppressAudioEvents = true;
+      audio.muted = true;
+      audio.src = silentAudioDataUri;
+
+      let playPromise;
+      try {
+        playPromise = audio.play();
+      } catch (_error) {
+        audioGesturePrimed = false;
+        audio.muted = false;
+        suppressAudioEvents = false;
+        audioGesturePrimePromise = null;
+        return;
+      }
+      audioGesturePrimePromise = Promise.resolve(playPromise)
+        .catch(() => {
+          audioGesturePrimed = false;
+        })
+        .finally(() => {
+          if (audio.currentSrc === silentAudioDataUri) {
+            audio.pause();
+            audio.removeAttribute('src');
+            audio.load();
+          }
+          audio.muted = false;
+          suppressAudioEvents = false;
+          audioGesturePrimePromise = null;
+          syncToggleLabel();
+        });
+    };
+
     const startPlayback = async (item) => {
+      if (audioGesturePrimePromise) {
+        await audioGesturePrimePromise.catch(() => {});
+      }
       currentTrack = item;
       setStatus('Playing', 'good');
       setEqualizerState('playing');
@@ -1832,6 +1876,7 @@ INDEX_HTML = """<!doctype html>
     input.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
         event.preventDefault();
+        primeAudioForUserGesture();
         if (currentResults[activeIndex]) {
           const item = currentResults[activeIndex];
           input.value = item.query || item.title;
@@ -1862,11 +1907,13 @@ INDEX_HTML = """<!doctype html>
     });
 
     playBtn.addEventListener('click', () => {
+      primeAudioForUserGesture();
       const item = currentResults[activeIndex] || currentResults[0];
       playQuery(item?.query || input.value.trim(), item);
     });
 
     playTop.addEventListener('click', () => {
+      primeAudioForUserGesture();
       const item = currentResults[activeIndex] || currentResults[0];
       playQuery(item?.query || input.value.trim(), item);
     });
@@ -1910,6 +1957,7 @@ INDEX_HTML = """<!doctype html>
 
     audio.addEventListener('timeupdate', syncProgress);
     audio.addEventListener('ended', () => {
+      if (suppressAudioEvents) return;
       setStatus('Ready');
       message.textContent = 'Track finished.';
       progressFill.style.width = '100%';
@@ -1917,20 +1965,24 @@ INDEX_HTML = """<!doctype html>
       syncToggleLabel();
     });
     audio.addEventListener('pause', () => {
+      if (suppressAudioEvents) return;
       if (audio.currentTime > 0 && audio.currentTime < audio.duration) setStatus('Paused', 'warn');
       setEqualizerState('paused');
       syncToggleLabel();
     });
     audio.addEventListener('play', () => {
+      if (suppressAudioEvents) return;
       setStatus('Playing', 'good');
       setEqualizerState('playing');
       syncToggleLabel();
     });
     audio.addEventListener('waiting', () => {
+      if (suppressAudioEvents) return;
       setStatus('Buffering', 'warn');
       message.textContent = 'Buffering browser audio...';
     });
     audio.addEventListener('error', () => {
+      if (suppressAudioEvents) return;
       setStatus('Playback failed', 'warn');
       setEqualizerState('paused');
       message.textContent = 'Browser playback failed. Try another ranked result.';
