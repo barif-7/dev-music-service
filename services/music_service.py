@@ -27,6 +27,7 @@ class MusicService:
     _stream_cache: dict[str, tuple[tuple[str, dict[str, str]], float]] = {}
     _SEARCH_TTL_SECONDS = 300
     _STREAM_TTL_SECONDS = 600
+    _BROWSER_AUDIO_FORMAT = "bestaudio[ext=m4a]/best[ext=mp4]/bestaudio/best"
 
     @staticmethod
     def _normalize_query(query: str) -> str:
@@ -89,7 +90,7 @@ class MusicService:
             return cached[:limit]
 
         ydl_opts = {
-            "format": "bestaudio/best",
+            "format": MusicService._BROWSER_AUDIO_FORMAT,
             "quiet": True,
             "noplaylist": True,
         }
@@ -174,7 +175,7 @@ class MusicService:
             return direct_url, dict(headers)
 
         ydl_opts = {
-            "format": "bestaudio/best",
+            "format": MusicService._BROWSER_AUDIO_FORMAT,
             "quiet": True,
             "noplaylist": True,
             "extractor_args": {
