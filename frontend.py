@@ -1457,11 +1457,10 @@ INDEX_HTML = """<!doctype html>
     };
 
     const applyTheme = (value) => {
-      const gradientVar = `--gradient-${value}`;
-      const gradient = getComputedStyle(document.documentElement).getPropertyValue(gradientVar);
-      if (gradient) {
-        document.documentElement.style.setProperty('--bg-gradient', gradient.trim());
-      }
+      const theme = value || 'default';
+      const gradientVar = `--gradient-${theme}`;
+      document.documentElement.style.setProperty('--bg-gradient', `var(${gradientVar})`);
+      document.documentElement.dataset.theme = theme;
     };
 
     const refreshSpotifyStatus = async () => {
@@ -1953,6 +1952,7 @@ INDEX_HTML = """<!doctype html>
         setSpotifyStatus(error.message || 'Could not load Spotify playlists.', 'danger');
       }
     });
+    themeSelect.addEventListener('input', (event) => applyTheme(event.target.value));
     themeSelect.addEventListener('change', (event) => applyTheme(event.target.value));
 
     audio.addEventListener('timeupdate', syncProgress);
