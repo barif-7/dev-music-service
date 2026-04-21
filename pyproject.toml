@@ -12,5 +12,5 @@ dependencies = [
     "yt-dlp>=2025.1.0",
 ]
 
-[project.scripts]
-app = "app:app"
+[tool.uv]
+package = false

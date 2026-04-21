@@ -1,6 +1,11 @@
 .DS_Store
 __pycache__/
 *.pyc
+*.pyo
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
 song.mp3
 *.mp3
 *.wav

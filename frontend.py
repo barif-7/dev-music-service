@@ -38,21 +38,6 @@ INDEX_HTML = """<!doctype html>
       --bg-gradient: var(--gradient-default);
 
       /* Theme variables */
-      --gradient-default: radial-gradient(circle at 12% 4%, rgba(40, 240, 165, 0.16), transparent 28%),
-        radial-gradient(circle at 88% 0%, rgba(125, 215, 255, 0.15), transparent 24%),
-        radial-gradient(circle at 50% 100%, rgba(255, 209, 102, 0.10), transparent 30%),
-        linear-gradient(145deg, #05070d 0%, #08111e 42%, #0c1724 100%);
-      --gradient-sunset: radial-gradient(circle at 12% 4%, rgba(255, 94, 58, 0.2), transparent 28%),
-        radial-gradient(circle at 88% 0%, rgba(255, 165, 0, 0.18), transparent 24%),
-        radial-gradient(circle at 50% 100%, rgba(255, 215, 0, 0.12), transparent 30%),
-        linear-gradient(145deg, #2b0d0d, #3a1f1f 45%, #4b2a2a);
-      --gradient-slack: radial-gradient(circle at 12% 4%, rgba(97, 158, 255, 0.2), transparent 28%),
-        radial-gradient(circle at 88% 0%, rgba(128, 108, 255, 0.18), transparent 24%),
-        radial-gradient(circle at 50% 100%, rgba(255, 255, 255, 0.12), transparent 30%),
-        linear-gradient(145deg, #2e3a59, #3f4b71 45%, #5b6a9c);
-      --bg-gradient: var(--gradient-default);
-
-      /* Theme variables */
       --bg: #05070d;
       --bg-deep: #090f18;
       --panel: rgba(13, 19, 31, 0.76);
@@ -1030,7 +1015,7 @@ INDEX_HTML = """<!doctype html>
       <section class="hero">
         <div class="theme-picker" style="margin-top:12px;">
           <label for="themeSelect" style="color:var(--muted);font-size:13px;">Theme:</label>
-          <select id="themeSelect" style="margin-left:8px;background:var(--card-2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:4px;">
+          <select id="themeSelect" style="margin-left:8px;background:var(--panel-soft);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:4px;">
             <option value="default">Default</option>
             <option value="sunset">Sunset</option>
             <option value="aurora">Aurora</option>
@@ -1195,19 +1180,6 @@ INDEX_HTML = """<!doctype html>
   </div>
 
   <script>
-
-        const themeSelect = document.getElementById('themeSelect');
-        const applyTheme = (value) => {
-          const gradientVar = `--gradient-${value}`;
-          const gradient = getComputedStyle(document.documentElement).getPropertyValue(gradientVar);
-          if (gradient) {
-            document.documentElement.style.setProperty('--bg-gradient', gradient.trim());
-          }
-        };
-        themeSelect.addEventListener('change', (e) => applyTheme(e.target.value));
-        // Initialise with current selection
-        applyTheme(themeSelect.value);
-
     const suggestions = document.getElementById('suggestions');
     const results = document.getElementById('results');
     const resultCount = document.getElementById('resultCount');
@@ -1246,6 +1218,7 @@ INDEX_HTML = """<!doctype html>
     const spotifyPreview = document.getElementById('spotifyPreview');
     const historyList = document.getElementById('historyList');
     const historyCount = document.getElementById('historyCount');
+    const themeSelect = document.getElementById('themeSelect');
 
     let timer = null;
     let currentResults = [];
@@ -1439,19 +1412,7 @@ INDEX_HTML = """<!doctype html>
       setSpotifyStatus('Preview ready. Review match quality below.', 'good');
     };
 
-    // Theme picker handling
-    const themeSelect = document.getElementById('themeSelect');
-    const applyTheme = (value) => {
-      const gradientVar = `--gradient-${value}`;
-      const gradient = getComputedStyle(document.documentElement).getPropertyValue(gradientVar);
-      if (gradient) {
-        document.documentElement.style.setProperty('--bg-gradient', gradient.trim());
-      }
-    };
-    themeSelect.addEventListener('change', (e) => applyTheme(e.target.value));
-    // Initialize with current selection
-    applyTheme(themeSelect.value);
-
+    const loadSpotifyPlaylists = async () => {
       setSpotifyStatus('Loading Spotify playlists...', 'warn');
       spotifyPlaylists.innerHTML = previewSkeleton();
       spotifyPreview.innerHTML = '';
@@ -1487,6 +1448,14 @@ INDEX_HTML = """<!doctype html>
         spotifyPlaylists.appendChild(row);
       });
       setSpotifyStatus('Choose a playlist to preview match quality.', 'good');
+    };
+
+    const applyTheme = (value) => {
+      const gradientVar = `--gradient-${value}`;
+      const gradient = getComputedStyle(document.documentElement).getPropertyValue(gradientVar);
+      if (gradient) {
+        document.documentElement.style.setProperty('--bg-gradient', gradient.trim());
+      }
     };
 
     const refreshSpotifyStatus = async () => {
@@ -1937,6 +1906,7 @@ INDEX_HTML = """<!doctype html>
         setSpotifyStatus(error.message || 'Could not load Spotify playlists.', 'danger');
       }
     });
+    themeSelect.addEventListener('change', (event) => applyTheme(event.target.value));
 
     audio.addEventListener('timeupdate', syncProgress);
     audio.addEventListener('ended', () => {
@@ -1981,6 +1951,7 @@ INDEX_HTML = """<!doctype html>
     syncProgress();
     syncToggleLabel();
     setEqualizerState('paused');
+    applyTheme(themeSelect.value);
     applyRuntimeMode();
     refreshSpotifyStatus();
   </script>

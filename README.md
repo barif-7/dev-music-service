@@ -34,6 +34,16 @@ The main product surface is the web app served from `/`, backed by search and st
 - Python dependencies: `fastapi`, `yt_dlp`, `uvicorn`
 - Optional local integration tool: `ffplay`
 
+## Local development
+
+Run the service locally with:
+
+```sh
+./run.sh
+```
+
+The script creates `.venv` when needed, installs `requirements.txt`, and starts `uvicorn` on `127.0.0.1:8000`.
+
 ## Deployment notes
 
 - Vercel uses the FastAPI app exposed from `app.py`.
