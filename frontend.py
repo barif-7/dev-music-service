@@ -1181,6 +1181,7 @@ INDEX_HTML = """<!doctype html>
 
   <script>
     const suggestions = document.getElementById('suggestions');
+    const input = document.getElementById('searchInput');
     const results = document.getElementById('results');
     const resultCount = document.getElementById('resultCount');
     const trackTitle = document.getElementById('trackTitle');
