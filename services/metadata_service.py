@@ -26,13 +26,18 @@ class MetadataService:
     _last_request_at = 0.0
     _CACHE_TTL_SECONDS = 900
     _MUSICBRAINZ_URL = "https://musicbrainz.org/ws/2/recording/"
-    _MUSICBRAINZ_ARTIST_URL = "https://musicbrainz.org/ws/2/artist/"
     _USER_AGENT = "dev-music-service/1.0 (https://github.com/barif-7/dev-music-service)"
     _SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
 
     @staticmethod
     def _normalize(value: str) -> str:
         return " ".join(value.split()).lower()
+
+    @staticmethod
+    def _tokens(value: str | None) -> set[str]:
+        if not value:
+            return set()
+        return {token for token in re.split(r"[^a-z0-9']+", value.lower()) if len(token) > 1}
 
     @staticmethod
     def _cache_get(key: str) -> list[AutocompleteSuggestion] | None:
@@ -181,51 +186,6 @@ class MetadataService:
         return value.replace('"', "").strip()
 
     @staticmethod
-    def _query_without_artist(query: str, artist_name: str) -> str:
-        without_artist = re.sub(re.escape(artist_name), "", query, count=1, flags=re.IGNORECASE)
-        return " ".join(without_artist.replace("-", " ").split())
-
-    @staticmethod
-    def _artist_search_terms(query: str) -> list[str]:
-        terms = [query]
-        words = query.split()
-        for size in range(1, min(3, len(words)) + 1):
-            terms.append(" ".join(words[:size]))
-        return list(dict.fromkeys(terms))
-
-    @staticmethod
-    def _artist_candidates(query: str, limit: int = 8) -> list[dict]:
-        candidates: list[dict] = []
-        seen: set[str] = set()
-        normalized_query = MetadataService._normalize(query)
-
-        for term in MetadataService._artist_search_terms(query):
-            payload = MetadataService._musicbrainz_json(
-                MetadataService._MUSICBRAINZ_ARTIST_URL,
-                {"query": term, "fmt": "json", "limit": limit},
-            )
-
-            for artist in payload.get("artists") or []:
-                name = artist.get("name")
-                artist_id = artist.get("id")
-                score = int(artist.get("score") or 0)
-                if not name or not artist_id or score < 80 or artist_id in seen:
-                    continue
-
-                normalized_name = MetadataService._normalize(name)
-                if normalized_name not in normalized_query:
-                    continue
-
-                remainder = MetadataService._query_without_artist(query, name)
-                if len(remainder) < 2:
-                    continue
-
-                seen.add(artist_id)
-                candidates.append({"id": artist_id, "name": name, "remainder": remainder, "score": score})
-
-        return candidates
-
-    @staticmethod
     def _recording_search(search_query: str, limit: int) -> list[dict]:
         payload = MetadataService._musicbrainz_json(
             MetadataService._MUSICBRAINZ_URL,
@@ -234,7 +194,44 @@ class MetadataService:
         return payload.get("recordings") or []
 
     @staticmethod
-    def _confidence(recording: dict, release: dict) -> int:
+    def _autocomplete_search_query(query: str) -> str:
+        words = query.split()
+        if len(words) < 3:
+            return query
+
+        clauses = [f'"{MetadataService._safe_musicbrainz_phrase(query)}"']
+        max_artist_words = min(3, len(words) - 1)
+        for size in range(1, max_artist_words + 1):
+            artist = " ".join(words[:size])
+            title = " ".join(words[size:])
+            clauses.append(
+                f'(artist:"{MetadataService._safe_musicbrainz_phrase(artist)}" AND recording:"{MetadataService._safe_musicbrainz_phrase(title)}")'
+            )
+
+        return " OR ".join(clauses)
+
+    @staticmethod
+    def _query_confidence_bonus(recording: dict, query: str | None) -> int:
+        query_tokens = MetadataService._tokens(query)
+        if not query_tokens:
+            return 0
+
+        title_tokens = MetadataService._tokens(recording.get("title"))
+        artist_tokens = MetadataService._tokens(MetadataService._artist_credit_name(recording.get("artist-credit")))
+        matched_title = len(query_tokens & title_tokens)
+        matched_artist = len(query_tokens & artist_tokens)
+
+        bonus = matched_title * 8 + matched_artist * 6
+        if title_tokens and title_tokens <= query_tokens:
+            bonus += 12
+        if artist_tokens and artist_tokens <= query_tokens:
+            bonus += 10
+        if not matched_title:
+            bonus -= 18
+        return bonus
+
+    @staticmethod
+    def _confidence(recording: dict, release: dict, query: str | None = None) -> int:
         score = int(recording.get("score") or 0)
         if release.get("title"):
             score += 5
@@ -246,10 +243,11 @@ class MetadataService:
             score += 3
         else:
             score -= 5
+        score += MetadataService._query_confidence_bonus(recording, query)
         return max(0, min(100, score))
 
     @staticmethod
-    def _suggestion_from_recording(recording: dict) -> AutocompleteSuggestion | None:
+    def _suggestion_from_recording(recording: dict, query: str | None = None) -> AutocompleteSuggestion | None:
         title = recording.get("title")
         if not title:
             return None
@@ -271,10 +269,21 @@ class MetadataService:
             artwork_confidence=MetadataService._artwork_confidence(release),
             release_year=release_year,
             duration=MetadataService._duration_seconds(recording.get("length")),
-            confidence=MetadataService._confidence(recording, release),
+            confidence=MetadataService._confidence(recording, release, query),
             recording_mbid=recording.get("id"),
             release_mbid=release.get("id"),
         )
+
+    @staticmethod
+    def _suggestion_rank(suggestion: AutocompleteSuggestion, query: str) -> tuple[int, int, int, int]:
+        query_tokens = MetadataService._tokens(query)
+        title_tokens = MetadataService._tokens(suggestion.title)
+        artist_tokens = MetadataService._tokens(suggestion.artist)
+        artist_matches = len(query_tokens & artist_tokens)
+        title_matches = len(query_tokens & title_tokens)
+        title_complete = int(bool(title_tokens) and title_tokens <= query_tokens)
+        artist_complete = int(bool(artist_tokens) and artist_tokens <= query_tokens)
+        return artist_matches + artist_complete, title_matches + title_complete, suggestion.confidence, -len(title_tokens)
 
     @staticmethod
     def _index_authors(suggestions: list[AutocompleteSuggestion]) -> None:
@@ -312,6 +321,24 @@ class MetadataService:
             return matches[:limit]
 
     @staticmethod
+    def _autocomplete_recordings(query: str, limit: int) -> list[dict]:
+        recordings = MetadataService._recording_search(MetadataService._autocomplete_search_query(query), limit)
+        if recordings:
+            return recordings
+
+        # Fielded fallback helps explicit "artist - title" searches without paying
+        # the artist endpoint cost on every keystroke.
+        parts = [part.strip() for part in re.split(r"\s+-\s+|\s+by\s+", query, maxsplit=1, flags=re.IGNORECASE)]
+        if len(parts) != 2 or not all(parts):
+            return []
+
+        artist, title = parts
+        return MetadataService._recording_search(
+            f'artist:"{MetadataService._safe_musicbrainz_phrase(artist)}" AND recording:"{MetadataService._safe_musicbrainz_phrase(title)}"',
+            limit,
+        )
+
+    @staticmethod
     def autocomplete(query: str, limit: int = 6) -> list[AutocompleteSuggestion]:
         normalized = MetadataService._normalize(query)
         if len(normalized) < 2:
@@ -322,18 +349,7 @@ class MetadataService:
             return cached[:limit]
 
         try:
-            recordings: list[dict] = []
-            for artist in MetadataService._artist_candidates(query):
-                title_query = MetadataService._safe_musicbrainz_phrase(artist["remainder"])
-                recordings.extend(
-                    MetadataService._recording_search(
-                        f'arid:{artist["id"]} AND recording:"{title_query}"',
-                        limit,
-                    )
-                )
-
-            if not recordings:
-                recordings = MetadataService._recording_search(query, limit)
+            recordings = MetadataService._autocomplete_recordings(query, max(limit, 8))
         except Exception as exc:
             author_matches = MetadataService._author_index_matches(query, limit)
             if author_matches:
@@ -343,7 +359,7 @@ class MetadataService:
         suggestions = []
         seen: set[str] = set()
         for recording in recordings:
-            suggestion = MetadataService._suggestion_from_recording(recording)
+            suggestion = MetadataService._suggestion_from_recording(recording, query)
             if not suggestion:
                 continue
             key = MetadataService._normalize(suggestion.query)
@@ -352,7 +368,7 @@ class MetadataService:
             seen.add(key)
             suggestions.append(suggestion)
 
-        suggestions.sort(key=lambda item: item.confidence, reverse=True)
+        suggestions.sort(key=lambda item: MetadataService._suggestion_rank(item, query), reverse=True)
         MetadataService._index_authors(suggestions)
         indexed_matches = MetadataService._author_index_matches(query, limit)
 
@@ -364,5 +380,6 @@ class MetadataService:
                 continue
             merged_seen.add(key)
             merged.append(suggestion)
+        merged.sort(key=lambda item: MetadataService._suggestion_rank(item, query), reverse=True)
 
         return MetadataService._cache_set(normalized, merged)[:limit]

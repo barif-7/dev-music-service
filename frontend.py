@@ -1226,6 +1226,8 @@ INDEX_HTML = """<!doctype html>
     let currentQuery = '';
     let currentTrack = null;
     let isResolvingPlayback = false;
+    let activeSearchController = null;
+    let searchRequestId = 0;
     let audioGesturePrimed = false;
     let audioGesturePrimePromise = null;
     let suppressAudioEvents = false;
@@ -1744,6 +1746,8 @@ INDEX_HTML = """<!doctype html>
     const search = async (query) => {
       currentQuery = query;
       if (!query || query.length < 2) {
+        activeSearchController?.abort();
+        searchRequestId += 1;
         currentResults = [];
         activeIndex = -1;
         renderSuggestions();
@@ -1756,10 +1760,18 @@ INDEX_HTML = """<!doctype html>
       setStatus('Searching', 'warn');
       message.textContent = 'Finding ranked MusicBrainz candidates...';
       renderResults('loading');
-      const response = await fetch(`/api/autocomplete?query=${encodeURIComponent(query)}`);
+      activeSearchController?.abort();
+      const controller = new AbortController();
+      activeSearchController = controller;
+      const requestId = searchRequestId + 1;
+      searchRequestId = requestId;
+      const response = await fetch(`/api/autocomplete?query=${encodeURIComponent(query)}`, { signal: controller.signal });
       if (!response.ok) throw new Error(`Autocomplete failed with ${response.status}`);
 
-      currentResults = await response.json();
+      const results = await response.json();
+      if (requestId !== searchRequestId) return;
+
+      currentResults = results;
       activeIndex = currentResults.length ? 0 : -1;
       setStatus('Ready');
       renderSuggestions();
@@ -1770,6 +1782,9 @@ INDEX_HTML = """<!doctype html>
         addHistory('Searched', currentResults[0], query);
       }
       message.textContent = currentResults.length ? 'Ranked matches ready. Review or play the first result.' : 'No good matches found.';
+      if (activeSearchController === controller) {
+        activeSearchController = null;
+      }
     };
 
     const playQuery = async (query, item = null) => {
@@ -1865,6 +1880,7 @@ INDEX_HTML = """<!doctype html>
         try {
           await search(query);
         } catch (error) {
+          if (error.name === 'AbortError') return;
           setStatus('Error', 'warn');
           renderResults();
           message.textContent = error.message || 'Search failed.';
