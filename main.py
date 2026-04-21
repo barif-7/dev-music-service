@@ -1,5 +1,6 @@
 import os
 
+from typing import Optional
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
@@ -45,9 +46,9 @@ def spotify_start(request: Request):
 @app.get("/api/import/spotify/callback")
 def spotify_callback(
     request: Request,
-    code: str | None = Query(None),
-    state: str | None = Query(None),
-    error: str | None = Query(None),
+    code: Optional[str] = Query(None),
+    state: Optional[str] = Query(None),
+    error: Optional[str] = Query(None),
 ):
     try:
         return SpotifyImportService.callback(request, code, state, error)
@@ -128,12 +129,12 @@ def browser_playback(
     url: str = Query(..., description="Track webpage URL"),
     title: str = Query("Unknown Title", description="Track title"),
     duration: int = Query(0, description="Track duration in seconds"),
-    album: str | None = Query(None, description="Album name, if available"),
-    artist: str | None = Query(None, description="Artist name, if available"),
-    thumbnail: str | None = Query(None, description="Artwork thumbnail URL, if available"),
-    artwork_source: str | None = Query(None, description="Artwork provider, if available"),
-    artwork_confidence: str | None = Query(None, description="Artwork confidence level, if available"),
-    release_year: int | None = Query(None, description="Release or upload year, if available"),
+    album: Optional[str] = Query(None, description="Album name, if available"),
+    artist: Optional[str] = Query(None, description="Artist name, if available"),
+    thumbnail: Optional[str] = Query(None, description="Artwork thumbnail URL, if available"),
+    artwork_source: Optional[str] = Query(None, description="Artwork provider, if available"),
+    artwork_confidence: Optional[str] = Query(None, description="Artwork confidence level, if available"),
+    release_year: Optional[int] = Query(None, description="Release or upload year, if available"),
 ):
     try:
         return MusicService.build_browser_state(

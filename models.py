@@ -1,20 +1,21 @@
 from pydantic import BaseModel, Field
+from typing import Optional, List
 
 
 class AutocompleteSuggestion(BaseModel):
     title: str
     query: str
-    artist: str | None = None
-    album: str | None = None
-    thumbnail: str | None = None
-    artwork_source: str | None = None
-    artwork_confidence: str | None = None
-    release_year: int | None = None
+    artist: Optional[str] = None
+    album: Optional[str] = None
+    thumbnail: Optional[str] = None
+    artwork_source: Optional[str] = None
+    artwork_confidence: Optional[str] = None
+    release_year: Optional[int] = None
     duration: int = Field(default=0, description="Track duration in seconds")
     confidence: int = Field(default=0, description="Metadata match confidence from 0 to 100")
     source: str = "musicbrainz"
-    recording_mbid: str | None = None
-    release_mbid: str | None = None
+    recording_mbid: Optional[str] = None
+    release_mbid: Optional[str] = None
 
 
 class SongSearchResult(BaseModel):
@@ -22,12 +23,12 @@ class SongSearchResult(BaseModel):
     webpage_url: str
     stream_url: str
     duration: int = Field(default=0, description="Track duration in seconds")
-    album: str | None = None
-    artist: str | None = None
-    thumbnail: str | None = None
-    artwork_source: str | None = None
-    artwork_confidence: str | None = None
-    release_year: int | None = None
+    album: Optional[str] = None
+    artist: Optional[str] = None
+    thumbnail: Optional[str] = None
+    artwork_source: Optional[str] = None
+    artwork_confidence: Optional[str] = None
+    release_year: Optional[int] = None
 
 
 class BrowserPlaybackState(BaseModel):
@@ -36,12 +37,12 @@ class BrowserPlaybackState(BaseModel):
     duration: int = 0
     webpage_url: str
     stream_url: str
-    album: str | None = None
-    artist: str | None = None
-    thumbnail: str | None = None
-    artwork_source: str | None = None
-    artwork_confidence: str | None = None
-    release_year: int | None = None
+    album: Optional[str] = None
+    artist: Optional[str] = None
+    thumbnail: Optional[str] = None
+    artwork_source: Optional[str] = None
+    artwork_confidence: Optional[str] = None
+    release_year: Optional[int] = None
 
 
 class ProviderPlaylist(BaseModel):
@@ -49,36 +50,36 @@ class ProviderPlaylist(BaseModel):
     id: str
     name: str
     track_count: int = 0
-    owner: str | None = None
-    thumbnail: str | None = None
-    provider_url: str | None = None
+    owner: Optional[str] = None
+    thumbnail: Optional[str] = None
+    provider_url: Optional[str] = None
 
 
 class ImportedTrack(BaseModel):
     provider: str
-    provider_track_id: str | None = None
+    provider_track_id: Optional[str] = None
     provider_playlist_id: str
     title: str
-    artist_names: list[str]
-    album: str | None = None
+    artist_names: List[str]
+    album: Optional[str] = None
     duration_ms: int = 0
-    isrc: str | None = None
-    release_date: str | None = None
-    artwork_url: str | None = None
-    provider_url: str | None = None
+    isrc: Optional[str] = None
+    release_date: Optional[str] = None
+    artwork_url: Optional[str] = None
+    provider_url: Optional[str] = None
 
 
 class MusicBrainzTrackMatch(BaseModel):
-    recording_mbid: str | None = None
-    release_mbid: str | None = None
-    release_group_mbid: str | None = None
-    title: str | None = None
-    artist: str | None = None
-    album: str | None = None
-    release_year: int | None = None
+    recording_mbid: Optional[str] = None
+    release_mbid: Optional[str] = None
+    release_group_mbid: Optional[str] = None
+    title: Optional[str] = None
+    artist: Optional[str] = None
+    album: Optional[str] = None
+    release_year: Optional[int] = None
     confidence: int = 0
     match_reason: str = "unmatched"
-    artwork_url: str | None = None
+    artwork_url: Optional[str] = None
 
 
 class ImportedPlaylistTrack(BaseModel):
@@ -89,7 +90,7 @@ class ImportedPlaylistTrack(BaseModel):
 class ImportedPlaylistPreview(BaseModel):
     provider: str
     playlist: ProviderPlaylist
-    tracks: list[ImportedPlaylistTrack]
+    tracks: List[ImportedPlaylistTrack]
     matched_count: int
     low_confidence_count: int
     unmatched_count: int
@@ -107,5 +108,5 @@ class LocalPlaybackState(BaseModel):
 class PlaybackStatus(BaseModel):
     playing: bool
     mode: str
-    message: str | None = None
-    pid: int | None = None
+    message: Optional[str] = None
+    pid: Optional[int] = None

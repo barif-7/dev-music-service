@@ -19,6 +19,37 @@ INDEX_HTML = """<!doctype html>
         radial-gradient(circle at 88% 0%, rgba(128, 108, 255, 0.18), transparent 24%),
         radial-gradient(circle at 50% 100%, rgba(255, 255, 255, 0.12), transparent 30%),
         linear-gradient(145deg, #2e3a59, #3f4b71 45%, #5b6a9c);
+      --gradient-aurora: radial-gradient(circle at 12% 4%, rgba(173, 216, 230, 0.2), transparent 28%),
+        radial-gradient(circle at 88% 0%, rgba(144, 238, 144, 0.18), transparent 24%),
+        radial-gradient(circle at 50% 100%, rgba(221, 160, 221, 0.12), transparent 30%),
+        linear-gradient(145deg, #0d1e2b, #12344f 45%, #1b5e80);
+      --gradient-ocean: radial-gradient(circle at 12% 4%, rgba(0, 102, 204, 0.2), transparent 28%),
+        radial-gradient(circle at 88% 0%, rgba(0, 153, 255, 0.18), transparent 24%),
+        radial-gradient(circle at 50% 100%, rgba(102, 204, 255, 0.12), transparent 30%),
+        linear-gradient(145deg, #001a33, #004080 45%, #0066cc);
+      --gradient-forest: radial-gradient(circle at 12% 4%, rgba(34, 139, 34, 0.2), transparent 28%),
+        radial-gradient(circle at 88% 0%, rgba(85, 107, 47, 0.18), transparent 24%),
+        radial-gradient(circle at 50% 100%, rgba(107, 142, 35, 0.12), transparent 30%),
+        linear-gradient(145deg, #0b200b, #113311 45%, #1a5a1a);
+      --gradient-neon: radial-gradient(circle at 12% 4%, rgba(255, 0, 255, 0.2), transparent 28%),
+        radial-gradient(circle at 88% 0%, rgba(0, 255, 255, 0.18), transparent 24%),
+        radial-gradient(circle at 50% 100%, rgba(255, 255, 0, 0.12), transparent 30%),
+        linear-gradient(145deg, #ff00ff, #00ffff 45%, #ffff00);
+      --bg-gradient: var(--gradient-default);
+
+      /* Theme variables */
+      --gradient-default: radial-gradient(circle at 12% 4%, rgba(40, 240, 165, 0.16), transparent 28%),
+        radial-gradient(circle at 88% 0%, rgba(125, 215, 255, 0.15), transparent 24%),
+        radial-gradient(circle at 50% 100%, rgba(255, 209, 102, 0.10), transparent 30%),
+        linear-gradient(145deg, #05070d 0%, #08111e 42%, #0c1724 100%);
+      --gradient-sunset: radial-gradient(circle at 12% 4%, rgba(255, 94, 58, 0.2), transparent 28%),
+        radial-gradient(circle at 88% 0%, rgba(255, 165, 0, 0.18), transparent 24%),
+        radial-gradient(circle at 50% 100%, rgba(255, 215, 0, 0.12), transparent 30%),
+        linear-gradient(145deg, #2b0d0d, #3a1f1f 45%, #4b2a2a);
+      --gradient-slack: radial-gradient(circle at 12% 4%, rgba(97, 158, 255, 0.2), transparent 28%),
+        radial-gradient(circle at 88% 0%, rgba(128, 108, 255, 0.18), transparent 24%),
+        radial-gradient(circle at 50% 100%, rgba(255, 255, 255, 0.12), transparent 30%),
+        linear-gradient(145deg, #2e3a59, #3f4b71 45%, #5b6a9c);
       --bg-gradient: var(--gradient-default);
 
       /* Theme variables */
@@ -1003,6 +1034,9 @@ INDEX_HTML = """<!doctype html>
             <option value="default">Default</option>
             <option value="sunset">Sunset</option>
             <option value="aurora">Aurora</option>
+            <option value="ocean">Ocean</option>
+            <option value="forest">Forest</option>
+            <option value="neon">Neon</option>
           </select>
         </div>
         <div class="surface hero-copy" id="search">
