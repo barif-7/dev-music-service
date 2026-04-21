@@ -1197,20 +1197,16 @@ INDEX_HTML = """<!doctype html>
   <script>
 
         const themeSelect = document.getElementById('themeSelect');
-        themeSelect.addEventListener('change', (e) => {
-          const theme = e.target.value;
-          const root = document.documentElement;
-          switch (theme) {
-            case 'sunset':
-              root.style.setProperty('--bg-gradient', 'var(--gradient-sunset)');
-              break;
-            case 'aurora':
-              root.style.setProperty('--bg-gradient', 'var(--gradient-aurora)');
-              break;
-            default:
-              root.style.setProperty('--bg-gradient', 'var(--gradient-default)');
+        const applyTheme = (value) => {
+          const gradientVar = `--gradient-${value}`;
+          const gradient = getComputedStyle(document.documentElement).getPropertyValue(gradientVar);
+          if (gradient) {
+            document.documentElement.style.setProperty('--bg-gradient', gradient.trim());
           }
-        });
+        };
+        themeSelect.addEventListener('change', (e) => applyTheme(e.target.value));
+        // Initialise with current selection
+        applyTheme(themeSelect.value);
 
     const suggestions = document.getElementById('suggestions');
     const results = document.getElementById('results');
