@@ -6,6 +6,22 @@ INDEX_HTML = """<!doctype html>
   <title>Dev Music Service</title>
   <style>
     :root {
+      /* Theme variables */
+      --gradient-default: radial-gradient(circle at 12% 4%, rgba(40, 240, 165, 0.16), transparent 28%),
+        radial-gradient(circle at 88% 0%, rgba(125, 215, 255, 0.15), transparent 24%),
+        radial-gradient(circle at 50% 100%, rgba(255, 209, 102, 0.10), transparent 30%),
+        linear-gradient(145deg, #05070d 0%, #08111e 42%, #0c1724 100%);
+      --gradient-sunset: radial-gradient(circle at 12% 4%, rgba(255, 94, 58, 0.2), transparent 28%),
+        radial-gradient(circle at 88% 0%, rgba(255, 165, 0, 0.18), transparent 24%),
+        radial-gradient(circle at 50% 100%, rgba(255, 215, 0, 0.12), transparent 30%),
+        linear-gradient(145deg, #2b0d0d, #3a1f1f 45%, #4b2a2a);
+      --gradient-slack: radial-gradient(circle at 12% 4%, rgba(97, 158, 255, 0.2), transparent 28%),
+        radial-gradient(circle at 88% 0%, rgba(128, 108, 255, 0.18), transparent 24%),
+        radial-gradient(circle at 50% 100%, rgba(255, 255, 255, 0.12), transparent 30%),
+        linear-gradient(145deg, #2e3a59, #3f4b71 45%, #5b6a9c);
+      --bg-gradient: var(--gradient-default);
+
+      /* Theme variables */
       --bg: #05070d;
       --bg-deep: #090f18;
       --panel: rgba(13, 19, 31, 0.76);
@@ -39,11 +55,7 @@ INDEX_HTML = """<!doctype html>
       min-height: 100vh;
       font-family: var(--font);
       color: var(--text);
-      background:
-        radial-gradient(circle at 12% 4%, rgba(40, 240, 165, 0.16), transparent 28%),
-        radial-gradient(circle at 88% 0%, rgba(125, 215, 255, 0.15), transparent 24%),
-        radial-gradient(circle at 50% 100%, rgba(255, 209, 102, 0.10), transparent 30%),
-        linear-gradient(145deg, #05070d 0%, #08111e 42%, #0c1724 100%);
+      background: var(--bg-gradient);
       overflow-x: hidden;
     }
 
@@ -985,6 +997,14 @@ INDEX_HTML = """<!doctype html>
 
     <main>
       <section class="hero">
+        <div class="theme-picker" style="margin-top:12px;">
+          <label for="themeSelect" style="color:var(--muted);font-size:13px;">Theme:</label>
+          <select id="themeSelect" style="margin-left:8px;background:var(--card-2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:4px;">
+            <option value="default">Default</option>
+            <option value="sunset">Sunset</option>
+            <option value="aurora">Aurora</option>
+          </select>
+        </div>
         <div class="surface hero-copy" id="search">
           <div>
             <div class="eyebrow-row">
@@ -1141,7 +1161,23 @@ INDEX_HTML = """<!doctype html>
   </div>
 
   <script>
-    const input = document.getElementById('searchInput');
+
+        const themeSelect = document.getElementById('themeSelect');
+        themeSelect.addEventListener('change', (e) => {
+          const theme = e.target.value;
+          const root = document.documentElement;
+          switch (theme) {
+            case 'sunset':
+              root.style.setProperty('--bg-gradient', 'var(--gradient-sunset)');
+              break;
+            case 'aurora':
+              root.style.setProperty('--bg-gradient', 'var(--gradient-aurora)');
+              break;
+            default:
+              root.style.setProperty('--bg-gradient', 'var(--gradient-default)');
+          }
+        });
+
     const suggestions = document.getElementById('suggestions');
     const results = document.getElementById('results');
     const resultCount = document.getElementById('resultCount');
@@ -1373,7 +1409,19 @@ INDEX_HTML = """<!doctype html>
       setSpotifyStatus('Preview ready. Review match quality below.', 'good');
     };
 
-    const loadSpotifyPlaylists = async () => {
+    // Theme picker handling
+    const themeSelect = document.getElementById('themeSelect');
+    const applyTheme = (value) => {
+      const gradientVar = `--gradient-${value}`;
+      const gradient = getComputedStyle(document.documentElement).getPropertyValue(gradientVar);
+      if (gradient) {
+        document.documentElement.style.setProperty('--bg-gradient', gradient.trim());
+      }
+    };
+    themeSelect.addEventListener('change', (e) => applyTheme(e.target.value));
+    // Initialize with current selection
+    applyTheme(themeSelect.value);
+
       setSpotifyStatus('Loading Spotify playlists...', 'warn');
       spotifyPlaylists.innerHTML = previewSkeleton();
       spotifyPreview.innerHTML = '';
