@@ -1,7 +1,7 @@
 [project]
 name = "dev-music-service"
-version = "0.1.0"
-description = "FastAPI music service with browser-first playback and playlist import."
+version = "0.4.0"
+description = "FastAPI music service with browser-first playback and playlist import"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -11,6 +11,9 @@ dependencies = [
     "pydantic>=2.0,<3.0",
     "uvicorn>=0.34,<1.0",
     "yt-dlp>=2025.1.0",
+    "structlog>=24.0.0",
+    "slowapi>=0.1.9",
+    "limits>=3.0",
 ]
 
 [tool.uv]

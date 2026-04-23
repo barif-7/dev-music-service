@@ -1,10 +1,16 @@
 import os
+import logging
+from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Optional
 
 import httpx
+import structlog
 from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from frontend import INDEX_HTML
 from services.local_playback_service import LocalPlaybackService
@@ -12,7 +18,54 @@ from services.metadata_service import MetadataService, MetadataServiceError
 from services.music_service import MusicService, MusicServiceError
 from services.spotify_import_service import SpotifyImportError, SpotifyImportService
 
-app = FastAPI()
+# Configure structured logging
+structlog.configure(
+    processors=[
+        structlog.contextvars.merge_contextvars,
+        structlog.processors.add_log_level,
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.JSONRenderer()
+    ],
+    wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
+    context_class=dict,
+    logger_factory=structlog.PrintLoggerFactory(),
+    cache_logger_on_first_use=True,
+)
+
+logger = structlog.get_logger()
+
+# Rate limiting setup
+limiter = Limiter(key_func=get_remote_address, default_limits=["100 per minute", "1000 per hour"])
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """Application lifespan handler for startup/shutdown events."""
+    # Startup
+    logger.info(
+        "app_startup",
+        version="0.4.0",
+        mode="browser-first",
+        spotify_configured=SpotifyImportService.is_configured(),
+    )
+    yield
+    # Shutdown
+    logger.info("app_shutdown")
+
+
+app = FastAPI(
+    title="Dev Music Service",
+    version="0.4.0",
+    description="Music search and streaming with browser-first playback",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    lifespan=lifespan,
+)
+
+# Add rate limiter
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 def fail_with_http_error(exc: Exception) -> None:
@@ -48,14 +101,18 @@ def health():
 
 
 @app.get("/api/import/spotify/start")
+@limiter.limit("10 per minute")
 def spotify_start(request: Request):
     try:
+        logger.info("spotify_auth_started")
         return SpotifyImportService.start_auth(request)
     except Exception as exc:
+        logger.error("spotify_auth_failed", error=str(exc))
         fail_with_http_error(exc)
 
 
 @app.get("/api/import/spotify/callback")
+@limiter.limit("10 per minute")
 async def spotify_callback(
     request: Request,
     code: Optional[str] = Query(None),
@@ -63,8 +120,10 @@ async def spotify_callback(
     error: Optional[str] = Query(None),
 ):
     try:
+        logger.info("spotify_auth_callback")
         return await SpotifyImportService.callback(request, code, state, error)
     except Exception as exc:
+        logger.error("spotify_auth_callback_failed", error=str(exc))
         fail_with_http_error(exc)
 
 
@@ -77,19 +136,23 @@ def spotify_status(request: Request):
 
 
 @app.get("/api/import/spotify/playlists")
+@limiter.limit("30 per minute")
 async def spotify_playlists(
     request: Request,
     limit: int = Query(20, ge=1, le=50, description="Number of playlists to return"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
 ):
     try:
+        logger.info("spotify_playlists_listed", limit=limit, offset=offset)
         playlists = await SpotifyImportService.list_playlists(request, limit=limit, offset=offset)
         return [playlist.model_dump() for playlist in playlists]
     except Exception as exc:
+        logger.error("spotify_playlists_failed", error=str(exc))
         fail_with_http_error(exc)
 
 
 @app.get("/api/import/spotify/playlists/{playlist_id}/preview")
+@limiter.limit("20 per minute")
 async def spotify_playlist_preview(
     playlist_id: str,
     request: Request,
@@ -97,8 +160,10 @@ async def spotify_playlist_preview(
     offset: int = Query(0, ge=0, description="Pagination offset into the playlist"),
 ):
     try:
+        logger.info("spotify_playlist_preview", playlist_id=playlist_id, limit=limit)
         return (await SpotifyImportService.preview_playlist(request, playlist_id, limit=limit, offset=offset)).model_dump()
     except Exception as exc:
+        logger.error("spotify_playlist_preview_failed", playlist_id=playlist_id, error=str(exc))
         fail_with_http_error(exc)
 
 
@@ -109,61 +174,74 @@ def spotify_disconnect():
 
 @app.get("/api/search")
 @app.get("/search")
+@limiter.limit("60 per minute")
 def search_song(
-    query: str = Query(..., description="Resolved song query"),
+    request: Request,
+    query: str = Query(..., min_length=1, max_length=500, description="Resolved song query"),
     limit: int = Query(1, ge=1, le=5, description="Number of YouTube candidates to resolve"),
 ):
     try:
+        logger.info("search_requested", query_length=len(query), limit=limit)
         results = [result.model_dump() for result in MusicService.search(query, limit=limit)]
         return JSONResponse(content=results, headers={"Cache-Control": "public, max-age=300"})
     except Exception as exc:
+        logger.error("search_failed", query_length=len(query), error=str(exc))
         fail_with_http_error(exc)
 
 
 @app.get("/api/autocomplete")
+@limiter.limit("60 per minute")
 async def autocomplete_song(
-    query: str = Query(..., description="Song title, artist, or combined metadata query"),
+    request: Request,
+    query: str = Query(..., min_length=1, max_length=500, description="Song title, artist, or combined metadata query"),
     limit: int = Query(6, ge=1, le=10, description="Number of metadata suggestions to return"),
     fields: Optional[str] = Query(None, description="Comma-separated fields to include (omit for all)"),
 ):
     try:
+        logger.info("autocomplete_requested", query_length=len(query), limit=limit)
         suggestions = await MetadataService.autocomplete(query, limit=limit)
         if fields:
             field_set = set(fields.split(","))
             data = [{k: v for k, v in s.model_dump().items() if k in field_set} for s in suggestions]
         else:
             data = [s.model_dump() for s in suggestions]
+        logger.info("autocomplete_completed", results_count=len(data))
         return JSONResponse(content=data, headers={"Cache-Control": "public, max-age=300"})
     except Exception as exc:
+        logger.error("autocomplete_failed", query_length=len(query), error=str(exc))
         fail_with_http_error(exc)
 
 
 @app.get("/api/stream")
 @app.get("/stream")
+@limiter.limit("30 per minute")
 async def stream_song(
+    request: Request,
     url: str = Query(..., description="Track webpage URL"),
     range_header: Optional[str] = Header(None, alias="Range"),
 ):
     try:
         import asyncio
-        
+
+        logger.info("stream_requested", url_length=len(url))
         direct_url, req_headers = MusicService.get_stream_source(url)
-        
+
         # Create async generator to stream audio chunks with range support
         async def stream_audio() -> AsyncGenerator[bytes, None]:
             headers_copy = dict(req_headers)
             if range_header:
                 headers_copy["Range"] = range_header
-            
+
             async with httpx.AsyncClient() as client:
                 async with client.stream("GET", direct_url, headers=headers_copy, timeout=30.0) as response:
                     async for chunk in response.aiter_bytes(chunk_size=8192):
                         yield chunk
                         await asyncio.sleep(0)  # Allow other tasks to run
-        
+
         # Get content type from the stream
         content_type = "audio/mp4"
-        
+
+        logger.info("stream_started", content_type=content_type)
         return StreamingResponse(
             stream_audio(),
             media_type=content_type,
@@ -175,6 +253,7 @@ async def stream_song(
             }
         )
     except Exception as exc:
+        logger.error("stream_failed", url_length=len(url), error=str(exc))
         fail_with_http_error(exc)
 
 
@@ -191,8 +270,10 @@ class PlaybackRequest(BaseModel):
 
 
 @app.post("/api/browser/playback")
-def browser_playback(body: PlaybackRequest):
+@limiter.limit("60 per minute")
+def browser_playback(request: Request, body: PlaybackRequest):
     try:
+        logger.info("browser_playback_requested", title=body.title)
         return MusicService.build_browser_state(
             body.url,
             body.title,
@@ -205,31 +286,41 @@ def browser_playback(body: PlaybackRequest):
             release_year=body.release_year,
         ).model_dump()
     except Exception as exc:
+        logger.error("browser_playback_failed", error=str(exc))
         fail_with_http_error(exc)
 
 
 @app.get("/api/integrations/openclaw/play")
 @app.get("/play")
-def play_song(query: str = Query(..., description="Song name or YouTube query")):
+@limiter.limit("30 per minute")
+def play_song(request: Request, query: str = Query(..., min_length=1, max_length=500, description="Song name or YouTube query")):
     try:
+        logger.info("local_play_requested", query_length=len(query))
         return LocalPlaybackService.play_query(query).model_dump()
     except Exception as exc:
+        logger.error("local_play_failed", error=str(exc))
         fail_with_http_error(exc)
 
 
 @app.get("/api/integrations/openclaw/stop")
 @app.get("/stop")
-def stop_song():
+@limiter.limit("30 per minute")
+def stop_song(request: Request):
     try:
+        logger.info("local_stop_requested")
         return LocalPlaybackService.stop().model_dump()
     except Exception as exc:
+        logger.error("local_stop_failed", error=str(exc))
         fail_with_http_error(exc)
 
 
 @app.get("/api/integrations/openclaw/resume")
 @app.get("/resume")
-def resume_song():
+@limiter.limit("30 per minute")
+def resume_song(request: Request):
     try:
+        logger.info("local_resume_requested")
         return LocalPlaybackService.resume().model_dump()
     except Exception as exc:
+        logger.error("local_resume_failed", error=str(exc))
         fail_with_http_error(exc)

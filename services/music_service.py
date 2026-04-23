@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from urllib.parse import urlencode
 
+import structlog
 import yt_dlp
 
 from models import BrowserPlaybackState, SongSearchResult
+
+logger = structlog.get_logger()
 
 
 class MusicServiceError(Exception):
@@ -87,6 +91,7 @@ class MusicService:
         cache_key = MusicService._normalize_query(query)
         cached = MusicService._cache_get(MusicService._search_cache, cache_key)
         if cached is not None and len(cached) >= limit:
+            logger.debug("search_cache_hit", query=cache_key)
             return cached[:limit]
 
         ydl_opts = {
@@ -96,12 +101,15 @@ class MusicService:
         }
 
         try:
+            logger.debug("youtube_search_started", query=cache_key, limit=limit)
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(f"ytsearch{max(1, limit)}:{query}", download=False)
         except Exception as exc:
+            logger.error("youtube_search_failed", query=cache_key, error=str(exc))
             raise SearchServiceError(f"Search failed for query '{query}'") from exc
 
         entries = [entry for entry in (info.get("entries") or []) if entry]
+        logger.debug("youtube_search_completed", query=cache_key, results=len(entries))
         return MusicService._cache_set(
             MusicService._search_cache,
             cache_key,
@@ -171,6 +179,7 @@ class MusicService:
     def _extract_audio_source(webpage_url: str) -> tuple[str, dict[str, str]]:
         cached = MusicService._cache_get(MusicService._stream_cache, webpage_url)
         if cached is not None:
+            logger.debug("stream_cache_hit", url=webpage_url)
             direct_url, headers = cached
             return direct_url, dict(headers)
 
@@ -186,16 +195,16 @@ class MusicService:
         }
 
         try:
+            logger.debug("extracting_audio_stream", url=webpage_url)
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(webpage_url, download=False)
         except Exception as exc:
-            # Log the actual error for debugging
-            import logging
-            logging.error(f"Failed to extract audio from {webpage_url}: {exc}")
+            logger.error("audio_extraction_failed", url=webpage_url, error=str(exc))
             raise StreamResolutionError(f"Could not resolve stream for {webpage_url}: {str(exc)}") from exc
 
         direct_url = info.get("url")
         if not direct_url:
+            logger.error("audio_url_missing", url=webpage_url)
             raise StreamResolutionError(f"Failed to extract audio URL from {webpage_url}")
 
         headers = info.get("http_headers") or {}
@@ -206,6 +215,7 @@ class MusicService:
             cached_value,
             MusicService._STREAM_TTL_SECONDS,
         )
+        logger.debug("audio_stream_extracted", url=webpage_url)
         return direct_url, dict(headers)
 
     @staticmethod
