@@ -1135,7 +1135,8 @@ INDEX_HTML = """<!doctype html>
           setTrack(item.title, `${albumMeta(item)} · ${confidenceLabel(item)}`, item);
           setCover(item);
           renderSuggestions();
-          renderResults();
+          // Differential update: toggle .selected class without rebuilding the list
+          results.querySelectorAll('.track-row').forEach((r, i) => r.classList.toggle('selected', i === activeIndex));
         });
         row.querySelector('button').addEventListener('click', (e) => {
           e.stopPropagation();
@@ -1244,16 +1245,14 @@ INDEX_HTML = """<!doctype html>
         setEqualizerState('paused');
         message.textContent = 'Resolving the selected stream\u2026';
         const playableItem = await resolvePlayableItem(query, item);
-        const playbackParams = new URLSearchParams({
-          url: playableItem.webpage_url, title: playableItem.title, duration: String(playableItem.duration || 0),
-        });
-        if (playableItem.album) playbackParams.set('album', playableItem.album);
-        if (playableItem.artist) playbackParams.set('artist', playableItem.artist);
-        if (playableItem.thumbnail) playbackParams.set('thumbnail', playableItem.thumbnail);
-        if (playableItem.artwork_source) playbackParams.set('artwork_source', playableItem.artwork_source);
-        if (playableItem.artwork_confidence) playbackParams.set('artwork_confidence', playableItem.artwork_confidence);
-        if (playableItem.release_year) playbackParams.set('release_year', String(playableItem.release_year));
-        await fetch(`/api/browser/playback?${playbackParams.toString()}`);
+        const playbackBody = { url: playableItem.webpage_url, title: playableItem.title, duration: playableItem.duration || 0 };
+        if (playableItem.album) playbackBody.album = playableItem.album;
+        if (playableItem.artist) playbackBody.artist = playableItem.artist;
+        if (playableItem.thumbnail) playbackBody.thumbnail = playableItem.thumbnail;
+        if (playableItem.artwork_source) playbackBody.artwork_source = playableItem.artwork_source;
+        if (playableItem.artwork_confidence) playbackBody.artwork_confidence = playableItem.artwork_confidence;
+        if (playableItem.release_year) playbackBody.release_year = playableItem.release_year;
+        await fetch('/api/browser/playback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(playbackBody) });
         await startPlayback(playableItem);
       } catch (error) {
         setStatus('Error', 'warn');
@@ -1408,7 +1407,7 @@ INDEX_HTML = """<!doctype html>
           setStatus('Error', 'warn'); renderResults();
           message.textContent = error.message || 'Search failed.';
         }
-      }, 520);
+      }, 300);
     });
 
     input.addEventListener('keydown', (event) => {
@@ -1493,7 +1492,13 @@ INDEX_HTML = """<!doctype html>
       catch (error) { setSpotifyStatus(error.message || 'Could not load Spotify playlists.', 'danger'); }
     });
 
-    audio.addEventListener('timeupdate', syncProgress);
+    let _lastProgressTick = 0;
+    audio.addEventListener('timeupdate', () => {
+      const now = Date.now();
+      if (now - _lastProgressTick < 200) return;
+      _lastProgressTick = now;
+      syncProgress();
+    });
     audio.addEventListener('ended', () => {
       if (suppressAudioEvents) return;
       setStatus('Ready'); message.textContent = 'Track finished.';

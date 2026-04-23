@@ -1,8 +1,9 @@
 import os
-
 from typing import Optional
+
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from pydantic import BaseModel
 
 from frontend import INDEX_HTML
 from services.local_playback_service import LocalPlaybackService
@@ -44,14 +45,14 @@ def spotify_start(request: Request):
 
 
 @app.get("/api/import/spotify/callback")
-def spotify_callback(
+async def spotify_callback(
     request: Request,
     code: Optional[str] = Query(None),
     state: Optional[str] = Query(None),
     error: Optional[str] = Query(None),
 ):
     try:
-        return SpotifyImportService.callback(request, code, state, error)
+        return await SpotifyImportService.callback(request, code, state, error)
     except Exception as exc:
         fail_with_http_error(exc)
 
@@ -65,24 +66,27 @@ def spotify_status(request: Request):
 
 
 @app.get("/api/import/spotify/playlists")
-def spotify_playlists(
+async def spotify_playlists(
     request: Request,
     limit: int = Query(20, ge=1, le=50, description="Number of playlists to return"),
+    offset: int = Query(0, ge=0, description="Pagination offset"),
 ):
     try:
-        return [playlist.model_dump() for playlist in SpotifyImportService.list_playlists(request, limit=limit)]
+        playlists = await SpotifyImportService.list_playlists(request, limit=limit, offset=offset)
+        return [playlist.model_dump() for playlist in playlists]
     except Exception as exc:
         fail_with_http_error(exc)
 
 
 @app.get("/api/import/spotify/playlists/{playlist_id}/preview")
-def spotify_playlist_preview(
+async def spotify_playlist_preview(
     playlist_id: str,
     request: Request,
     limit: int = Query(25, ge=1, le=50, description="Number of tracks to import and match"),
+    offset: int = Query(0, ge=0, description="Pagination offset into the playlist"),
 ):
     try:
-        return SpotifyImportService.preview_playlist(request, playlist_id, limit=limit).model_dump()
+        return (await SpotifyImportService.preview_playlist(request, playlist_id, limit=limit, offset=offset)).model_dump()
     except Exception as exc:
         fail_with_http_error(exc)
 
@@ -99,18 +103,26 @@ def search_song(
     limit: int = Query(1, ge=1, le=5, description="Number of YouTube candidates to resolve"),
 ):
     try:
-        return [result.model_dump() for result in MusicService.search(query, limit=limit)]
+        results = [result.model_dump() for result in MusicService.search(query, limit=limit)]
+        return JSONResponse(content=results, headers={"Cache-Control": "public, max-age=300"})
     except Exception as exc:
         fail_with_http_error(exc)
 
 
 @app.get("/api/autocomplete")
-def autocomplete_song(
+async def autocomplete_song(
     query: str = Query(..., description="Song title, artist, or combined metadata query"),
     limit: int = Query(6, ge=1, le=10, description="Number of metadata suggestions to return"),
+    fields: Optional[str] = Query(None, description="Comma-separated fields to include (omit for all)"),
 ):
     try:
-        return [suggestion.model_dump() for suggestion in MetadataService.autocomplete(query, limit=limit)]
+        suggestions = await MetadataService.autocomplete(query, limit=limit)
+        if fields:
+            field_set = set(fields.split(","))
+            data = [{k: v for k, v in s.model_dump().items() if k in field_set} for s in suggestions]
+        else:
+            data = [s.model_dump() for s in suggestions]
+        return JSONResponse(content=data, headers={"Cache-Control": "public, max-age=300"})
     except Exception as exc:
         fail_with_http_error(exc)
 
@@ -124,29 +136,31 @@ def stream_song(url: str = Query(..., description="Track webpage URL")):
         fail_with_http_error(exc)
 
 
-@app.get("/api/browser/playback")
-def browser_playback(
-    url: str = Query(..., description="Track webpage URL"),
-    title: str = Query("Unknown Title", description="Track title"),
-    duration: int = Query(0, description="Track duration in seconds"),
-    album: Optional[str] = Query(None, description="Album name, if available"),
-    artist: Optional[str] = Query(None, description="Artist name, if available"),
-    thumbnail: Optional[str] = Query(None, description="Artwork thumbnail URL, if available"),
-    artwork_source: Optional[str] = Query(None, description="Artwork provider, if available"),
-    artwork_confidence: Optional[str] = Query(None, description="Artwork confidence level, if available"),
-    release_year: Optional[int] = Query(None, description="Release or upload year, if available"),
-):
+class PlaybackRequest(BaseModel):
+    url: str
+    title: str = "Unknown Title"
+    duration: int = 0
+    album: Optional[str] = None
+    artist: Optional[str] = None
+    thumbnail: Optional[str] = None
+    artwork_source: Optional[str] = None
+    artwork_confidence: Optional[str] = None
+    release_year: Optional[int] = None
+
+
+@app.post("/api/browser/playback")
+def browser_playback(body: PlaybackRequest):
     try:
         return MusicService.build_browser_state(
-            url,
-            title,
-            duration,
-            album=album,
-            artist=artist,
-            thumbnail=thumbnail,
-            artwork_source=artwork_source,
-            artwork_confidence=artwork_confidence,
-            release_year=release_year,
+            body.url,
+            body.title,
+            body.duration,
+            album=body.album,
+            artist=body.artist,
+            thumbnail=body.thumbnail,
+            artwork_source=body.artwork_source,
+            artwork_confidence=body.artwork_confidence,
+            release_year=body.release_year,
         ).model_dump()
     except Exception as exc:
         fail_with_http_error(exc)

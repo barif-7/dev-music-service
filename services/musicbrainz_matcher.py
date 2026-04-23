@@ -1,15 +1,21 @@
 from __future__ import annotations
 
+import threading
+
 from models import ImportedTrack, MusicBrainzTrackMatch
 from services.metadata_service import MetadataService, MetadataServiceError
 
 
 class MusicBrainzMatcher:
+    _match_cache: dict[tuple[str, str], MusicBrainzTrackMatch] = {}
+    _match_cache_lock = threading.Lock()
+    _MATCH_CACHE_MAX = 500
+
     @staticmethod
     def _normalize(value: str | None) -> str:
         if not value:
             return ""
-        return " ".join(value.lower().replace("’", "'").split())
+        return " ".join(value.lower().replace("\u2019", "'").split())
 
     @staticmethod
     def _duration_confidence(track_ms: int, recording_seconds: int) -> int:
@@ -74,34 +80,51 @@ class MusicBrainzMatcher:
         )
 
     @staticmethod
-    def _recordings_by_isrc(isrc: str) -> list[dict]:
-        return MetadataService._recording_search(f'isrc:"{MetadataService._safe_musicbrainz_phrase(isrc)}"', limit=5)
+    async def _recordings_by_isrc(isrc: str) -> list[dict]:
+        return await MetadataService._recording_search(f'isrc:"{MetadataService._safe_musicbrainz_phrase(isrc)}"', limit=5)
 
     @staticmethod
-    def _recordings_by_text(track: ImportedTrack) -> list[dict]:
+    async def _recordings_by_text(track: ImportedTrack) -> list[dict]:
         artist = track.artist_names[0] if track.artist_names else ""
         if artist:
             query = f'artist:"{MetadataService._safe_musicbrainz_phrase(artist)}" AND recording:"{MetadataService._safe_musicbrainz_phrase(track.title)}"'
         else:
             query = MetadataService._safe_musicbrainz_phrase(track.title)
-        return MetadataService._recording_search(query, limit=5)
+        return await MetadataService._recording_search(query, limit=5)
 
     @staticmethod
-    def match_track(track: ImportedTrack) -> MusicBrainzTrackMatch:
-        candidates: list[MusicBrainzTrackMatch] = []
+    async def match_track(track: ImportedTrack) -> MusicBrainzTrackMatch:
+        primary_artist = track.artist_names[0] if track.artist_names else ""
+        cache_key = (MusicBrainzMatcher._normalize(track.title), MusicBrainzMatcher._normalize(primary_artist))
 
+        with MusicBrainzMatcher._match_cache_lock:
+            cached = MusicBrainzMatcher._match_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        candidates: list[MusicBrainzTrackMatch] = []
         try:
             if track.isrc:
-                for recording in MusicBrainzMatcher._recordings_by_isrc(track.isrc):
+                for recording in await MusicBrainzMatcher._recordings_by_isrc(track.isrc):
                     candidates.append(MusicBrainzMatcher._match_from_recording(track, recording, "isrc"))
 
             if not candidates:
-                for recording in MusicBrainzMatcher._recordings_by_text(track):
+                for recording in await MusicBrainzMatcher._recordings_by_text(track):
                     candidates.append(MusicBrainzMatcher._match_from_recording(track, recording, "artist_title_duration"))
         except MetadataServiceError:
             return MusicBrainzTrackMatch(match_reason="musicbrainz_error")
 
-        if not candidates:
-            return MusicBrainzTrackMatch(match_reason="unmatched")
+        result = (
+            max(candidates, key=lambda match: match.confidence)
+            if candidates
+            else MusicBrainzTrackMatch(match_reason="unmatched")
+        )
 
-        return max(candidates, key=lambda match: match.confidence)
+        with MusicBrainzMatcher._match_cache_lock:
+            if len(MusicBrainzMatcher._match_cache) >= MusicBrainzMatcher._MATCH_CACHE_MAX:
+                excess_keys = list(MusicBrainzMatcher._match_cache.keys())[:50]
+                for k in excess_keys:
+                    del MusicBrainzMatcher._match_cache[k]
+            MusicBrainzMatcher._match_cache[cache_key] = result
+
+        return result

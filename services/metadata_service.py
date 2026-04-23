@@ -1,15 +1,15 @@
 from __future__ import annotations
 
+import asyncio
+import functools
 import json
 import re
-import ssl
 import threading
 import time
 from urllib.parse import urlencode
-from urllib.error import HTTPError
-from urllib.request import Request, urlopen
 
 import certifi
+import httpx
 
 from models import AutocompleteSuggestion
 
@@ -20,24 +20,25 @@ class MetadataServiceError(Exception):
 
 class MetadataService:
     _cache_lock = threading.Lock()
-    _request_lock = threading.Lock()
+    _request_lock = asyncio.Lock()
     _autocomplete_cache: dict[str, tuple[list[AutocompleteSuggestion], float]] = {}
     _author_index: dict[str, list[AutocompleteSuggestion]] = {}
     _last_request_at = 0.0
     _CACHE_TTL_SECONDS = 900
+    _AUTHOR_INDEX_MAX = 500
     _MUSICBRAINZ_URL = "https://musicbrainz.org/ws/2/recording/"
     _USER_AGENT = "dev-music-service/1.0 (https://github.com/barif-7/dev-music-service)"
-    _SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
 
     @staticmethod
     def _normalize(value: str) -> str:
         return " ".join(value.split()).lower()
 
     @staticmethod
-    def _tokens(value: str | None) -> set[str]:
+    @functools.lru_cache(maxsize=512)
+    def _tokens(value: str | None) -> frozenset[str]:
         if not value:
-            return set()
-        return {token for token in re.split(r"[^a-z0-9']+", value.lower()) if len(token) > 1}
+            return frozenset()
+        return frozenset(token for token in re.split(r"[^a-z0-9']+", value.lower()) if len(token) > 1)
 
     @staticmethod
     def _cache_get(key: str) -> list[AutocompleteSuggestion] | None:
@@ -64,31 +65,34 @@ class MetadataService:
         return value
 
     @staticmethod
-    def _throttle_musicbrainz_request() -> None:
-        with MetadataService._request_lock:
+    async def _throttle_musicbrainz_request() -> None:
+        async with MetadataService._request_lock:
             now = time.monotonic()
             wait_seconds = 1.05 - (now - MetadataService._last_request_at)
             if wait_seconds > 0:
-                time.sleep(wait_seconds)
+                await asyncio.sleep(wait_seconds)
             MetadataService._last_request_at = time.monotonic()
 
     @staticmethod
-    def _musicbrainz_json(url: str, params: dict[str, str | int]) -> dict:
-        request = Request(
-            f"{url}?{urlencode(params)}",
-            headers={
-                "Accept": "application/json",
-                "User-Agent": MetadataService._USER_AGENT,
-            },
-        )
-
-        MetadataService._throttle_musicbrainz_request()
+    async def _musicbrainz_json(url: str, params: dict[str, str | int]) -> dict:
+        await MetadataService._throttle_musicbrainz_request()
         try:
-            with urlopen(request, timeout=4, context=MetadataService._SSL_CONTEXT) as response:
-                return json.loads(response.read().decode("utf-8"))
-        except HTTPError as exc:
-            body = exc.read().decode("utf-8", errors="replace")
-            raise MetadataServiceError(f"MusicBrainz request to {url} failed with {exc.code}: {body}") from exc
+            async with httpx.AsyncClient(verify=certifi.where()) as client:
+                response = await client.get(
+                    url,
+                    params=params,
+                    headers={
+                        "Accept": "application/json",
+                        "User-Agent": MetadataService._USER_AGENT,
+                    },
+                    timeout=4.0,
+                )
+                response.raise_for_status()
+                return response.json()
+        except httpx.HTTPStatusError as exc:
+            raise MetadataServiceError(
+                f"MusicBrainz request to {url} failed with {exc.response.status_code}: {exc.response.text}"
+            ) from exc
 
     @staticmethod
     def _artist_credit_name(artist_credit: list[dict] | None) -> str | None:
@@ -186,8 +190,8 @@ class MetadataService:
         return value.replace('"', "").strip()
 
     @staticmethod
-    def _recording_search(search_query: str, limit: int) -> list[dict]:
-        payload = MetadataService._musicbrainz_json(
+    async def _recording_search(search_query: str, limit: int) -> list[dict]:
+        payload = await MetadataService._musicbrainz_json(
             MetadataService._MUSICBRAINZ_URL,
             {"query": search_query, "fmt": "json", "limit": max(1, min(limit, 10))},
         )
@@ -288,6 +292,12 @@ class MetadataService:
     @staticmethod
     def _index_authors(suggestions: list[AutocompleteSuggestion]) -> None:
         with MetadataService._cache_lock:
+            # Evict oldest keys if the index exceeds the total size cap
+            if len(MetadataService._author_index) > MetadataService._AUTHOR_INDEX_MAX:
+                excess = len(MetadataService._author_index) - MetadataService._AUTHOR_INDEX_MAX + 50
+                for key in list(MetadataService._author_index.keys())[:excess]:
+                    del MetadataService._author_index[key]
+
             for suggestion in suggestions:
                 if not suggestion.artist:
                     continue
@@ -321,8 +331,8 @@ class MetadataService:
             return matches[:limit]
 
     @staticmethod
-    def _autocomplete_recordings(query: str, limit: int) -> list[dict]:
-        recordings = MetadataService._recording_search(MetadataService._autocomplete_search_query(query), limit)
+    async def _autocomplete_recordings(query: str, limit: int) -> list[dict]:
+        recordings = await MetadataService._recording_search(MetadataService._autocomplete_search_query(query), limit)
         if recordings:
             return recordings
 
@@ -333,13 +343,13 @@ class MetadataService:
             return []
 
         artist, title = parts
-        return MetadataService._recording_search(
+        return await MetadataService._recording_search(
             f'artist:"{MetadataService._safe_musicbrainz_phrase(artist)}" AND recording:"{MetadataService._safe_musicbrainz_phrase(title)}"',
             limit,
         )
 
     @staticmethod
-    def autocomplete(query: str, limit: int = 6) -> list[AutocompleteSuggestion]:
+    async def autocomplete(query: str, limit: int = 6) -> list[AutocompleteSuggestion]:
         normalized = MetadataService._normalize(query)
         if len(normalized) < 2:
             return []
@@ -349,7 +359,7 @@ class MetadataService:
             return cached[:limit]
 
         try:
-            recordings = MetadataService._autocomplete_recordings(query, max(limit, 8))
+            recordings = await MetadataService._autocomplete_recordings(query, max(limit, 8))
         except Exception as exc:
             author_matches = MetadataService._author_index_matches(query, limit)
             if author_matches:
@@ -368,7 +378,7 @@ class MetadataService:
             seen.add(key)
             suggestions.append(suggestion)
 
-        suggestions.sort(key=lambda item: MetadataService._suggestion_rank(item, query), reverse=True)
+        # Index authors before merging; no pre-sort needed since merged list is sorted below.
         MetadataService._index_authors(suggestions)
         indexed_matches = MetadataService._author_index_matches(query, limit)
 

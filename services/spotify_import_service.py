@@ -1,16 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
-import json
 import os
 import secrets
-from urllib.parse import urlencode
-from urllib.error import HTTPError
-from urllib.request import Request, urlopen
 
+import httpx
 from fastapi import Request as FastAPIRequest
 from fastapi.responses import HTMLResponse, RedirectResponse
+from urllib.parse import urlencode
 
 from models import (
     ImportedPlaylistPreview,
@@ -97,26 +96,24 @@ class SpotifyImportService:
         return response
 
     @staticmethod
-    def _form_request(url: str, data: dict[str, str]) -> dict:
-        encoded = urlencode(data).encode("utf-8")
-        request = Request(
-            url,
-            data=encoded,
-            headers={
-                "Accept": "application/json",
-                "Content-Type": "application/x-www-form-urlencoded",
-            },
-            method="POST",
-        )
+    async def _form_request(url: str, data: dict[str, str]) -> dict:
         try:
-            with urlopen(request, timeout=8) as response:
-                return json.loads(response.read().decode("utf-8"))
-        except HTTPError as exc:
-            body = exc.read().decode("utf-8", errors="replace")
-            raise SpotifyImportError(f"Spotify token request failed with {exc.code}: {body}") from exc
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    url,
+                    data=data,
+                    headers={"Accept": "application/json"},
+                    timeout=8.0,
+                )
+                response.raise_for_status()
+                return response.json()
+        except httpx.HTTPStatusError as exc:
+            raise SpotifyImportError(
+                f"Spotify token request failed with {exc.response.status_code}: {exc.response.text}"
+            ) from exc
 
     @staticmethod
-    def callback(request: FastAPIRequest, code: str | None, state: str | None, error: str | None) -> HTMLResponse:
+    async def callback(request: FastAPIRequest, code: str | None, state: str | None, error: str | None) -> HTMLResponse:
         if error:
             raise SpotifyImportError(f"Spotify authorization failed: {error}")
         if not code or not state:
@@ -127,7 +124,7 @@ class SpotifyImportService:
         if not cookie_state or not verifier or cookie_state != state:
             raise SpotifyImportError("Spotify authorization state did not match")
 
-        token_payload = SpotifyImportService._form_request(
+        token_payload = await SpotifyImportService._form_request(
             f"{SpotifyImportService._ACCOUNTS_URL}/api/token",
             {
                 "client_id": SpotifyImportService._client_id(),
@@ -174,32 +171,35 @@ class SpotifyImportService:
         return token
 
     @staticmethod
-    def _spotify_get(access_token: str, path: str, params: dict[str, str | int] | None = None) -> dict:
-        query = f"?{urlencode(params)}" if params else ""
-        request = Request(
-            f"{SpotifyImportService._API_URL}{path}{query}",
-            headers={
-                "Accept": "application/json",
-                "Authorization": f"Bearer {access_token}",
-            },
-        )
+    async def _spotify_get(access_token: str, path: str, params: dict[str, str | int] | None = None) -> dict:
         try:
-            with urlopen(request, timeout=10) as response:
-                return json.loads(response.read().decode("utf-8"))
-        except HTTPError as exc:
-            body = exc.read().decode("utf-8", errors="replace")
-            raise SpotifyImportError(f"Spotify API request to {path} failed with {exc.code}: {body}") from exc
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{SpotifyImportService._API_URL}{path}",
+                    params=params,
+                    headers={
+                        "Accept": "application/json",
+                        "Authorization": f"Bearer {access_token}",
+                    },
+                    timeout=10.0,
+                )
+                response.raise_for_status()
+                return response.json()
+        except httpx.HTTPStatusError as exc:
+            raise SpotifyImportError(
+                f"Spotify API request to {path} failed with {exc.response.status_code}: {exc.response.text}"
+            ) from exc
 
     @staticmethod
     def is_connected(request: FastAPIRequest) -> bool:
         return bool(request.cookies.get(SpotifyImportService._TOKEN_COOKIE))
 
     @staticmethod
-    def list_playlists(request: FastAPIRequest, limit: int = 20) -> list[ProviderPlaylist]:
-        payload = SpotifyImportService._spotify_get(
+    async def list_playlists(request: FastAPIRequest, limit: int = 20, offset: int = 0) -> list[ProviderPlaylist]:
+        payload = await SpotifyImportService._spotify_get(
             SpotifyImportService._access_token(request),
             "/me/playlists",
-            {"limit": max(1, min(limit, 50))},
+            {"limit": max(1, min(limit, 50)), "offset": max(0, offset)},
         )
         playlists = []
         for item in payload.get("items") or []:
@@ -220,8 +220,8 @@ class SpotifyImportService:
         return playlists
 
     @staticmethod
-    def _playlist(request: FastAPIRequest, playlist_id: str) -> ProviderPlaylist:
-        item = SpotifyImportService._spotify_get(
+    async def _playlist(request: FastAPIRequest, playlist_id: str) -> ProviderPlaylist:
+        item = await SpotifyImportService._spotify_get(
             SpotifyImportService._access_token(request),
             f"/playlists/{playlist_id}",
             {
@@ -265,30 +265,41 @@ class SpotifyImportService:
         )
 
     @staticmethod
-    def preview_playlist(
+    async def preview_playlist(
         request: FastAPIRequest,
         playlist_id: str,
         limit: int = 25,
+        offset: int = 0,
     ) -> ImportedPlaylistPreview:
         token = SpotifyImportService._access_token(request)
-        playlist = SpotifyImportService._playlist(request, playlist_id)
-        payload = SpotifyImportService._spotify_get(
-            token,
-            f"/playlists/{playlist_id}/items",
-            {
-                "limit": max(1, min(limit, 50)),
-                "fields": "items(track(type,id,name,duration_ms,external_ids,external_urls,artists(name),album(name,release_date,images)))",
-            },
+
+        # Fetch playlist metadata and track items in parallel
+        playlist, payload = await asyncio.gather(
+            SpotifyImportService._playlist(request, playlist_id),
+            SpotifyImportService._spotify_get(
+                token,
+                f"/playlists/{playlist_id}/items",
+                {
+                    "limit": max(1, min(limit, 50)),
+                    "offset": max(0, offset),
+                    "fields": "items(track(type,id,name,duration_ms,external_ids,external_urls,artists(name),album(name,release_date,images)))",
+                },
+            ),
         )
 
-        tracks = []
-        for item in payload.get("items") or []:
-            imported = SpotifyImportService._normalize_track(playlist_id, item)
-            if not imported:
-                continue
-            match = MusicBrainzMatcher.match_track(imported)
-            tracks.append(ImportedPlaylistTrack(source=imported, musicbrainz=match))
+        imported_tracks = [
+            imported
+            for item in (payload.get("items") or [])
+            if (imported := SpotifyImportService._normalize_track(playlist_id, item)) is not None
+        ]
 
+        # Match all tracks against MusicBrainz concurrently (rate-limited by the async lock inside)
+        match_results = await asyncio.gather(*[MusicBrainzMatcher.match_track(t) for t in imported_tracks])
+
+        tracks = [
+            ImportedPlaylistTrack(source=src, musicbrainz=match)
+            for src, match in zip(imported_tracks, match_results)
+        ]
         matched = sum(1 for item in tracks if item.musicbrainz.confidence >= 80)
         low = sum(1 for item in tracks if 0 < item.musicbrainz.confidence < 80)
         unmatched = sum(1 for item in tracks if item.musicbrainz.confidence == 0)
