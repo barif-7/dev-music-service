@@ -720,8 +720,9 @@ INDEX_HTML = """<!doctype html>
 
       <div class="play-row">
         <button class="btn btn-primary btn-sm" id="playTop">Play selected</button>
-        <button class="btn btn-ghost btn-sm" id="copyBtn">Copy query</button>
+        <button class="btn btn-ghost btn-sm" id="toggleBtn">Pause</button>
       </div>
+      <button class="btn btn-ghost btn-sm" id="copyBtn" style="margin-top:8px;width:100%;justify-content:center;">Copy query</button>
       <button class="btn btn-ghost btn-sm" id="sendLocalBtn" style="margin-top:8px;width:100%;justify-content:center;">Send to local player</button>
       <div class="message-line" id="message">Type to search or choose a suggested track.</div>
 

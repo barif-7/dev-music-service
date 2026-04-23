@@ -2,7 +2,7 @@ import os
 from typing import AsyncGenerator, Optional
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel
 
@@ -130,18 +130,28 @@ async def autocomplete_song(
 
 @app.get("/api/stream")
 @app.get("/stream")
-async def stream_song(url: str = Query(..., description="Track webpage URL")):
+async def stream_song(
+    url: str = Query(..., description="Track webpage URL"),
+    range_header: Optional[str] = Header(None, alias="Range"),
+):
     try:
-        direct_url, headers = MusicService.get_stream_source(url)
+        import asyncio
         
-        # Create async generator to stream audio chunks
+        direct_url, req_headers = MusicService.get_stream_source(url)
+        
+        # Create async generator to stream audio chunks with range support
         async def stream_audio() -> AsyncGenerator[bytes, None]:
+            headers_copy = dict(req_headers)
+            if range_header:
+                headers_copy["Range"] = range_header
+            
             async with httpx.AsyncClient() as client:
-                async with client.stream("GET", direct_url, headers=headers) as response:
-                    async for chunk in response.aiter_bytes():
+                async with client.stream("GET", direct_url, headers=headers_copy, timeout=30.0) as response:
+                    async for chunk in response.aiter_bytes(chunk_size=8192):
                         yield chunk
+                        await asyncio.sleep(0)  # Allow other tasks to run
         
-        # Get content type from the stream if available
+        # Get content type from the stream
         content_type = "audio/mp4"
         
         return StreamingResponse(
@@ -150,6 +160,7 @@ async def stream_song(url: str = Query(..., description="Track webpage URL")):
             headers={
                 "Cache-Control": "public, max-age=300",
                 "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "Range, Content-Type",
                 "Accept-Ranges": "bytes",
             }
         )
