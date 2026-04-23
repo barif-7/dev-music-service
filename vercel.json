@@ -1,6 +1,10 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "installCommand": "apt-get update && apt-get install -y ffmpeg && pip install -r requirements.txt",
+  "build": {
+    "env": {
+      "PIP_INSTALL": "1"
+    }
+  },
+  "installCommand": "apt-get update && apt-get install -y ffmpeg && pip install --upgrade pip && pip install -r requirements.txt",
   "rewrites": [
     {
       "source": "/(.*)",
