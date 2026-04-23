@@ -130,7 +130,8 @@ INDEX_HTML = """<!doctype html>
     }
     .demo-head .traffic { display: flex; gap: 6px; }
     .demo-head .traffic span { width: 9px; height: 9px; border-radius: 50%; background: var(--border-strong); }
-    .demo-body { background: var(--bg); border-radius: 5px; padding: 18px 20px; border: 1px solid var(--border); position: relative; }
+    .demo-body { background: var(--bg); border-radius: 5px; padding: 18px 20px; border: 1px solid var(--border); }
+    .search-anchor { position: relative; }
 
     .search-row {
       display: flex; align-items: center; gap: 10px;
@@ -405,6 +406,56 @@ INDEX_HTML = """<!doctype html>
     footer nav a { color: var(--ink-dim); text-decoration: none; }
     footer nav a:hover { color: var(--ink); }
 
+    /* ── Sticky player bar ── */
+    #playerBar {
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 40;
+      background: rgba(18,19,23,0.96); backdrop-filter: blur(16px);
+      border-top: 1px solid var(--border-strong);
+      display: grid; grid-template-columns: 1fr 2fr 1fr;
+      align-items: center; gap: 16px;
+      padding: 12px 32px;
+      transform: translateY(100%);
+      transition: transform 0.24s ease;
+    }
+    #playerBar.visible { transform: translateY(0); }
+    body.player-open { padding-bottom: 74px; }
+
+    .bar-track { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .bar-art {
+      width: 42px; height: 42px; border-radius: 4px; flex: 0 0 auto;
+      background: linear-gradient(135deg, #3a2d5c, #a83e63); overflow: hidden;
+      display: grid; place-items: center;
+      font-family: 'Fraunces', serif; font-size: 13px; color: rgba(255,255,255,0.55);
+    }
+    .bar-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .bar-copy { min-width: 0; }
+    .bar-title { font-size: 13px; font-weight: 500; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bar-artist { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-faint); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .bar-center { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    .bar-controls { display: flex; align-items: center; gap: 10px; }
+    .bar-btn {
+      width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border-strong);
+      background: transparent; color: var(--ink); cursor: pointer;
+      display: grid; place-items: center; font-size: 14px;
+      transition: all .15s ease;
+    }
+    .bar-btn:hover { background: var(--bg-elev-2); border-color: var(--ink-faint); }
+    .bar-btn.primary {
+      width: 38px; height: 38px; background: var(--accent); color: var(--accent-ink);
+      border-color: var(--accent); font-size: 16px;
+    }
+    .bar-btn.primary:hover { background: #e1ff55; }
+    .bar-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+    .bar-progress { width: 100%; height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; cursor: pointer; }
+    .bar-progress-fill { height: 100%; background: var(--accent); border-radius: inherit; width: 0%; transition: width .5s linear; }
+    .bar-time { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--ink-faint); display: flex; gap: 8px; }
+
+    .bar-right { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
+    .bar-status { font-family: 'JetBrains Mono', monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-faint); }
+    .bar-status.playing { color: var(--good); }
+    .bar-status.buffering { color: var(--warn); }
+
     /* Responsive */
     @media (max-width: 1100px) {
       .app-preview { grid-template-columns: 260px 1fr; }
@@ -479,11 +530,14 @@ INDEX_HTML = """<!doctype html>
       <span style="margin-left:8px;">live match preview</span>
     </div>
     <div class="demo-body">
-      <div class="search-row">
-        <label class="search-input-wrap" for="searchInput">
-          <span class="search-prompt">›</span>
-          <input id="searchInput" placeholder="Search a song, artist, album…" autocomplete="off" />
-        </label>
+      <div class="search-anchor">
+        <div class="search-row">
+          <label class="search-input-wrap" for="searchInput">
+            <span class="search-prompt">›</span>
+            <input id="searchInput" placeholder="Search a song, artist, album…" autocomplete="off" />
+          </label>
+        </div>
+        <div class="suggestions" id="suggestions"></div>
       </div>
       <div class="quick-actions" aria-label="Suggested searches">
         <button class="quick-pill quick-search" data-query="Daft Punk One More Time">Daft Punk</button>
@@ -491,7 +545,6 @@ INDEX_HTML = """<!doctype html>
         <button class="quick-pill quick-search" data-query="Radiohead Weird Fishes">Radiohead</button>
         <button class="quick-pill quick-search" data-query="Kendrick Lamar Alright">Kendrick</button>
       </div>
-      <div class="suggestions" id="suggestions"></div>
       <div class="matches-label">
         <span>Ranked candidates</span>
         <span id="resultCount">0 matches</span>
@@ -644,6 +697,33 @@ INDEX_HTML = """<!doctype html>
   </nav>
 </footer>
 
+<!-- STICKY PLAYER BAR -->
+<div id="playerBar" role="region" aria-label="Now playing">
+  <div class="bar-track">
+    <div class="bar-art" id="barCover">DM</div>
+    <div class="bar-copy">
+      <div class="bar-title" id="barTitle">Nothing playing yet</div>
+      <div class="bar-artist" id="barArtist">—</div>
+    </div>
+  </div>
+  <div class="bar-center">
+    <div class="bar-controls">
+      <button class="bar-btn primary" id="barPlayBtn" title="Play / pause">▶</button>
+      <button class="bar-btn" id="barStopBtn" title="Stop">■</button>
+    </div>
+    <div style="width:100%;display:flex;flex-direction:column;gap:4px;">
+      <div class="bar-progress" id="barProgressWrap">
+        <div class="bar-progress-fill" id="barProgressFill"></div>
+      </div>
+      <div class="bar-time"><span id="barElapsed">0:00</span><span id="barDuration">0:00</span></div>
+    </div>
+  </div>
+  <div class="bar-right">
+    <div class="bar-status" id="barStatus">Ready</div>
+    <button class="btn btn-ghost btn-sm" id="barSendLocal" style="display:none;">Local</button>
+  </div>
+</div>
+
 <script>
     const suggestionsEl = document.getElementById('suggestions');
     const input         = document.getElementById('searchInput');
@@ -686,6 +766,19 @@ INDEX_HTML = """<!doctype html>
     const spotifyPreview    = document.getElementById('spotifyPreview');
     const historyList   = document.getElementById('historyList');
     const historyCount  = document.getElementById('historyCount');
+
+    // Player bar
+    const playerBar       = document.getElementById('playerBar');
+    const barCover        = document.getElementById('barCover');
+    const barTitle        = document.getElementById('barTitle');
+    const barArtist       = document.getElementById('barArtist');
+    const barPlayBtn      = document.getElementById('barPlayBtn');
+    const barStopBtn      = document.getElementById('barStopBtn');
+    const barProgressFill = document.getElementById('barProgressFill');
+    const barElapsed      = document.getElementById('barElapsed');
+    const barDuration     = document.getElementById('barDuration');
+    const barStatus       = document.getElementById('barStatus');
+    const barSendLocal    = document.getElementById('barSendLocal');
 
     let timer = null;
     let currentResults = [];
@@ -813,6 +906,9 @@ INDEX_HTML = """<!doctype html>
     const setEqualizerState = (state) => {
       equalizer.classList.toggle('playing', state === 'playing');
       equalizer.classList.toggle('paused', state !== 'playing');
+      barPlayBtn.textContent = state === 'playing' ? '❚❚' : '▶';
+      barStatus.textContent = state === 'playing' ? 'Playing' : (state === 'paused' ? 'Paused' : barStatus.textContent);
+      barStatus.className = `bar-status${state === 'playing' ? ' playing' : ''}`;
     };
 
     const setSpotifyStatus = (text, tone = '') => {
@@ -884,14 +980,42 @@ INDEX_HTML = """<!doctype html>
     const syncProgress = () => {
       if (!Number.isFinite(audio.duration) || audio.duration <= 0) {
         progressFill.style.width = '0%';
-        elapsedTime.textContent = fmtDuration(Math.floor(audio.currentTime || 0));
-        durationTime.textContent = currentTrack?.duration ? fmtDuration(currentTrack.duration) : '0:00';
+        barProgressFill.style.width = '0%';
+        const el = fmtDuration(Math.floor(audio.currentTime || 0));
+        const dur = currentTrack?.duration ? fmtDuration(currentTrack.duration) : '0:00';
+        elapsedTime.textContent = el;
+        durationTime.textContent = dur;
+        barElapsed.textContent = el;
+        barDuration.textContent = dur;
         return;
       }
       const pct = Math.max(0, Math.min(100, (audio.currentTime / audio.duration) * 100));
       progressFill.style.width = `${pct}%`;
-      elapsedTime.textContent = fmtDuration(Math.floor(audio.currentTime || 0));
-      durationTime.textContent = fmtDuration(Math.floor(audio.duration || currentTrack?.duration || 0));
+      barProgressFill.style.width = `${pct}%`;
+      const el = fmtDuration(Math.floor(audio.currentTime || 0));
+      const dur = fmtDuration(Math.floor(audio.duration || currentTrack?.duration || 0));
+      elapsedTime.textContent = el;
+      durationTime.textContent = dur;
+      barElapsed.textContent = el;
+      barDuration.textContent = dur;
+    };
+
+    const showPlayerBar = (item = {}) => {
+      const initials = coverInitials(item);
+      barTitle.textContent = item.title || 'Nothing playing yet';
+      barArtist.textContent = item.artist || item.album || '\u2014';
+      barCover.innerHTML = '';
+      barCover.textContent = initials;
+      if (item.thumbnail) {
+        const img = document.createElement('img');
+        img.src = item.thumbnail;
+        img.alt = `${item.title || 'Track'} cover`;
+        img.referrerPolicy = 'no-referrer';
+        img.addEventListener('error', () => img.remove());
+        barCover.appendChild(img);
+      }
+      playerBar.classList.add('visible');
+      document.body.classList.add('player-open');
     };
 
     const renderSuggestions = () => {
@@ -1030,6 +1154,7 @@ INDEX_HTML = """<!doctype html>
       message.textContent = 'Loading audio\u2026';
       setTrack(item.title, `${albumMeta(item)} · Duration ${fmtDuration(item.duration)} · ${confidenceLabel(item)}`, item);
       setCover(item);
+      showPlayerBar(item);
       audio.src = item.stream_url;
       audio.currentTime = 0;
       await audio.play();
@@ -1229,11 +1354,15 @@ INDEX_HTML = """<!doctype html>
         runtimeStatus.textContent = `${health.mode} · ${health.stream_delivery}`;
         if (health.local_integration === 'disabled-on-vercel') {
           sendLocalBtn.hidden = true;
+          barSendLocal.style.display = 'none';
           outputStatus.textContent = 'Browser';
+        } else {
+          barSendLocal.style.display = '';
         }
       } catch (_error) {
         runtimeStatus.textContent = 'Runtime unavailable';
         sendLocalBtn.hidden = true;
+        barSendLocal.style.display = 'none';
       }
     };
 
@@ -1295,6 +1424,27 @@ INDEX_HTML = """<!doctype html>
 
     toggleBtn.addEventListener('click', togglePlayback);
 
+    barPlayBtn.addEventListener('click', () => { primeAudioForUserGesture(); togglePlayback(); });
+    barStopBtn.addEventListener('click', () => {
+      audio.pause();
+      audio.currentTime = 0;
+      audio.removeAttribute('src');
+      audio.load();
+      setStatus('Ready');
+      setEqualizerState('paused');
+      message.textContent = 'Stopped.';
+      syncProgress();
+      syncToggleLabel();
+      barProgressFill.style.width = '0%';
+      barStatus.textContent = 'Stopped';
+      barStatus.className = 'bar-status';
+      barPlayBtn.textContent = '▶';
+    });
+    barSendLocal.addEventListener('click', async () => {
+      try { await sendToLocalPlayer(); }
+      catch (error) { setStatus('Error', 'warn'); message.textContent = error.message || 'Local playback failed.'; }
+    });
+
     copyBtn.addEventListener('click', async () => {
       await navigator.clipboard.writeText(input.value.trim());
       message.textContent = 'Copied query to clipboard.';
@@ -1336,11 +1486,14 @@ INDEX_HTML = """<!doctype html>
     audio.addEventListener('waiting', () => {
       if (suppressAudioEvents) return;
       setStatus('Buffering', 'warn'); message.textContent = 'Buffering browser audio\u2026';
+      barStatus.textContent = 'Buffering'; barStatus.className = 'bar-status buffering';
     });
     audio.addEventListener('error', () => {
       if (suppressAudioEvents) return;
       setStatus('Playback failed', 'warn'); setEqualizerState('paused');
       message.textContent = 'Browser playback failed. Try another ranked result.';
+      barStatus.textContent = 'Failed'; barStatus.className = 'bar-status';
+      barPlayBtn.textContent = '▶';
     });
     audio.addEventListener('loadedmetadata', syncProgress);
 
