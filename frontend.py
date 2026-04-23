@@ -131,6 +131,15 @@ INDEX_HTML = """<!doctype html>
     .demo-head .traffic { display: flex; gap: 6px; }
     .demo-head .traffic span { width: 9px; height: 9px; border-radius: 50%; background: var(--border-strong); }
     .demo-body { background: var(--bg); border-radius: 5px; padding: 18px 20px; border: 1px solid var(--border); }
+    .demo-query {
+      display: flex; align-items: center; gap: 10px;
+      font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--ink-dim);
+      padding-bottom: 14px; border-bottom: 1px solid var(--border); margin-bottom: 0;
+    }
+    .demo-q { color: var(--ink); }
+    .demo-cursor { width: 7px; height: 14px; background: var(--ink); animation: blink 1s steps(2) infinite; }
+    @keyframes blink { 50% { opacity: 0; } }
+
     .search-anchor { position: relative; }
 
     .search-row {
@@ -511,7 +520,7 @@ INDEX_HTML = """<!doctype html>
     <nav class="nav" aria-label="Primary">
       <a href="#how">How it works</a>
       <a href="#app">Try it</a>
-      <a href="#search">Search</a>
+      <a href="#app">Search</a>
     </nav>
   </div>
   <div class="topbar-right">
@@ -527,8 +536,8 @@ INDEX_HTML = """<!doctype html>
     <h1 class="hero-title">Find the <em>right version</em> before you press play.</h1>
     <p class="lede">Import a Spotify playlist and see which tracks matched the wrong release — karaoke versions, sped-up edits, random covers — before they end up in your archive. Backed by MusicBrainz, previewed in the browser.</p>
     <div class="cta-row">
-      <button class="btn btn-primary" id="playBtn">Play top match <span class="kbd">⏎</span></button>
-      <button class="btn btn-ghost" id="toggleBtn">Pause</button>
+      <a class="btn btn-primary" href="#app">Try the live interface <span class="kbd">↓</span></a>
+      <a class="btn btn-ghost" href="#how">How it works</a>
     </div>
     <div class="trust">
       <div>Sources<b>MusicBrainz · Spotify API</b></div>
@@ -537,32 +546,57 @@ INDEX_HTML = """<!doctype html>
     </div>
   </div>
 
-  <div class="demo" id="search">
+  <div class="demo">
     <div class="demo-head">
       <div class="traffic"><span></span><span></span><span></span></div>
       <span style="margin-left:8px;">live match preview</span>
     </div>
     <div class="demo-body">
-      <div class="search-anchor">
-        <div class="search-row">
-          <label class="search-input-wrap" for="searchInput">
-            <span class="search-prompt">›</span>
-            <input id="searchInput" placeholder="Search a song, artist, album…" autocomplete="off" />
-          </label>
-        </div>
-        <div class="suggestions" id="suggestions"></div>
-      </div>
-      <div class="quick-actions" aria-label="Suggested searches">
-        <button class="quick-pill quick-search" data-query="Daft Punk One More Time">Daft Punk</button>
-        <button class="quick-pill quick-search" data-query="Sade Smooth Operator">Sade</button>
-        <button class="quick-pill quick-search" data-query="Radiohead Weird Fishes">Radiohead</button>
-        <button class="quick-pill quick-search" data-query="Kendrick Lamar Alright">Kendrick</button>
+      <div class="demo-query">
+        <span class="search-prompt">›</span>
+        <span class="demo-q">blinding lights · the weeknd</span>
+        <span class="demo-cursor"></span>
       </div>
       <div class="matches-label">
         <span>Ranked candidates</span>
-        <span id="resultCount">0 matches</span>
+        <span>MusicBrainz score</span>
       </div>
-      <div id="heroResults"></div>
+      <div class="match best">
+        <div class="match-art"></div>
+        <div>
+          <div class="match-title"><span class="badge badge-ok">best</span>Blinding Lights</div>
+          <div class="match-sub">The Weeknd<span class="sep">·</span>After Hours (2020)<span class="sep">·</span>official</div>
+        </div>
+        <div class="score high"><div class="pct">98%</div><div class="bar"></div></div>
+      </div>
+      <div class="match">
+        <div class="match-art" style="background:linear-gradient(135deg,#4a4a4a,#2a2a2a);"></div>
+        <div>
+          <div class="match-title"><span class="badge badge-bad">karaoke</span>Blinding Lights (In the Style of…)</div>
+          <div class="match-sub">Sing King<span class="sep">·</span>Karaoke Classics Vol 12</div>
+        </div>
+        <div class="score low"><div class="pct">31%</div><div class="bar"></div></div>
+      </div>
+      <div class="match">
+        <div class="match-art" style="background:linear-gradient(135deg,#1b4332,#2d6a4f);"></div>
+        <div>
+          <div class="match-title"><span class="badge badge-warn">live</span>Blinding Lights — Live at SoFi Stadium</div>
+          <div class="match-sub">The Weeknd<span class="sep">·</span>Live 2022<span class="sep">·</span>+0:42</div>
+        </div>
+        <div class="score mid"><div class="pct">64%</div><div class="bar"></div></div>
+      </div>
+      <div class="match">
+        <div class="match-art" style="background:linear-gradient(135deg,#6a040f,#9d0208);"></div>
+        <div>
+          <div class="match-title"><span class="badge badge-bad">cover</span>Blinding Lights (Acoustic Cover)</div>
+          <div class="match-sub">Boyce Avenue<span class="sep">·</span>Acoustic Sessions 7</div>
+        </div>
+        <div class="score low"><div class="pct">22%</div><div class="bar"></div></div>
+      </div>
+      <div class="callout">
+        <span class="icon">!</span>
+        <div><b>3 of 4 candidates would have been wrong imports.</b> DMS catches duration drift, karaoke-label heuristics, and explicit mismatches before writing anywhere.</div>
+      </div>
     </div>
   </div>
 </section>
@@ -746,52 +780,45 @@ INDEX_HTML = """<!doctype html>
 </div>
 
 <script>
-    const suggestionsEl = document.getElementById('suggestions');
-    const input         = document.getElementById('searchInput');
-    const results       = document.getElementById('results');
-    const heroResults   = document.getElementById('heroResults');
-    const resultCount   = document.getElementById('resultCount');
-    const resultsLabel  = document.getElementById('resultsLabel');
-    const trackTitle    = document.getElementById('trackTitle');
-    const trackMeta     = document.getElementById('trackMeta');
-    const trackCover    = document.getElementById('trackCover');
-    const miniCover     = document.getElementById('miniCover');
-    const miniTitle     = document.getElementById('miniTitle');
-    const miniArtist    = document.getElementById('miniArtist');
-    const coverMeta     = document.getElementById('coverMeta');
-    const statusPill    = document.getElementById('statusPill');
-    const sideStatus    = document.getElementById('sideStatus');
-    const outputStatus  = document.getElementById('outputStatus');
-    const queueCount    = document.getElementById('queueCount');
+    const input          = document.getElementById('appSearchInput');
+    const suggestionsEl  = document.getElementById('appSuggestions');
+    const playBtn        = document.getElementById('appPlayBtn');
+    const results        = document.getElementById('results');
+    const resultsLabel   = document.getElementById('resultsLabel');
+    const trackTitle     = document.getElementById('trackTitle');
+    const trackMeta      = document.getElementById('trackMeta');
+    const trackCover     = document.getElementById('trackCover');
+    const miniCover      = document.getElementById('miniCover');
+    const miniTitle      = document.getElementById('miniTitle');
+    const miniArtist     = document.getElementById('miniArtist');
+    const coverMeta      = document.getElementById('coverMeta');
+    const statusPill     = document.getElementById('statusPill');
+    const sideStatus     = document.getElementById('sideStatus');
+    const outputStatus   = document.getElementById('outputStatus');
+    const queueCount     = document.getElementById('queueCount');
     const miniConfidence = document.getElementById('miniConfidence');
-    const message       = document.getElementById('message');
-    const runtimeStatus = document.getElementById('runtimeStatus');
-    const albumField    = document.getElementById('albumField');
-    const releaseField  = document.getElementById('releaseField');
-    const sourceField   = document.getElementById('sourceField');
-    const playBtn       = document.getElementById('playBtn');
-    const toggleBtn     = document.getElementById('toggleBtn');
-    const playTop       = document.getElementById('playTop');
-    const copyBtn       = document.getElementById('copyBtn');
-    const sendLocalBtn  = document.getElementById('sendLocalBtn');
-    const progressFill  = document.querySelector('.progress > div');
-    const elapsedTime   = document.getElementById('elapsedTime');
-    const durationTime  = document.getElementById('durationTime');
-    const equalizer     = document.getElementById('equalizer');
+    const message        = document.getElementById('message');
+    const runtimeStatus  = document.getElementById('runtimeStatus');
+    const albumField     = document.getElementById('albumField');
+    const releaseField   = document.getElementById('releaseField');
+    const sourceField    = document.getElementById('sourceField');
+    const toggleBtn      = document.getElementById('toggleBtn');
+    const playTop        = document.getElementById('playTop');
+    const copyBtn        = document.getElementById('copyBtn');
+    const sendLocalBtn   = document.getElementById('sendLocalBtn');
+    const progressFill   = document.querySelector('.progress > div');
+    const elapsedTime    = document.getElementById('elapsedTime');
+    const durationTime   = document.getElementById('durationTime');
+    const equalizer      = document.getElementById('equalizer');
     const miniVisualizer = document.getElementById('miniVisualizer');
-    const spotifyImport = document.getElementById('spotifyImport');
+    const spotifyImport  = document.getElementById('spotifyImport');
     const spotifyConnectBtn = document.getElementById('spotifyConnectBtn');
     const spotifyLoadBtn    = document.getElementById('spotifyLoadBtn');
     const spotifyStatus     = document.getElementById('spotifyStatus');
     const spotifyPlaylists  = document.getElementById('spotifyPlaylists');
     const spotifyPreview    = document.getElementById('spotifyPreview');
-    const historyList   = document.getElementById('historyList');
-    const historyCount  = document.getElementById('historyCount');
-
-    // App-section search
-    const appSearchInput  = document.getElementById('appSearchInput');
-    const appSuggestionsEl = document.getElementById('appSuggestions');
-    const appPlayBtn      = document.getElementById('appPlayBtn');
+    const historyList    = document.getElementById('historyList');
+    const historyCount   = document.getElementById('historyCount');
 
     // Player bar
     const playerBar       = document.getElementById('playerBar');
@@ -1058,39 +1085,29 @@ INDEX_HTML = """<!doctype html>
 
     const renderSuggestions = () => {
       suggestionsEl.innerHTML = '';
-      appSuggestionsEl.innerHTML = '';
       if (!currentResults.length) {
         suggestionsEl.classList.remove('visible');
-        appSuggestionsEl.classList.remove('visible');
         return;
       }
       const onPick = (item) => {
         const q = item.query || item.title;
         input.value = q;
-        appSearchInput.value = q;
         currentQuery = q;
         playQuery(q, item);
         suggestionsEl.classList.remove('visible');
-        appSuggestionsEl.classList.remove('visible');
       };
       currentResults.slice(0, 6).forEach((item, idx) => {
         suggestionsEl.appendChild(makeSuggestionRow(item, idx, onPick));
-        appSuggestionsEl.appendChild(makeSuggestionRow(item, idx, onPick));
       });
       suggestionsEl.classList.add('visible');
-      appSuggestionsEl.classList.add('visible');
     };
 
     const renderResults = (state = '') => {
       results.innerHTML = '';
-      heroResults.innerHTML = '';
-      resultCount.textContent = `${currentResults.length} match${currentResults.length === 1 ? '' : 'es'}`;
       resultsLabel.textContent = currentResults.length ? `Results · ${currentResults.length}` : 'Search results';
 
       if (state === 'loading') {
-        const skel = previewSkeleton();
-        results.innerHTML = skel;
-        heroResults.innerHTML = skel;
+        results.innerHTML = previewSkeleton();
         return;
       }
 
@@ -1103,7 +1120,6 @@ INDEX_HTML = """<!doctype html>
       }
 
       currentResults.forEach((item, idx) => {
-        // Middle column: compact track rows
         const row = document.createElement('div');
         row.className = 'track-row' + (idx === activeIndex ? ' selected' : '');
         row.innerHTML = `
@@ -1115,7 +1131,7 @@ INDEX_HTML = """<!doctype html>
         row.addEventListener('click', (e) => {
           if (e.target.closest('button')) return;
           activeIndex = idx;
-          syncInputs(item.query || item.title);
+          input.value = item.query || item.title;
           setTrack(item.title, `${albumMeta(item)} · ${confidenceLabel(item)}`, item);
           setCover(item);
           renderSuggestions();
@@ -1128,30 +1144,6 @@ INDEX_HTML = """<!doctype html>
           playQuery(item.query || item.title, item);
         });
         results.appendChild(row);
-
-        // Hero panel: match-card style (first 4 only)
-        if (idx < 4) {
-          const hrow = document.createElement('div');
-          hrow.className = 'match' + (idx === 0 ? ' best' : '');
-          const sc = scoreClass(item.confidence);
-          hrow.innerHTML = `
-            ${artMarkup(item, 44)}
-            <div>
-              <div class="match-title">
-                <span class="badge ${badgeClass(item.confidence)}">${idx === 0 ? 'best' : reasonLabel(item).split(/[·,]/)[0].trim()}</span>${escapeHtml(item.title)}
-              </div>
-              <div class="match-sub">${escapeHtml(item.artist || '')}${item.artist && item.album ? '<span class="sep">·</span>' : ''}${escapeHtml(item.album || '')}${(item.artist || item.album) && item.release_year ? '<span class="sep">·</span>' : ''}${escapeHtml(String(item.release_year || ''))}</div>
-            </div>
-            <div class="score ${sc}"><div class="pct">${item.confidence ? item.confidence + '%' : '\u2014'}</div><div class="bar"></div></div>
-          `;
-          hrow.addEventListener('click', () => {
-            activeIndex = idx;
-            input.value = item.query || item.title;
-            primeAudioForUserGesture();
-            playQuery(item.query || item.title, item);
-          });
-          heroResults.appendChild(hrow);
-        }
       });
       refreshPlayLabels();
     };
@@ -1425,7 +1417,7 @@ INDEX_HTML = """<!doctype html>
         primeAudioForUserGesture();
         if (currentResults[activeIndex]) {
           const item = currentResults[activeIndex];
-          syncInputs(item.query || item.title);
+          input.value = item.query || item.title;
           playQuery(item.query || item.title, item);
         } else {
           playQuery(input.value.trim());
@@ -1440,65 +1432,7 @@ INDEX_HTML = """<!doctype html>
         renderSuggestions(); renderResults();
       } else if (event.key === 'Escape') {
         suggestionsEl.classList.remove('visible');
-        appSuggestionsEl.classList.remove('visible');
       }
-    });
-
-    // Mirror input value between both search fields
-    const syncInputs = (val) => {
-      input.value = val;
-      appSearchInput.value = val;
-    };
-
-    appSearchInput.addEventListener('input', (event) => {
-      const query = event.target.value.trim();
-      input.value = event.target.value;
-      clearTimeout(timer);
-      timer = setTimeout(async () => {
-        try { await search(query); }
-        catch (error) {
-          if (error.name === 'AbortError') return;
-          setStatus('Error', 'warn'); renderResults();
-          message.textContent = error.message || 'Search failed.';
-        }
-      }, 520);
-    });
-
-    appSearchInput.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter') {
-        event.preventDefault();
-        primeAudioForUserGesture();
-        if (currentResults[activeIndex]) {
-          const item = currentResults[activeIndex];
-          syncInputs(item.query || item.title);
-          playQuery(item.query || item.title, item);
-        } else {
-          playQuery(appSearchInput.value.trim());
-        }
-      } else if (event.key === 'ArrowDown') {
-        event.preventDefault();
-        activeIndex = Math.min(activeIndex + 1, Math.max(currentResults.length - 1, 0));
-        renderSuggestions(); renderResults();
-      } else if (event.key === 'ArrowUp') {
-        event.preventDefault();
-        activeIndex = Math.max(activeIndex - 1, 0);
-        renderSuggestions(); renderResults();
-      } else if (event.key === 'Escape') {
-        appSuggestionsEl.classList.remove('visible');
-      }
-    });
-
-    appPlayBtn.addEventListener('click', () => {
-      primeAudioForUserGesture();
-      const item = currentResults[activeIndex] || currentResults[0];
-      playQuery(item?.query || appSearchInput.value.trim(), item);
-    });
-
-    document.querySelectorAll('.quick-search').forEach((button) => {
-      button.addEventListener('click', async () => {
-        syncInputs(button.dataset.query);
-        await search(button.dataset.query);
-      });
     });
 
     playBtn.addEventListener('click', () => {
@@ -1590,11 +1524,8 @@ INDEX_HTML = """<!doctype html>
 
     document.addEventListener('click', (event) => {
       const t = event.target;
-      if (!suggestionsEl.contains(t) && t !== input && !t.closest('.search-input-wrap')) {
+      if (!suggestionsEl.contains(t) && t !== input && !t.closest('.app-search-field')) {
         suggestionsEl.classList.remove('visible');
-      }
-      if (!appSuggestionsEl.contains(t) && t !== appSearchInput && !t.closest('.app-search-field')) {
-        appSuggestionsEl.classList.remove('visible');
       }
     });
 
