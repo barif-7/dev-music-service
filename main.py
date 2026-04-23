@@ -1,8 +1,9 @@
 import os
-from typing import Optional
+from typing import AsyncGenerator, Optional
 
+import httpx
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel
 
 from frontend import INDEX_HTML
@@ -30,7 +31,7 @@ def health():
     return {
         "status": "ok",
         "mode": "browser-first",
-        "stream_delivery": "redirect",
+        "stream_delivery": "proxy",
         "local_integration": "disabled-on-vercel" if os.getenv("VERCEL") else "openclaw-cli-optional",
         "spotify_import": "configured" if SpotifyImportService.is_configured() else "missing-client-id",
     }
@@ -129,9 +130,29 @@ async def autocomplete_song(
 
 @app.get("/api/stream")
 @app.get("/stream")
-def stream_song(url: str = Query(..., description="Track webpage URL")):
+async def stream_song(url: str = Query(..., description="Track webpage URL")):
     try:
-        return RedirectResponse(MusicService.resolve_stream_url(url), status_code=307)
+        direct_url, headers = MusicService.get_stream_source(url)
+        
+        # Create async generator to stream audio chunks
+        async def stream_audio() -> AsyncGenerator[bytes, None]:
+            async with httpx.AsyncClient() as client:
+                async with client.stream("GET", direct_url, headers=headers) as response:
+                    async for chunk in response.aiter_bytes():
+                        yield chunk
+        
+        # Get content type from the stream if available
+        content_type = "audio/mp4"
+        
+        return StreamingResponse(
+            stream_audio(),
+            media_type=content_type,
+            headers={
+                "Cache-Control": "public, max-age=300",
+                "Access-Control-Allow-Origin": "*",
+                "Accept-Ranges": "bytes",
+            }
+        )
     except Exception as exc:
         fail_with_http_error(exc)
 

@@ -231,3 +231,11 @@ class MusicService:
     def resolve_stream_url(webpage_url: str) -> str:
         direct_url, _headers = MusicService._extract_audio_source(webpage_url)
         return direct_url
+
+    @staticmethod
+    def get_stream_source(webpage_url: str) -> tuple[str, dict[str, str]]:
+        """
+        Return the direct audio URL and headers needed for streaming.
+        This is used for proxying audio through the server to avoid CORS issues.
+        """
+        return MusicService._extract_audio_source(webpage_url)
