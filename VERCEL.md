@@ -28,16 +28,17 @@ Test dependencies (pytest, etc.) are in `pyproject.toml` under `[project.optiona
 {
   "installCommand": "apt-get update && apt-get install -y ffmpeg && pip install -r requirements.txt",
   "functions": {
-    "api/index.py": {
-      "maxDuration": 60,
-      "runtime": "python3.12"
+    "app.py": {
+      "maxDuration": 60
     }
   },
   "rewrites": [
-    { "source": "/(.*)", "destination": "/api" }
+    { "source": "/(.*)", "destination": "/app" }
   ]
 }
 ```
+
+**Why app.py?** This is Vercel's standard Python entry point. The rewrites route all traffic to `/app` which loads `app.py`.
 
 **Why ffmpeg?** yt-dlp requires ffmpeg for audio extraction and format conversion.
 
