@@ -2,8 +2,12 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "builds": [
     {
-      "src": "app.py",
-      "use": "@vercel/python"
+      "src": "api/index.py",
+      "use": "@vercel/python",
+      "config": {
+        "runtime": "python3.12",
+        "installCommand": "pip install -r requirements.txt"
+      }
     }
   ],
   "rewrites": [
@@ -13,7 +17,7 @@
     }
   ],
   "functions": {
-    "app.py": {
+    "api/index.py": {
       "maxDuration": 60
     }
   }
