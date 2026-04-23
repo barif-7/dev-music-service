@@ -26,7 +26,7 @@ Test dependencies (pytest, etc.) are in `pyproject.toml` under `[project.optiona
 ### vercel.json
 ```json
 {
-  "installCommand": "pip install -r requirements.txt",
+  "installCommand": "apt-get update && apt-get install -y ffmpeg && pip install -r requirements.txt",
   "functions": {
     "api/index.py": {
       "maxDuration": 60,
@@ -38,6 +38,8 @@ Test dependencies (pytest, etc.) are in `pyproject.toml` under `[project.optiona
   ]
 }
 ```
+
+**Why ffmpeg?** yt-dlp requires ffmpeg for audio extraction and format conversion.
 
 ### api/index.py
 Vercel's entry point. Must exist and import your FastAPI app:
