@@ -406,6 +406,19 @@ INDEX_HTML = """<!doctype html>
     footer nav a { color: var(--ink-dim); text-decoration: none; }
     footer nav a:hover { color: var(--ink); }
 
+    .app-search-field {
+      display: flex; align-items: center; gap: 10px;
+      background: var(--bg); border: 1px solid var(--border-strong);
+      border-radius: var(--radius); padding: 9px 12px;
+      transition: border-color .15s;
+    }
+    .app-search-field:focus-within { border-color: rgba(215,255,58,0.5); }
+    .app-search-field input {
+      flex: 1; border: none; outline: none; background: transparent;
+      font-family: 'Inter Tight', system-ui; font-size: 13px; color: var(--ink); min-width: 0;
+    }
+    .app-search-field input::placeholder { color: var(--ink-faint); }
+
     /* ── Sticky player bar ── */
     #playerBar {
       position: fixed; bottom: 0; left: 0; right: 0; z-index: 40;
@@ -616,6 +629,14 @@ INDEX_HTML = """<!doctype html>
         <span id="resultsLabel">Search results</span>
         <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink-faint);">↑↓ navigate · ⏎ play</span>
       </div>
+      <div class="search-anchor" style="margin-bottom:14px;">
+        <div class="app-search-field">
+          <span class="search-prompt">›</span>
+          <input id="appSearchInput" placeholder="Search a song, artist, album…" autocomplete="off" />
+          <button class="mini-btn play" id="appPlayBtn">Play</button>
+        </div>
+        <div class="suggestions" id="appSuggestions"></div>
+      </div>
       <div id="results"></div>
     </div>
 
@@ -766,6 +787,11 @@ INDEX_HTML = """<!doctype html>
     const spotifyPreview    = document.getElementById('spotifyPreview');
     const historyList   = document.getElementById('historyList');
     const historyCount  = document.getElementById('historyCount');
+
+    // App-section search
+    const appSearchInput  = document.getElementById('appSearchInput');
+    const appSuggestionsEl = document.getElementById('appSuggestions');
+    const appPlayBtn      = document.getElementById('appPlayBtn');
 
     // Player bar
     const playerBar       = document.getElementById('playerBar');
@@ -1018,27 +1044,41 @@ INDEX_HTML = """<!doctype html>
       document.body.classList.add('player-open');
     };
 
+    const makeSuggestionRow = (item, idx, onPick) => {
+      const row = document.createElement('div');
+      row.className = 'suggestion' + (idx === activeIndex ? ' active' : '');
+      row.innerHTML = `
+        ${artMarkup(item, 36)}
+        <div><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(albumMeta(item))} · ${fmtDuration(item.duration)}</small></div>
+        <span class="badge ${badgeClass(item.confidence)}">${confidenceLabel(item)}</span>
+      `;
+      row.addEventListener('mousedown', (event) => { event.preventDefault(); onPick(item); });
+      return row;
+    };
+
     const renderSuggestions = () => {
       suggestionsEl.innerHTML = '';
-      if (!currentResults.length) { suggestionsEl.classList.remove('visible'); return; }
+      appSuggestionsEl.innerHTML = '';
+      if (!currentResults.length) {
+        suggestionsEl.classList.remove('visible');
+        appSuggestionsEl.classList.remove('visible');
+        return;
+      }
+      const onPick = (item) => {
+        const q = item.query || item.title;
+        input.value = q;
+        appSearchInput.value = q;
+        currentQuery = q;
+        playQuery(q, item);
+        suggestionsEl.classList.remove('visible');
+        appSuggestionsEl.classList.remove('visible');
+      };
       currentResults.slice(0, 6).forEach((item, idx) => {
-        const row = document.createElement('div');
-        row.className = 'suggestion' + (idx === activeIndex ? ' active' : '');
-        row.innerHTML = `
-          ${artMarkup(item, 36)}
-          <div><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(albumMeta(item))} · ${fmtDuration(item.duration)}</small></div>
-          <span class="badge ${badgeClass(item.confidence)}">${confidenceLabel(item)}</span>
-        `;
-        row.addEventListener('mousedown', (event) => {
-          event.preventDefault();
-          input.value = item.query || item.title;
-          currentQuery = item.query || item.title;
-          playQuery(item.query || item.title, item);
-          suggestionsEl.classList.remove('visible');
-        });
-        suggestionsEl.appendChild(row);
+        suggestionsEl.appendChild(makeSuggestionRow(item, idx, onPick));
+        appSuggestionsEl.appendChild(makeSuggestionRow(item, idx, onPick));
       });
       suggestionsEl.classList.add('visible');
+      appSuggestionsEl.classList.add('visible');
     };
 
     const renderResults = (state = '') => {
@@ -1075,7 +1115,7 @@ INDEX_HTML = """<!doctype html>
         row.addEventListener('click', (e) => {
           if (e.target.closest('button')) return;
           activeIndex = idx;
-          input.value = item.query || item.title;
+          syncInputs(item.query || item.title);
           setTrack(item.title, `${albumMeta(item)} · ${confidenceLabel(item)}`, item);
           setCover(item);
           renderSuggestions();
@@ -1385,7 +1425,7 @@ INDEX_HTML = """<!doctype html>
         primeAudioForUserGesture();
         if (currentResults[activeIndex]) {
           const item = currentResults[activeIndex];
-          input.value = item.query || item.title;
+          syncInputs(item.query || item.title);
           playQuery(item.query || item.title, item);
         } else {
           playQuery(input.value.trim());
@@ -1400,12 +1440,63 @@ INDEX_HTML = """<!doctype html>
         renderSuggestions(); renderResults();
       } else if (event.key === 'Escape') {
         suggestionsEl.classList.remove('visible');
+        appSuggestionsEl.classList.remove('visible');
       }
+    });
+
+    // Mirror input value between both search fields
+    const syncInputs = (val) => {
+      input.value = val;
+      appSearchInput.value = val;
+    };
+
+    appSearchInput.addEventListener('input', (event) => {
+      const query = event.target.value.trim();
+      input.value = event.target.value;
+      clearTimeout(timer);
+      timer = setTimeout(async () => {
+        try { await search(query); }
+        catch (error) {
+          if (error.name === 'AbortError') return;
+          setStatus('Error', 'warn'); renderResults();
+          message.textContent = error.message || 'Search failed.';
+        }
+      }, 520);
+    });
+
+    appSearchInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        primeAudioForUserGesture();
+        if (currentResults[activeIndex]) {
+          const item = currentResults[activeIndex];
+          syncInputs(item.query || item.title);
+          playQuery(item.query || item.title, item);
+        } else {
+          playQuery(appSearchInput.value.trim());
+        }
+      } else if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        activeIndex = Math.min(activeIndex + 1, Math.max(currentResults.length - 1, 0));
+        renderSuggestions(); renderResults();
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        activeIndex = Math.max(activeIndex - 1, 0);
+        renderSuggestions(); renderResults();
+      } else if (event.key === 'Escape') {
+        appSuggestionsEl.classList.remove('visible');
+      }
+    });
+
+    appPlayBtn.addEventListener('click', () => {
+      primeAudioForUserGesture();
+      const item = currentResults[activeIndex] || currentResults[0];
+      playQuery(item?.query || appSearchInput.value.trim(), item);
     });
 
     document.querySelectorAll('.quick-search').forEach((button) => {
       button.addEventListener('click', async () => {
-        input.value = button.dataset.query;
+        syncInputs(button.dataset.query);
         await search(button.dataset.query);
       });
     });
@@ -1498,8 +1589,12 @@ INDEX_HTML = """<!doctype html>
     audio.addEventListener('loadedmetadata', syncProgress);
 
     document.addEventListener('click', (event) => {
-      if (!suggestionsEl.contains(event.target) && event.target !== input && !event.target.closest('.search-input-wrap')) {
+      const t = event.target;
+      if (!suggestionsEl.contains(t) && t !== input && !t.closest('.search-input-wrap')) {
         suggestionsEl.classList.remove('visible');
+      }
+      if (!appSuggestionsEl.contains(t) && t !== appSearchInput && !t.closest('.app-search-field')) {
+        appSuggestionsEl.classList.remove('visible');
       }
     });
 
