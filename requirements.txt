@@ -8,4 +8,3 @@ certifi>=2025.1.0
 structlog>=24.0.0
 slowapi>=0.1.9
 limits>=3.0
-mangum>=0.17.0

@@ -1,5 +1,4 @@
-from mangum import Mangum
-from main import app
+# Vercel serverless entry point
+# FastAPI automatically adapts to serverless when imported this way
 
-# Vercel serverless handler using Mangum (ASGI adapter)
-handler = Mangum(app, lifespan="off")
+from main import app
