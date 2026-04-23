@@ -1,5 +1,16 @@
 # Vercel serverless entry point
-# This file imports the FastAPI app from main.py
+# Initialize Node.js runtime for yt-dlp before importing main
+
+import subprocess
+import os
+
+# Install and setup Node.js for yt-dlp JavaScript runtime
+try:
+    # Check if deno or node is available (Vercel provides Node.js)
+    subprocess.run(['node', '--version'], check=True, capture_output=True)
+    os.environ['YTDLP_JS_RUNTIME'] = 'node'
+except (subprocess.CalledProcessError, FileNotFoundError):
+    pass
 
 from main import app
 
