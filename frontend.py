@@ -23,6 +23,78 @@ INDEX_HTML = """<!doctype html>
       --bad: #ff5a6a;
       --good: #6ee7a8;
       --radius: 4px;
+      --gradient-start: rgba(215,255,58,0.06);
+      --gradient-end: rgba(110,231,168,0.04);
+      --gradient-pos-1: 80% -10%;
+      --gradient-pos-2: 10% 100%;
+    }
+    [data-theme="sunset"] {
+      --bg: #0f0c1a;
+      --bg-elev: #1a1425;
+      --bg-elev-2: #231a30;
+      --border: #2d2540;
+      --border-strong: #3d3255;
+      --ink: #f0ebea;
+      --ink-dim: #b5aeb8;
+      --ink-faint: #7d7285;
+      --accent: #ff6b9d;
+      --accent-ink: #2a0f1a;
+      --gradient-start: rgba(255,107,157,0.08);
+      --gradient-end: rgba(255,180,84,0.05);
+      --gradient-pos-1: 0% 0%;
+      --gradient-pos-2: 100% 100%;
+    }
+    [data-theme="ocean"] {
+      --bg: #0a0f14;
+      --bg-elev: #0f1a22;
+      --bg-elev-2: #142330;
+      --border: #1e3242;
+      --border-strong: #2a4559;
+      --ink: #e8f4f8;
+      --ink-dim: #9fb8c8;
+      --ink-faint: #5a7a8c;
+      --accent: #00d4ff;
+      --accent-ink: #0a1f2a;
+      --gradient-start: rgba(0,212,255,0.08);
+      --gradient-end: rgba(0,100,255,0.05);
+      --gradient-pos-1: 0% 100%;
+      --gradient-pos-2: 100% 0%;
+    }
+    [data-theme="forest"] {
+      --bg: #0a0f0d;
+      --bg-elev: #0f1a14;
+      --bg-elev-2: #14231a;
+      --border: #1e3228;
+      --border-strong: #2a4538;
+      --ink: #e8f8f0;
+      --ink-dim: #9fc8b0;
+      --ink-faint: #5a8c70;
+      --accent: #4aff8a;
+      --accent-ink: #0a1f14;
+      --gradient-start: rgba(74,255,138,0.08);
+      --gradient-end: rgba(0,180,100,0.05);
+      --gradient-pos-1: 100% 0%;
+      --gradient-pos-2: 0% 100%;
+    }
+    [data-theme="midnight"] {
+      --bg: #0a0a0f;
+      --bg-elev: #12121a;
+      --bg-elev-2: #1a1a25;
+      --border: #2a2a3a;
+      --border-strong: #3a3a4a;
+      --ink: #f0f0f8;
+      --ink-dim: #a8a8b8;
+      --ink-faint: #686878;
+      --accent: #a855ff;
+      --accent-ink: #1a0f2a;
+      --gradient-start: rgba(168,85,255,0.08);
+      --gradient-end: rgba(255,85,170,0.05);
+      --gradient-pos-1: 50% 0%;
+      --gradient-pos-2: 50% 100%;
+    }
+    [data-theme="custom"] {
+      --gradient-start: var(--custom-gradient-start, rgba(215,255,58,0.06));
+      --gradient-end: var(--custom-gradient-end, rgba(110,231,168,0.04));
     }
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); }
@@ -33,8 +105,9 @@ INDEX_HTML = """<!doctype html>
       line-height: 1.5;
       min-height: 100vh;
       background-image:
-        radial-gradient(ellipse 1200px 600px at 80% -10%, rgba(215,255,58,0.06), transparent 60%),
-        radial-gradient(ellipse 800px 400px at 10% 100%, rgba(110,231,168,0.04), transparent 60%);
+        radial-gradient(ellipse 1200px 600px at var(--gradient-pos-1), var(--gradient-start), transparent 60%),
+        radial-gradient(ellipse 800px 400px at var(--gradient-pos-2), var(--gradient-end), transparent 60%);
+      transition: background 0.3s ease, background-image 0.3s ease;
     }
     button, input { font: inherit; }
     button { border: 0; cursor: pointer; }
@@ -505,6 +578,125 @@ INDEX_HTML = """<!doctype html>
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; }
     }
+
+    /* ── Theme Picker Modal ── */
+    .theme-modal {
+      position: fixed; inset: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0; visibility: hidden;
+      transition: opacity 0.2s ease, visibility 0.2s ease;
+    }
+    .theme-modal[aria-hidden="false"] {
+      opacity: 1; visibility: visible;
+    }
+    .theme-modal-backdrop {
+      position: absolute; inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(4px);
+    }
+    .theme-modal-content {
+      position: relative;
+      background: var(--bg-elev);
+      border: 1px solid var(--border-strong);
+      border-radius: 12px;
+      padding: 24px;
+      width: 90%; max-width: 420px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+      transform: translateY(-20px);
+      transition: transform 0.2s ease;
+    }
+    .theme-modal[aria-hidden="false"] .theme-modal-content {
+      transform: translateY(0);
+    }
+    .theme-modal-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 20px;
+    }
+    .theme-modal-header h3 {
+      font-family: 'Fraunces', serif; font-weight: 400; font-size: 20px;
+      margin: 0; color: var(--ink);
+    }
+    .theme-modal-close {
+      background: transparent; border: none; color: var(--ink-dim);
+      font-size: 28px; cursor: pointer; padding: 0; line-height: 1;
+      transition: color 0.15s ease;
+    }
+    .theme-modal-close:hover { color: var(--ink); }
+    .theme-presets {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+      margin-bottom: 20px;
+    }
+    .theme-preset {
+      position: relative;
+      height: 80px; border-radius: 8px;
+      border: 2px solid var(--border);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+      padding: 8px;
+      overflow: hidden;
+    }
+    .theme-preset:hover {
+      transform: translateY(-2px);
+      border-color: var(--accent);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+    }
+    .theme-preset.active {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent), 0 8px 24px rgba(0,0,0,0.3);
+    }
+    .theme-preset-name {
+      font-family: 'Inter Tight', system-ui; font-size: 11px;
+      color: var(--ink); font-weight: 500;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+      z-index: 1;
+    }
+    .theme-preset-accent {
+      position: absolute; bottom: 8px; right: 8px;
+      width: 20px; height: 20px; border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.3);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+    .theme-custom-section {
+      border-top: 1px solid var(--border);
+      padding-top: 20px; margin-top: 20px;
+    }
+    .theme-custom-section h4 {
+      font-family: 'Inter Tight', system-ui; font-size: 13px;
+      color: var(--ink-dim); margin: 0 0 16px; font-weight: 500;
+    }
+    .color-picker-row {
+      display: flex; gap: 16px; margin-bottom: 16px;
+    }
+    .color-picker-row label {
+      display: flex; flex-direction: column; gap: 8px;
+      flex: 1;
+    }
+    .color-picker-row label span {
+      font-family: 'JetBrains Mono', monospace; font-size: 10px;
+      color: var(--ink-dim); text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .color-picker-row input[type="color"] {
+      width: 100%; height: 40px;
+      border: 1px solid var(--border-strong);
+      border-radius: 4px;
+      background: var(--bg);
+      cursor: pointer;
+      padding: 2px;
+    }
+    .color-picker-row input[type="color"]::-webkit-color-swatch-wrapper {
+      padding: 0;
+    }
+    .color-picker-row input[type="color"]::-webkit-color-swatch {
+      border: none; border-radius: 2px;
+    }
+    .color-picker-row input[type="color"]::-moz-color-swatch {
+      border: none; border-radius: 2px;
+    }
+    .theme-modal-footer {
+      display: flex; justify-content: flex-end;
+      padding-top: 16px; border-top: 1px solid var(--border);
+    }
   </style>
 </head>
 <body>
@@ -525,7 +717,67 @@ INDEX_HTML = """<!doctype html>
   </div>
   <div class="topbar-right">
     <div class="runtime-tag"><span class="runtime-dot"></span><span id="runtimeStatus">Checking runtime</span></div>
+    <button class="btn btn-ghost btn-sm" id="themePickerBtn" title="Change theme">🎨 Theme</button>
     <button class="btn btn-primary btn-sm" id="spotifyConnectBtn">Connect Spotify</button>
+  </div>
+</div>
+
+<!-- THEME PICKER MODAL -->
+<div class="theme-modal" id="themeModal" aria-hidden="true">
+  <div class="theme-modal-backdrop" id="themeModalBackdrop"></div>
+  <div class="theme-modal-content">
+    <div class="theme-modal-header">
+      <h3>Choose Theme</h3>
+      <button class="theme-modal-close" id="themeModalClose">&times;</button>
+    </div>
+    <div class="theme-presets">
+      <button class="theme-preset" data-theme-value="default" style="background: linear-gradient(135deg, #0b0c0e, #121317);">
+        <span class="theme-preset-name">Default</span>
+        <span class="theme-preset-accent" style="background: #d7ff3a;"></span>
+      </button>
+      <button class="theme-preset" data-theme-value="sunset" style="background: linear-gradient(135deg, #0f0c1a, #1a1425);">
+        <span class="theme-preset-name">Sunset</span>
+        <span class="theme-preset-accent" style="background: #ff6b9d;"></span>
+      </button>
+      <button class="theme-preset" data-theme-value="ocean" style="background: linear-gradient(135deg, #0a0f14, #0f1a22);">
+        <span class="theme-preset-name">Ocean</span>
+        <span class="theme-preset-accent" style="background: #00d4ff;"></span>
+      </button>
+      <button class="theme-preset" data-theme-value="forest" style="background: linear-gradient(135deg, #0a0f0d, #0f1a14);">
+        <span class="theme-preset-name">Forest</span>
+        <span class="theme-preset-accent" style="background: #4aff8a;"></span>
+      </button>
+      <button class="theme-preset" data-theme-value="midnight" style="background: linear-gradient(135deg, #0a0a0f, #12121a);">
+        <span class="theme-preset-name">Midnight</span>
+        <span class="theme-preset-accent" style="background: #a855ff;"></span>
+      </button>
+      <button class="theme-preset" data-theme-value="custom" style="background: linear-gradient(135deg, #1a1a2e, #16213e);">
+        <span class="theme-preset-name">Custom</span>
+        <span class="theme-preset-accent" id="customAccentPreview" style="background: #d7ff3a;"></span>
+      </button>
+    </div>
+    <div class="theme-custom-section" id="themeCustomSection" style="display: none;">
+      <h4>Custom Gradient</h4>
+      <div class="color-picker-row">
+        <label>
+          <span>Start Color</span>
+          <input type="color" id="customStartColor" value="#d7ff3a" />
+        </label>
+        <label>
+          <span>End Color</span>
+          <input type="color" id="customEndColor" value="#6ee7a8" />
+        </label>
+      </div>
+      <div class="color-picker-row">
+        <label>
+          <span>Accent Color</span>
+          <input type="color" id="customAccentColor" value="#d7ff3a" />
+        </label>
+      </div>
+    </div>
+    <div class="theme-modal-footer">
+      <button class="btn btn-ghost btn-sm" id="themeResetBtn">Reset to Default</button>
+    </div>
   </div>
 </div>
 
@@ -820,6 +1072,19 @@ INDEX_HTML = """<!doctype html>
     const spotifyPreview    = document.getElementById('spotifyPreview');
     const historyList    = document.getElementById('historyList');
     const historyCount   = document.getElementById('historyCount');
+
+    // Theme picker elements
+    const themePickerBtn = document.getElementById('themePickerBtn');
+    const themeModal = document.getElementById('themeModal');
+    const themeModalBackdrop = document.getElementById('themeModalBackdrop');
+    const themeModalClose = document.getElementById('themeModalClose');
+    const themePresets = document.querySelectorAll('.theme-preset');
+    const themeCustomSection = document.getElementById('themeCustomSection');
+    const customStartColor = document.getElementById('customStartColor');
+    const customEndColor = document.getElementById('customEndColor');
+    const customAccentColor = document.getElementById('customAccentColor');
+    const customAccentPreview = document.getElementById('customAccentPreview');
+    const themeResetBtn = document.getElementById('themeResetBtn');
 
     // Player bar
     const playerBar       = document.getElementById('playerBar');
@@ -1563,6 +1828,158 @@ INDEX_HTML = """<!doctype html>
         suggestionsEl.classList.remove('visible');
       }
     });
+
+    // ── Theme Picker Functions ──
+    const THEME_STORAGE_KEY = 'dev-music-theme';
+
+    const openThemeModal = () => {
+      themeModal.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+      loadSavedTheme();
+    };
+
+    const closeThemeModal = () => {
+      themeModal.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+    };
+
+    const setTheme = (themeName, customColors = null) => {
+      if (themeName === 'default') {
+        document.documentElement.removeAttribute('data-theme');
+      } else {
+        document.documentElement.setAttribute('data-theme', themeName);
+      }
+
+      if (customColors) {
+        document.documentElement.style.setProperty('--custom-gradient-start', customColors.start);
+        document.documentElement.style.setProperty('--custom-gradient-end', customColors.end);
+        document.documentElement.style.setProperty('--accent', customColors.accent);
+        if (customAccentPreview) {
+          customAccentPreview.style.background = customColors.accent;
+        }
+      }
+
+      // Update active state on presets
+      themePresets.forEach(preset => {
+        preset.classList.toggle('active', preset.getAttribute('data-theme-value') === themeName);
+      });
+
+      // Show/hide custom section
+      if (themeCustomSection) {
+        themeCustomSection.style.display = themeName === 'custom' ? 'block' : 'none';
+      }
+
+      // Save to localStorage
+      localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify({ theme: themeName, customColors }));
+    };
+
+    const loadSavedTheme = () => {
+      try {
+        const saved = localStorage.getItem(THEME_STORAGE_KEY);
+        if (saved) {
+          const { theme, customColors } = JSON.parse(saved);
+          if (theme === 'custom' && customColors) {
+            if (customStartColor) customStartColor.value = rgbToHex(customColors.start) || '#d7ff3a';
+            if (customEndColor) customEndColor.value = rgbToHex(customColors.end) || '#6ee7a8';
+            if (customAccentColor) customAccentColor.value = customColors.accent || '#d7ff3a';
+          }
+          setTheme(theme, customColors);
+          return;
+        }
+      } catch (e) {
+        console.error('Failed to load saved theme:', e);
+      }
+      // Default theme
+      setTheme('default');
+    };
+
+    const rgbToHex = (rgb) => {
+      if (!rgb) return null;
+      if (rgb.startsWith('#')) return rgb;
+      const match = rgb.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+      if (!match) return null;
+      return '#' + [match[1], match[2], match[3]].map(x => {
+        const hex = parseInt(x).toString(16);
+        return hex.length === 1 ? '0' + hex : hex;
+      }).join('');
+    };
+
+    // Theme picker event handlers
+    if (themePickerBtn) {
+      themePickerBtn.addEventListener('click', openThemeModal);
+    }
+    if (themeModalClose) {
+      themeModalClose.addEventListener('click', closeThemeModal);
+    }
+    if (themeModalBackdrop) {
+      themeModalBackdrop.addEventListener('click', closeThemeModal);
+    }
+    if (themeResetBtn) {
+      themeResetBtn.addEventListener('click', () => setTheme('default'));
+    }
+
+    // Preset theme buttons
+    themePresets.forEach(preset => {
+      preset.addEventListener('click', () => {
+        const themeValue = preset.getAttribute('data-theme-value');
+        if (themeValue === 'custom') {
+          const colors = {
+            start: customStartColor?.value || '#d7ff3a',
+            end: customEndColor?.value || '#6ee7a8',
+            accent: customAccentColor?.value || '#d7ff3a'
+          };
+          setTheme('custom', colors);
+        } else {
+          setTheme(themeValue, null);
+        }
+      });
+    });
+
+    // Custom color pickers
+    if (customStartColor) {
+      customStartColor.addEventListener('input', () => {
+        const colors = {
+          start: customStartColor.value,
+          end: customEndColor?.value || '#6ee7a8',
+          accent: customAccentColor?.value || '#d7ff3a'
+        };
+        document.documentElement.style.setProperty('--custom-gradient-start', colors.start);
+        setTheme('custom', colors);
+      });
+    }
+    if (customEndColor) {
+      customEndColor.addEventListener('input', () => {
+        const colors = {
+          start: customStartColor?.value || '#d7ff3a',
+          end: customEndColor.value,
+          accent: customAccentColor?.value || '#d7ff3a'
+        };
+        document.documentElement.style.setProperty('--custom-gradient-end', colors.end);
+        setTheme('custom', colors);
+      });
+    }
+    if (customAccentColor) {
+      customAccentColor.addEventListener('input', () => {
+        const colors = {
+          start: customStartColor?.value || '#d7ff3a',
+          end: customEndColor?.value || '#6ee7a8',
+          accent: customAccentColor.value
+        };
+        if (customAccentPreview) customAccentPreview.style.background = colors.accent;
+        document.documentElement.style.setProperty('--accent', colors.accent);
+        setTheme('custom', colors);
+      });
+    }
+
+    // Close modal on Escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && themeModal.getAttribute('aria-hidden') === 'false') {
+        closeThemeModal();
+      }
+    });
+
+    // Initialize theme on load
+    loadSavedTheme();
 
     setStatus('Ready');
     setTrack('Nothing playing yet', 'Search for a track, pick a result, then play it in the browser.', {});
