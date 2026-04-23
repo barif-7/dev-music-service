@@ -1,9 +1,5 @@
 {
-  "build": {
-    "env": {
-      "PIP_INSTALL": "1"
-    }
-  },
+  "installCommand": "pip install --upgrade pip && pip install -r requirements.txt",
   "routes": [
     {
       "src": "/(.*)",
