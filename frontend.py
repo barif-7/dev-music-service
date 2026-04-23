@@ -1180,22 +1180,40 @@ INDEX_HTML = """<!doctype html>
     };
 
     const startPlayback = async (item) => {
+      console.log('[startPlayback] Starting playback for:', item);
       if (audioGesturePrimePromise) await audioGesturePrimePromise.catch(() => {});
       currentTrack = item;
       setStatus('Playing', 'good');
       setEqualizerState('playing');
       outputStatus.textContent = 'Browser';
-      message.textContent = 'Loading audio\u2026';
+      message.textContent = 'Loading audio…';
       setTrack(item.title, `${albumMeta(item)} · Duration ${fmtDuration(item.duration)} · ${confidenceLabel(item)}`, item);
       setCover(item);
       showPlayerBar(item);
-      audio.src = item.stream_url;
+      
+      const fullUrl = item.stream_url;
+      console.log('[startPlayback] Setting audio.src to:', fullUrl);
+      audio.src = fullUrl;
       audio.currentTime = 0;
-      await audio.play();
-      message.textContent = 'Playing in the browser.';
-      addHistory('Played', item, albumMeta(item));
-      syncProgress();
-      syncToggleLabel();
+      
+      audio.addEventListener('loadstart', () => console.log('[audio] loadstart'));
+      audio.addEventListener('loadeddata', () => console.log('[audio] loadeddata'));
+      audio.addEventListener('loadedmetadata', () => console.log('[audio] loadedmetadata, duration:', audio.duration));
+      audio.addEventListener('canplay', () => console.log('[audio] canplay'));
+      audio.addEventListener('canplaythrough', () => console.log('[audio] canplaythrough'));
+      
+      try {
+        console.log('[startPlayback] Calling audio.play()...');
+        await audio.play();
+        console.log('[startPlayback] audio.play() succeeded');
+        message.textContent = 'Playing in the browser.';
+        addHistory('Played', item, albumMeta(item));
+        syncProgress();
+        syncToggleLabel();
+      } catch (playError) {
+        console.error('[startPlayback] audio.play() failed:', playError);
+        throw playError;
+      }
     };
 
     const search = async (query) => {
@@ -1519,10 +1537,21 @@ INDEX_HTML = """<!doctype html>
       setStatus('Buffering', 'warn'); message.textContent = 'Buffering browser audio\u2026';
       barStatus.textContent = 'Buffering'; barStatus.className = 'bar-status buffering';
     });
-    audio.addEventListener('error', () => {
+    audio.addEventListener('error', (e) => {
       if (suppressAudioEvents) return;
-      setStatus('Playback failed', 'warn'); setEqualizerState('paused');
-      message.textContent = 'Browser playback failed. Try another ranked result.';
+      console.error('Audio error event:', e);
+      console.error('Audio error details:', audio.error);
+      const errorMessages = {
+        1: 'MEDIA_ERR_ABORTED',
+        2: 'MEDIA_ERR_NETWORK',
+        3: 'MEDIA_ERR_DECODE',
+        4: 'MEDIA_ERR_SRC_NOT_SUPPORTED'
+      };
+      const errorCode = audio.error?.code || 'unknown';
+      const errorMsg = audio.error?.message || 'Unknown error';
+      setStatus(`Playback failed (${errorMessages[errorCode] || errorCode})`, 'warn');
+      setEqualizerState('paused');
+      message.textContent = `Browser playback failed: ${errorMsg}. Check console for details.`;
       barStatus.textContent = 'Failed'; barStatus.className = 'bar-status';
       barPlayBtn.textContent = '▶';
     });

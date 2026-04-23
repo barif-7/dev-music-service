@@ -180,7 +180,7 @@ class MusicService:
             "noplaylist": True,
             "extractor_args": {
                 "youtube": {
-                    "player_client": ["android"],
+                    "player_client": ["android", "web"],
                 }
             },
         }
@@ -189,11 +189,14 @@ class MusicService:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(webpage_url, download=False)
         except Exception as exc:
-            raise StreamResolutionError(f"Could not resolve stream for {webpage_url}") from exc
+            # Log the actual error for debugging
+            import logging
+            logging.error(f"Failed to extract audio from {webpage_url}: {exc}")
+            raise StreamResolutionError(f"Could not resolve stream for {webpage_url}: {str(exc)}") from exc
 
         direct_url = info.get("url")
         if not direct_url:
-            raise StreamResolutionError("Failed to extract audio URL")
+            raise StreamResolutionError(f"Failed to extract audio URL from {webpage_url}")
 
         headers = info.get("http_headers") or {}
         cached_value = (direct_url, dict(headers))

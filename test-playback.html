@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Audio Playback Test</title>
+  <style>
+    body { background: #1a1a1a; color: white; font-family: sans-serif; padding: 40px; }
+    .test { margin: 20px 0; padding: 20px; border: 1px solid #333; border-radius: 8px; }
+    button { padding: 10px 20px; font-size: 16px; cursor: pointer; background: #4CAF50; color: white; border: none; border-radius: 4px; }
+    button:hover { background: #45a049; }
+    #log { background: #000; padding: 15px; border-radius: 4px; font-family: monospace; font-size: 12px; max-height: 300px; overflow-y: auto; }
+    .error { color: #ff6b6b; }
+    .success { color: #69db7c; }
+    .info { color: #74c0fc; }
+  </style>
+</head>
+<body>
+  <h1>🎵 Audio Playback Test</h1>
+  
+  <div class="test">
+    <h3>Test 1: Direct stream URL</h3>
+    <audio id="audio1" controls style="width: 100%; margin: 10px 0;"></audio>
+    <button onclick="test1()">Load & Play</button>
+  </div>
+
+  <div class="test">
+    <h3>Test 2: Fetch API test</h3>
+    <button onclick="test2()">Test Stream Fetch</button>
+    <pre id="fetchResult"></pre>
+  </div>
+
+  <div class="test">
+    <h3>Event Log</h3>
+    <div id="log"></div>
+  </div>
+
+  <script>
+    const logEl = document.getElementById('log');
+    const audio1 = document.getElementById('audio1');
+    
+    function log(msg, type = 'info') {
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      logEl.appendChild(line);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function test1() {
+      const streamUrl = 'http://127.0.0.1:8000/stream?url=' + encodeURIComponent('https://www.youtube.com/watch?v=4NRXx6U8ABQ');
+      log('Setting audio src to: ' + streamUrl, 'info');
+      audio1.src = streamUrl;
+      
+      audio1.addEventListener('loadstart', () => log('loadstart event fired', 'info'));
+      audio1.addEventListener('loadeddata', () => log('loadeddata event fired', 'success'));
+      audio1.addEventListener('loadedmetadata', () => log(`loadedmetadata: duration=${audio1.duration}s`, 'success'));
+      audio1.addEventListener('canplay', () => log('canplay event fired', 'success'));
+      audio1.addEventListener('canplaythrough', () => log('canplaythrough event fired', 'success'));
+      audio1.addEventListener('play', () => log('play event fired', 'success'));
+      audio1.addEventListener('playing', () => log('playing event fired', 'success'));
+      audio1.addEventListener('error', (e) => {
+        log(`ERROR: ${JSON.stringify(audio1.error)}`, 'error');
+        console.error('Audio error:', e, audio1.error);
+      });
+      
+      log('Calling audio.play()...', 'info');
+      audio1.play().then(() => {
+        log('Play promise resolved', 'success');
+      }).catch(err => {
+        log(`Play promise rejected: ${err.message}`, 'error');
+      });
+    }
+
+    async function test2() {
+      const streamUrl = 'http://127.0.0.1:8000/stream?url=' + encodeURIComponent('https://www.youtube.com/watch?v=4NRXx6U8ABQ');
+      const resultEl = document.getElementById('fetchResult');
+      resultEl.textContent = 'Fetching...';
+      
+      try {
+        const response = await fetch(streamUrl);
+        log(`Fetch response status: ${response.status}`, 'info');
+        log(`Content-Type: ${response.headers.get('content-type')}`, 'info');
+        log(`Content-Length: ${response.headers.get('content-length')}`, 'info');
+        log(`CORS headers: ${response.headers.get('access-control-allow-origin')}`, 'info');
+        
+        resultEl.textContent = `Status: ${response.status}
+Content-Type: ${response.headers.get('content-type')}
+Content-Length: ${response.headers.get('content-length')}
+Access-Control-Allow-Origin: ${response.headers.get('access-control-allow-origin')}
+Cache-Control: ${response.headers.get('cache-control')}`;
+        
+        if (response.ok) {
+          log('Fetch test PASSED', 'success');
+        } else {
+          log('Fetch test FAILED', 'error');
+        }
+      } catch (err) {
+        log(`Fetch error: ${err.message}`, 'error');
+        resultEl.textContent = `Error: ${err.message}`;
+      }
+    }
+
+    log('Page loaded. Click buttons to test playback.');
+  </script>
+</body>
+</html>

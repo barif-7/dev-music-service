@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Debug Playback Test</title>
+  <style>
+    body { background: #1a1a1a; color: white; font-family: sans-serif; padding: 20px; }
+    .test { margin: 20px 0; padding: 20px; border: 1px solid #333; border-radius: 8px; }
+    button { padding: 10px 20px; font-size: 16px; cursor: pointer; background: #4CAF50; color: white; border: none; border-radius: 4px; margin: 5px; }
+    button:hover { background: #45a049; }
+    #log { background: #000; padding: 15px; border-radius: 4px; font-family: monospace; font-size: 12px; max-height: 400px; overflow-y: auto; white-space: pre-wrap; }
+    .error { color: #ff6b6b; }
+    .success { color: #69db7c; }
+    .info { color: #74c0fc; }
+    audio { width: 100%; margin: 10px 0; }
+  </style>
+</head>
+<body>
+  <h1>🎵 Debug Playback Test</h1>
+  <p>Open browser console (F12) for more details</p>
+  
+  <div class="test">
+    <h3>Step 1: Test Search API</h3>
+    <button onclick="testSearch()">Search for "blinding lights"</button>
+    <pre id="searchResult"></pre>
+  </div>
+
+  <div class="test">
+    <h3>Step 2: Test Stream URL (HEAD request)</h3>
+    <button onclick="testStreamHead()">Test stream headers</button>
+    <pre id="streamHeadResult"></pre>
+  </div>
+
+  <div class="test">
+    <h3>Step 3: Test Stream with Audio Element</h3>
+    <button onclick="testAudioPlay()">Load & Play</button>
+    <audio id="audio1" controls></audio>
+    <pre id="audioResult"></pre>
+  </div>
+
+  <div class="test">
+    <h3>Step 4: Test Stream with Fetch + MediaSource</h3>
+    <button onclick="testFetchStream()">Fetch stream data</button>
+    <pre id="fetchResult"></pre>
+  </div>
+
+  <div class="test">
+    <h3>Event Log</h3>
+    <div id="log"></div>
+  </div>
+
+  <script>
+    const API_BASE = 'http://127.0.0.1:8000';
+    let currentStreamUrl = '';
+    
+    function log(msg, type = 'info') {
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      document.getElementById('log').appendChild(line);
+      document.getElementById('log').scrollTop = document.getElementById('log').scrollHeight;
+      console.log(`[${type}]`, msg);
+    }
+
+    async function testSearch() {
+      const resultEl = document.getElementById('searchResult');
+      resultEl.textContent = 'Searching...';
+      try {
+        const response = await fetch(`${API_BASE}/api/search?query=blinding+lights+the+weeknd&limit=1`);
+        log(`Search API status: ${response.status}`, 'info');
+        const data = await response.json();
+        resultEl.textContent = JSON.stringify(data, null, 2);
+        if (data[0] && data[0].stream_url) {
+          currentStreamUrl = data[0].stream_url;
+          log(`Got stream_url: ${currentStreamUrl}`, 'success');
+          log(`Full stream URL: ${API_BASE}${currentStreamUrl}`, 'info');
+        }
+      } catch (err) {
+        log(`Search error: ${err.message}`, 'error');
+        resultEl.textContent = `Error: ${err.message}`;
+      }
+    }
+
+    async function testStreamHead() {
+      if (!currentStreamUrl) {
+        log('No stream URL - run search first', 'error');
+        return;
+      }
+      const resultEl = document.getElementById('streamHeadResult');
+      resultEl.textContent = 'Testing...';
+      try {
+        const fullUrl = `${API_BASE}${currentStreamUrl}`;
+        log(`Testing HEAD request to: ${fullUrl}`, 'info');
+        
+        // Use GET with range instead of HEAD since HEAD might not work
+        const response = await fetch(fullUrl, { 
+          method: 'GET',
+          headers: { 'Range': 'bytes=0-0' }
+        });
+        
+        log(`Stream status: ${response.status}`, response.ok ? 'success' : 'error');
+        log(`Content-Type: ${response.headers.get('content-type')}`, 'info');
+        log(`Access-Control-Allow-Origin: ${response.headers.get('access-control-allow-origin')}`, 'info');
+        log(`Accept-Ranges: ${response.headers.get('accept-ranges')}`, 'info');
+        log(`Content-Length: ${response.headers.get('content-length')}`, 'info');
+        
+        resultEl.textContent = `Status: ${response.status}
+Content-Type: ${response.headers.get('content-type')}
+Access-Control-Allow-Origin: ${response.headers.get('access-control-allow-origin')}
+Accept-Ranges: ${response.headers.get('accept-ranges')}`;
+        
+        if (!response.ok) {
+          const text = await response.text();
+          log(`Error body: ${text}`, 'error');
+        }
+      } catch (err) {
+        log(`Stream test error: ${err.message}`, 'error');
+        resultEl.textContent = `Error: ${err.message}\n\nCheck console for CORS errors!`;
+      }
+    }
+
+    function testAudioPlay() {
+      if (!currentStreamUrl) {
+        log('No stream URL - run search first', 'error');
+        return;
+      }
+      
+      const audio = document.getElementById('audio1');
+      const resultEl = document.getElementById('audioResult');
+      const fullUrl = `${API_BASE}${currentStreamUrl}`;
+      
+      log('=== Testing Audio Element Playback ===', 'info');
+      log(`Setting audio.src to: ${fullUrl}`, 'info');
+      
+      audio.src = fullUrl;
+      
+      audio.addEventListener('loadstart', () => log('✓ loadstart', 'info'));
+      audio.addEventListener('loadeddata', () => log('✓ loadeddata', 'success'));
+      audio.addEventListener('loadedmetadata', () => log(`✓ loadedmetadata (duration: ${audio.duration}s)`, 'success'));
+      audio.addEventListener('canplay', () => log('✓ canplay', 'success'));
+      audio.addEventListener('canplaythrough', () => log('✓ canplaythrough', 'success'));
+      audio.addEventListener('play', () => log('✓ play', 'success'));
+      audio.addEventListener('playing', () => log('✓ playing', 'success'));
+      audio.addEventListener('pause', () => log('⏸ pause', 'info'));
+      audio.addEventListener('ended', () => log('⏹ ended', 'info'));
+      
+      audio.addEventListener('error', (e) => {
+        log(`✗ ERROR: ${JSON.stringify(audio.error)}`, 'error');
+        log(`Error codes: ${audio.error.code} - ${['MEDIA_ERR_ABORTED','MEDIA_ERR_NETWORK','MEDIA_ERR_DECODE','MEDIA_ERR_SRC_NOT_SUPPORTED'][audio.error.code-1]}`, 'error');
+        resultEl.textContent = `Audio Error: ${JSON.stringify(audio.error, null, 2)}`;
+      });
+      
+      audio.addEventListener('stalled', () => log('⚠ stalled (buffering)', 'info'));
+      audio.addEventListener('waiting', () => log('⚠ waiting (buffering)', 'info'));
+      audio.addEventListener('suspend', () => log('⚠ suspend', 'info'));
+      
+      resultEl.textContent = `Loading: ${fullUrl}`;
+      
+      log('Calling audio.play()...', 'info');
+      audio.play().then(() => {
+        log('✓ Play promise resolved', 'success');
+        resultEl.textContent += '\n✓ Playback started!';
+      }).catch(err => {
+        log(`✗ Play promise rejected: ${err.message}`, 'error');
+        resultEl.textContent += `\n✗ Play failed: ${err.message}`;
+      });
+    }
+
+    async function testFetchStream() {
+      if (!currentStreamUrl) {
+        log('No stream URL - run search first', 'error');
+        return;
+      }
+      
+      const resultEl = document.getElementById('fetchResult');
+      const fullUrl = `${API_BASE}${currentStreamUrl}`;
+      resultEl.textContent = 'Fetching...';
+      
+      try {
+        log('=== Testing Fetch API ===', 'info');
+        const controller = new AbortController();
+        setTimeout(() => controller.abort(), 5000); // Timeout after 5s
+        
+        const response = await fetch(fullUrl, { signal: controller.signal });
+        log(`Fetch status: ${response.status}`, response.ok ? 'success' : 'error');
+        log(`Content-Type: ${response.headers.get('content-type')}`, 'info');
+        
+        const reader = response.body.getReader();
+        let totalBytes = 0;
+        let chunks = 0;
+        
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          totalBytes += value.length;
+          chunks++;
+          if (chunks <= 3) {
+            log(`Received chunk ${chunks}: ${value.length} bytes`, 'success');
+          }
+        }
+        
+        log(`✓ Total: ${chunks} chunks, ${totalBytes} bytes`, 'success');
+        resultEl.textContent = `✓ Successfully streamed ${totalBytes} bytes in ${chunks} chunks`;
+        
+      } catch (err) {
+        log(`Fetch error: ${err.message}`, 'error');
+        resultEl.textContent = `Error: ${err.message}`;
+      }
+    }
+
+    log('Page loaded. Run tests in order: 1) Search, 2) Stream headers, 3) Audio play');
+  </script>
+</body>
+</html>
