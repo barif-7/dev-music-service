@@ -26,6 +26,16 @@ def root():
     return HTMLResponse(INDEX_HTML)
 
 
+@app.get("/debug-playback.html")
+def debug_playback():
+    """Serve the debug playback test page."""
+    try:
+        with open("debug-playback.html", "r") as f:
+            return HTMLResponse(f.read())
+    except FileNotFoundError:
+        return HTMLResponse("Debug page not found", status_code=404)
+
+
 @app.get("/health")
 def health():
     return {
