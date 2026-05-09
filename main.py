@@ -15,6 +15,7 @@ from slowapi.util import get_remote_address
 from frontend import INDEX_HTML
 from services.local_playback_service import LocalPlaybackService
 from services.metadata_service import MetadataService, MetadataServiceError
+from services.lyrics_service import LyricsNotFoundError, LyricsRequestError, LyricsService
 from services.music_service import MusicService, MusicServiceError
 from services.spotify_import_service import SpotifyImportError, SpotifyImportService
 
@@ -69,6 +70,10 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 def fail_with_http_error(exc: Exception) -> None:
+    if isinstance(exc, LyricsRequestError):
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if isinstance(exc, LyricsNotFoundError):
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     if isinstance(exc, (MusicServiceError, MetadataServiceError, SpotifyImportError)):
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -212,6 +217,32 @@ async def autocomplete_song(
         fail_with_http_error(exc)
 
 
+@app.get("/api/lyrics")
+@app.get("/lyrics")
+@limiter.limit("60 per minute")
+def get_lyrics(
+    request: Request,
+    title: str = Query(..., min_length=1, max_length=500, description="Track title"),
+    artist: str = Query(..., min_length=1, max_length=500, description="Track artist"),
+    album: Optional[str] = Query(default=None, description="Album name for improved matching"),
+    duration: Optional[int] = Query(
+        default=None, ge=0, description="Track duration in seconds for improved matching"
+    ),
+):
+    try:
+        logger.info("lyrics_requested", title=title, artist=artist, has_album=bool(album))
+        payload = LyricsService.get_lyrics(
+            title=title,
+            artist=artist,
+            album=album,
+            duration=duration,
+        ).model_dump()
+        return JSONResponse(content=payload, headers={"Cache-Control": "public, max-age=3600"})
+    except Exception as exc:
+        logger.error("lyrics_failed", title=title, artist=artist, error=str(exc))
+        fail_with_http_error(exc)
+
+
 @app.get("/api/stream")
 @app.get("/stream")
 @limiter.limit("30 per minute")
@@ -255,7 +286,6 @@ async def stream_song(
     except Exception as exc:
         logger.error("stream_failed", url_length=len(url), error=str(exc))
         fail_with_http_error(exc)
-
 
 class PlaybackRequest(BaseModel):
     url: str

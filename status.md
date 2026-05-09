@@ -4,8 +4,8 @@
 - Status: active runtime service.
 - Priority: high.
 - Main folder: `dev-music-service/`.
-- Runtime contract: `GET /` browser app, `GET /health`, `GET /api/search`, `GET /api/stream`, `GET /api/browser/playback`, `GET /api/integrations/openclaw/play`, `GET /api/integrations/openclaw/stop`, `GET /api/integrations/openclaw/resume`.
-- Compatibility contract: `GET /search`, `GET /stream`, `GET /play`, `GET /stop`, `GET /resume`.
+- Runtime contract: `GET /` browser app, `GET /health`, `GET /api/search`, `GET /api/stream`, `GET /api/lyrics`, `GET /api/browser/playback`, `GET /api/integrations/openclaw/play`, `GET /api/integrations/openclaw/stop`, `GET /api/integrations/openclaw/resume`.
+- Compatibility contract: `GET /search`, `GET /stream`, `GET /lyrics`, `GET /play`, `GET /stop`, `GET /resume`.
 - Playback behavior: browser playback is primary; local `ffplay` control is kept as an explicit integration layer.
 - Next actions:
   - verify browser streaming against a real YouTube result,

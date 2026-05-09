@@ -111,3 +111,22 @@ class PlaybackStatus(BaseModel):
     mode: str
     message: Optional[str] = None
     pid: Optional[int] = None
+
+
+class LyricsLine(BaseModel):
+    text: str
+    start_time_ms: Optional[int] = Field(default=None, description="Line start time in milliseconds")
+    end_time_ms: Optional[int] = Field(default=None, description="Line end time in milliseconds")
+
+
+class LyricsResponse(BaseModel):
+    provider: str = "lrclib"
+    title: str
+    artist: str
+    album: Optional[str] = None
+    duration: Optional[int] = Field(default=None, description="Track duration in seconds")
+    instrumental: bool = False
+    synced: bool = False
+    plain_lyrics: Optional[str] = None
+    synced_lyrics: Optional[str] = None
+    lines: List[LyricsLine] = Field(default_factory=list)
