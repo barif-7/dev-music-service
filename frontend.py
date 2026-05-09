@@ -403,6 +403,72 @@ INDEX_HTML = """<!doctype html>
     .import-track strong { display: block; color: var(--ink); font-size: 13px; }
     .import-track small { display: block; color: var(--ink-faint); font-family: 'JetBrains Mono', monospace; font-size: 10px; margin-top: 2px; }
 
+    .lyrics-panel {
+      margin: 14px 0 16px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.015), rgba(255,255,255,0.01));
+      min-height: 188px;
+      display: none;
+      overflow: hidden;
+    }
+    .lyrics-panel.visible { display: block; }
+    .lyrics-panel-head {
+      display: flex; justify-content: space-between; align-items: center;
+      gap: 12px; padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(0,0,0,0.08);
+    }
+    .lyrics-panel-head strong {
+      display: block; color: var(--ink); font-size: 13px; font-weight: 500;
+    }
+    .lyrics-panel-head small {
+      display: block; margin-top: 2px;
+      color: var(--ink-faint); font-family: 'JetBrains Mono', monospace; font-size: 10px;
+      text-transform: uppercase; letter-spacing: 0.08em;
+    }
+    .lyrics-mode {
+      font-family: 'JetBrains Mono', monospace; font-size: 10px;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--accent); border: 1px solid rgba(215,255,58,0.2);
+      background: rgba(215,255,58,0.06);
+      border-radius: 999px; padding: 4px 8px; white-space: nowrap;
+    }
+    .lyrics-panel-body {
+      max-height: 340px; overflow-y: auto;
+      padding: 10px 0;
+      scroll-behavior: smooth;
+    }
+    .lyrics-empty {
+      padding: 28px 18px;
+      color: var(--ink-faint); text-align: center;
+      font-family: 'JetBrains Mono', monospace; font-size: 11px;
+      text-transform: uppercase; letter-spacing: 0.06em;
+    }
+    .lyrics-line {
+      padding: 8px 16px;
+      color: var(--ink-dim);
+      font-size: 14px; line-height: 1.45;
+      border-left: 2px solid transparent;
+      transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+    }
+    .lyrics-line.active {
+      background: rgba(215,255,58,0.08);
+      color: var(--ink);
+      border-left-color: var(--accent);
+      transform: translateX(2px);
+    }
+    .lyrics-line.dimmed { color: var(--ink-faint); }
+    .lyrics-line-text {
+      display: block;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .lyrics-line-time {
+      display: block; margin-top: 4px;
+      color: var(--ink-faint); font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    }
+
     /* Right col: player detail */
     .detail-art {
       width: 100%; aspect-ratio: 1; border-radius: 4px;
@@ -923,6 +989,18 @@ INDEX_HTML = """<!doctype html>
         </div>
         <div class="suggestions" id="appSuggestions"></div>
       </div>
+      <div class="lyrics-panel" id="lyricsPanel" aria-live="polite">
+        <div class="lyrics-panel-head">
+          <div>
+            <strong id="lyricsTitle">Lyrics</strong>
+            <small id="lyricsMeta">Start playback to load lyrics</small>
+          </div>
+          <span class="lyrics-mode" id="lyricsMode">Idle</span>
+        </div>
+        <div class="lyrics-panel-body" id="lyricsBody">
+          <div class="lyrics-empty">Start playback to view synced lyrics.</div>
+        </div>
+      </div>
       <div id="results"></div>
     </div>
 
@@ -1098,6 +1176,11 @@ INDEX_HTML = """<!doctype html>
     const barDuration     = document.getElementById('barDuration');
     const barStatus       = document.getElementById('barStatus');
     const barSendLocal    = document.getElementById('barSendLocal');
+    const lyricsPanel     = document.getElementById('lyricsPanel');
+    const lyricsTitle     = document.getElementById('lyricsTitle');
+    const lyricsMeta      = document.getElementById('lyricsMeta');
+    const lyricsMode      = document.getElementById('lyricsMode');
+    const lyricsBody      = document.getElementById('lyricsBody');
 
     let timer = null;
     let currentResults = [];
@@ -1111,6 +1194,10 @@ INDEX_HTML = """<!doctype html>
     let audioGesturePrimePromise = null;
     let suppressAudioEvents = false;
     let sessionHistory = [];
+    let currentLyrics = null;
+    let currentLyricsTrackKey = null;
+    let lyricsRequestId = 0;
+    let activeLyricIndex = -1;
     const audio = new Audio();
     audio.preload = 'none';
     audio.setAttribute('playsinline', '');
@@ -1255,6 +1342,140 @@ INDEX_HTML = """<!doctype html>
       if (item.artwork_source === 'spotify') return 'Spotify playlist artwork';
       if (item.artwork_source === 'youtube') return 'YouTube video thumbnail fallback';
       return 'Generated cover fallback';
+    };
+
+    const lyricsTrackKey = (item = {}) => [
+      cleanText(item.title, ''),
+      cleanText(item.artist, ''),
+      cleanText(item.album, ''),
+      Number(item.duration || 0)
+    ].join('::');
+
+    const setLyricsVisibility = (visible) => {
+      lyricsPanel.classList.toggle('visible', visible);
+    };
+
+    const setLyricsEmpty = (title, meta, mode, body) => {
+      lyricsTitle.textContent = title;
+      lyricsMeta.textContent = meta;
+      lyricsMode.textContent = mode;
+      lyricsBody.innerHTML = `<div class="lyrics-empty">${escapeHtml(body)}</div>`;
+      activeLyricIndex = -1;
+    };
+
+    const formatLyricsTimestamp = (ms) => {
+      if (!Number.isFinite(ms) || ms < 0) return '';
+      const totalSeconds = Math.floor(ms / 1000);
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = String(totalSeconds % 60).padStart(2, '0');
+      return `${minutes}:${seconds}`;
+    };
+
+    const lyricsIndexForTime = (timeMs) => {
+      const lines = currentLyrics?.lines || [];
+      if (!currentLyrics?.synced || !lines.length) return -1;
+      for (let index = lines.length - 1; index >= 0; index -= 1) {
+        const line = lines[index];
+        if (typeof line.start_time_ms === 'number' && timeMs >= line.start_time_ms) {
+          return index;
+        }
+      }
+      return -1;
+    };
+
+    const updateActiveLyric = () => {
+      if (!currentLyrics?.synced) return;
+      const nextIndex = lyricsIndexForTime((audio.currentTime || 0) * 1000);
+      if (nextIndex === activeLyricIndex) return;
+      activeLyricIndex = nextIndex;
+      const nodes = lyricsBody.querySelectorAll('.lyrics-line');
+      nodes.forEach((node, index) => {
+        node.classList.toggle('active', index === activeLyricIndex);
+        node.classList.toggle('dimmed', activeLyricIndex >= 0 && index < activeLyricIndex);
+      });
+      if (activeLyricIndex >= 0) {
+        const activeNode = nodes[activeLyricIndex];
+        activeNode?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+    };
+
+    const renderLyrics = () => {
+      if (!currentLyrics || !Array.isArray(currentLyrics.lines) || !currentLyrics.lines.length) {
+        setLyricsEmpty('Lyrics', 'No lyrics found for this track', 'Unavailable', 'No lyrics available.');
+        return;
+      }
+
+      lyricsTitle.textContent = currentLyrics.title || currentTrack?.title || 'Lyrics';
+      lyricsMeta.textContent = currentLyrics.artist
+        ? `${currentLyrics.artist}${currentLyrics.album ? ' · ' + currentLyrics.album : ''}`
+        : (currentTrack?.artist || 'Lyrics');
+      lyricsMode.textContent = currentLyrics.synced ? 'Synced' : 'Plain';
+      lyricsBody.innerHTML = '';
+
+      currentLyrics.lines.forEach((line) => {
+        const row = document.createElement('div');
+        row.className = 'lyrics-line';
+        const timeLabel = currentLyrics.synced && typeof line.start_time_ms === 'number'
+          ? `<span class="lyrics-line-time">${escapeHtml(formatLyricsTimestamp(line.start_time_ms))}</span>`
+          : '';
+        row.innerHTML = `<span class="lyrics-line-text">${escapeHtml(line.text || '')}</span>${timeLabel}`;
+        lyricsBody.appendChild(row);
+      });
+
+      activeLyricIndex = -1;
+      updateActiveLyric();
+    };
+
+    const clearLyrics = (hide = true) => {
+      currentLyrics = null;
+      currentLyricsTrackKey = null;
+      activeLyricIndex = -1;
+      setLyricsEmpty('Lyrics', 'Start playback to load lyrics', 'Idle', 'Start playback to view synced lyrics.');
+      setLyricsVisibility(!hide);
+    };
+
+    const loadLyrics = async (item) => {
+      const requestId = ++lyricsRequestId;
+      currentLyrics = null;
+      activeLyricIndex = -1;
+      currentLyricsTrackKey = lyricsTrackKey(item);
+      setLyricsVisibility(true);
+
+      if (!item?.title || !item?.artist) {
+        setLyricsEmpty(
+          item?.title || 'Lyrics',
+          'Track metadata is missing artist information',
+          'Unavailable',
+          'Lyrics need both title and artist metadata.'
+        );
+        return;
+      }
+
+      setLyricsEmpty(item.title, `${item.artist}${item.album ? ' · ' + item.album : ''}`, 'Loading', 'Loading lyrics…');
+
+      const params = new URLSearchParams({
+        title: item.title,
+        artist: item.artist,
+      });
+      if (item.album) params.set('album', item.album);
+      if (item.duration) params.set('duration', String(item.duration));
+
+      try {
+        const response = await fetch(`/api/lyrics?${params.toString()}`);
+        if (requestId !== lyricsRequestId || currentLyricsTrackKey !== lyricsTrackKey(item)) return;
+        if (response.status === 404) {
+          setLyricsEmpty(item.title, `${item.artist}${item.album ? ' · ' + item.album : ''}`, 'Unavailable', 'No lyrics found for this track.');
+          return;
+        }
+        if (!response.ok) {
+          throw new Error(`Lyrics lookup failed with ${response.status}`);
+        }
+        currentLyrics = await response.json();
+        renderLyrics();
+      } catch (error) {
+        if (requestId !== lyricsRequestId) return;
+        setLyricsEmpty(item.title, `${item.artist}${item.album ? ' · ' + item.album : ''}`, 'Error', error.message || 'Could not load lyrics.');
+      }
     };
 
     const artMarkup = (item = {}, size = 40) => {
@@ -1448,6 +1669,7 @@ INDEX_HTML = """<!doctype html>
       console.log('[startPlayback] Starting playback for:', item);
       if (audioGesturePrimePromise) await audioGesturePrimePromise.catch(() => {});
       currentTrack = item;
+      void loadLyrics(item);
       setStatus('Playing', 'good');
       setEqualizerState('playing');
       outputStatus.textContent = 'Browser';
@@ -1738,6 +1960,8 @@ INDEX_HTML = """<!doctype html>
       audio.currentTime = 0;
       audio.removeAttribute('src');
       audio.load();
+      currentTrack = null;
+      clearLyrics(true);
       setStatus('Ready');
       setEqualizerState('paused');
       message.textContent = 'Stopped.';
@@ -1782,6 +2006,7 @@ INDEX_HTML = """<!doctype html>
       if (now - _lastProgressTick < 200) return;
       _lastProgressTick = now;
       syncProgress();
+      updateActiveLyric();
     });
     audio.addEventListener('ended', () => {
       if (suppressAudioEvents) return;
@@ -1821,6 +2046,7 @@ INDEX_HTML = """<!doctype html>
       barPlayBtn.textContent = '▶';
     });
     audio.addEventListener('loadedmetadata', syncProgress);
+    audio.addEventListener('loadedmetadata', updateActiveLyric);
 
     document.addEventListener('click', (event) => {
       const t = event.target;
@@ -1984,6 +2210,7 @@ INDEX_HTML = """<!doctype html>
     setStatus('Ready');
     setTrack('Nothing playing yet', 'Search for a track, pick a result, then play it in the browser.', {});
     setCover({ title: 'Dev Music', artist: 'Dev Music' });
+    clearLyrics(true);
     renderResults();
     renderHistory();
     syncProgress();
