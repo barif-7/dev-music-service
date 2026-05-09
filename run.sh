@@ -5,15 +5,17 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
+PYTHON_BIN="${PYTHON:-$(command -v python3.11 || command -v python3 || echo python3)}"
+
 if [ ! -d ".venv" ]; then
-  echo "Creating virtual environment..."
-  python3 -m venv .venv
+  echo "Creating virtual environment with $PYTHON_BIN..."
+  "$PYTHON_BIN" -m venv .venv
 fi
 
 # shellcheck disable=SC1091
 source .venv/bin/activate
 
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+pip install --upgrade pip -q
+pip install -r requirements.txt -q
 
 exec uvicorn main:app --host 127.0.0.1 --port 8000
