@@ -13,6 +13,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from frontend import INDEX_HTML
+from services.focus_service import FocusProfile, FocusService
 from services.local_playback_service import LocalPlaybackService
 from services.metadata_service import MetadataService, MetadataServiceError
 from services.lyrics_service import LyricsNotFoundError, LyricsRequestError, LyricsService
@@ -353,4 +354,90 @@ def resume_song(request: Request):
         return LocalPlaybackService.resume().model_dump()
     except Exception as exc:
         logger.error("local_resume_failed", error=str(exc))
+        fail_with_http_error(exc)
+
+
+# ── Focus / ADHD mode routes ──────────────────────────────────────────────────
+
+@app.get("/api/focus/profile")
+def get_focus_profile():
+    """Return the current focus profile (BPM range, instrumentalness threshold, etc.)"""
+    return FocusProfile.load()
+
+
+@app.post("/api/focus/profile")
+@limiter.limit("30 per minute")
+def update_focus_profile(request: Request, profile: dict):
+    """Update and persist the focus profile."""
+    try:
+        return FocusProfile.save(profile)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/focus/profile/reset")
+def reset_focus_profile():
+    """Reset to defaults."""
+    return FocusProfile.reset()
+
+
+@app.get("/api/focus/playlist/{playlist_id}")
+@limiter.limit("20 per minute")
+async def focus_filter_playlist(
+    playlist_id: str,
+    request: Request,
+    limit: int = Query(50, ge=1, le=50),
+):
+    """
+    Filter a Spotify playlist to only tracks that match the focus profile,
+    ranked by focus score. Returns audio features for every track.
+    """
+    try:
+        token = SpotifyImportService._access_token(request)
+        profile = FocusProfile.load()
+        logger.info("focus_filter_playlist", playlist_id=playlist_id)
+        return await FocusService.focus_filter_playlist(token, playlist_id, limit=limit, profile=profile)
+    except Exception as exc:
+        logger.error("focus_filter_playlist_failed", error=str(exc))
+        fail_with_http_error(exc)
+
+
+@app.get("/api/focus/top-tracks")
+@limiter.limit("10 per minute")
+async def focus_top_tracks(
+    request: Request,
+    time_range: str = Query("medium_term", pattern="^(short_term|medium_term|long_term)$"),
+):
+    """
+    Analyse the user's Spotify top tracks against their focus profile.
+    Returns BPM insights and ranked focus-suitable tracks.
+    Requires user-top-read scope (users must reconnect Spotify after this update).
+    """
+    try:
+        token = SpotifyImportService._access_token(request)
+        profile = FocusProfile.load()
+        logger.info("focus_top_tracks", time_range=time_range)
+        return await FocusService.analyse_top_tracks(token, time_range=time_range, profile=profile)
+    except Exception as exc:
+        logger.error("focus_top_tracks_failed", error=str(exc))
+        fail_with_http_error(exc)
+
+
+@app.get("/api/focus/track/{track_id}")
+@limiter.limit("60 per minute")
+async def focus_track_features(track_id: str, request: Request):
+    """
+    Return audio features + focus score for a single Spotify track ID.
+    """
+    try:
+        token = SpotifyImportService._access_token(request)
+        profile = FocusProfile.load()
+        af = await FocusService.get_track_features(token, track_id)
+        if af is None:
+            raise HTTPException(status_code=404, detail="Audio features not available for this track")
+        return {**af.to_dict(), "focus_score": af.focus_score(profile), "matches_profile": af.matches_profile(profile)}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("focus_track_features_failed", error=str(exc))
         fail_with_http_error(exc)
