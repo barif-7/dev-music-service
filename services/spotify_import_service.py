@@ -27,7 +27,7 @@ class SpotifyImportError(Exception):
 class SpotifyImportService:
     _ACCOUNTS_URL = "https://accounts.spotify.com"
     _API_URL = "https://api.spotify.com/v1"
-    _SCOPE = "playlist-read-private playlist-read-collaborative"
+    _SCOPE = "playlist-read-private playlist-read-collaborative user-top-read user-read-recently-played"
     _STATE_COOKIE = "spotify_oauth_state"
     _VERIFIER_COOKIE = "spotify_code_verifier"
     _TOKEN_COOKIE = "spotify_access_token"

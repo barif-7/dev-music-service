@@ -763,6 +763,163 @@ INDEX_HTML = """<!doctype html>
       display: flex; justify-content: flex-end;
       padding-top: 16px; border-top: 1px solid var(--border);
     }
+
+  /* ── Focus panel ── */
+  .focus-panel {
+    max-width: 1280px; margin: 0 auto; padding: 32px 40px 48px;
+    border-top: 1px solid var(--border);
+    display: none;
+  }
+  .focus-panel.visible { display: block; }
+
+  .focus-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 24px;
+  }
+  .focus-title {
+    font-family: 'Fraunces', serif; font-size: 28px; font-weight: 300;
+    letter-spacing: -0.02em; color: var(--ink);
+  }
+  .focus-title em { font-style: italic; color: var(--accent); font-weight: 400; }
+
+  /* Profile editor */
+  .profile-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
+    margin-bottom: 24px;
+  }
+  .profile-field {
+    background: var(--bg-elev); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 14px 16px;
+  }
+  .profile-field label {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-faint);
+    display: block; margin-bottom: 10px;
+  }
+  .bpm-row { display: flex; align-items: center; gap: 8px; }
+  .bpm-input {
+    background: var(--bg); border: 1px solid var(--border-strong);
+    border-radius: var(--radius); padding: 6px 10px;
+    font-family: 'JetBrains Mono', monospace; font-size: 14px;
+    color: var(--ink); width: 64px; text-align: center;
+  }
+  .bpm-input:focus { outline: none; border-color: var(--accent); }
+  .bpm-sep { color: var(--ink-faint); font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+  .range-wrap { display: flex; flex-direction: column; gap: 6px; }
+  .range-wrap input[type=range] {
+    -webkit-appearance: none; width: 100%; height: 3px;
+    background: var(--border); border-radius: 2px; outline: none;
+  }
+  .range-wrap input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 14px; height: 14px;
+    border-radius: 50%; background: var(--accent); cursor: pointer;
+  }
+  .range-val {
+    font-family: 'JetBrains Mono', monospace; font-size: 12px;
+    color: var(--ink); text-align: right;
+  }
+  .profile-actions { display: flex; gap: 8px; margin-bottom: 24px; }
+
+  /* BPM insight callout */
+  .insight-bar {
+    padding: 12px 16px; border-radius: var(--radius);
+    border: 1px solid var(--border); border-left: 2px solid var(--accent);
+    background: var(--bg-elev); font-size: 13px; color: var(--ink-dim);
+    font-family: 'JetBrains Mono', monospace;
+    margin-bottom: 20px; display: none;
+  }
+  .insight-bar.visible { display: block; }
+  .insight-bar b { color: var(--ink); font-weight: 500; }
+
+  /* Focus track list */
+  .focus-stats {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+    margin-bottom: 20px;
+  }
+  .focus-stat {
+    padding: 12px; border: 1px solid var(--border);
+    border-radius: var(--radius); background: var(--bg);
+  }
+  .focus-stat span {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-faint);
+  }
+  .focus-stat strong {
+    display: block; font-family: 'Fraunces', serif; font-size: 22px;
+    font-weight: 400; margin-top: 4px; color: var(--ink);
+  }
+
+  .focus-track {
+    display: grid; grid-template-columns: 40px 1fr 60px 60px 60px 60px auto;
+    gap: 10px; align-items: center;
+    padding: 10px 8px; border-bottom: 1px solid var(--border);
+    font-size: 12px; cursor: pointer; transition: background .1s;
+  }
+  .focus-track:hover { background: var(--bg-elev-2); }
+  .focus-track .t { color: var(--ink); font-size: 12px; margin: 0; }
+  .focus-track .a {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    color: var(--ink-faint); margin-top: 2px;
+  }
+  .focus-track .bpm-pill {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    font-weight: 600; color: var(--accent); text-align: center;
+  }
+  .focus-track .feat-val {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    color: var(--ink-dim); text-align: center;
+  }
+  .focus-bar-wrap { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .focus-bar-fill { height: 100%; border-radius: 2px; background: var(--accent); }
+
+  /* Column headers */
+  .focus-track-head {
+    display: grid; grid-template-columns: 40px 1fr 60px 60px 60px 60px auto;
+    gap: 10px; align-items: center;
+    padding: 6px 8px; border-bottom: 1px solid var(--border-strong);
+    font-family: 'JetBrains Mono', monospace; font-size: 9px;
+    text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-faint);
+    margin-bottom: 0;
+  }
+
+  /* Time range tabs */
+  .time-tabs { display: flex; gap: 6px; margin-bottom: 20px; }
+  .time-tab {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    padding: 5px 10px; border-radius: var(--radius);
+    border: 1px solid var(--border-strong); background: transparent;
+    color: var(--ink-faint); cursor: pointer; transition: all .12s;
+  }
+  .time-tab:hover { color: var(--ink); border-color: var(--ink-dim); }
+  .time-tab.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+
+  /* Rejected section */
+  .rejected-toggle {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-faint);
+    background: none; border: none; cursor: pointer; padding: 8px 0;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .rejected-toggle:hover { color: var(--ink-dim); }
+  .rejected-list { display: none; }
+  .rejected-list.visible { display: block; }
+  .rejected-track {
+    display: grid; grid-template-columns: 40px 1fr 60px 60px;
+    gap: 10px; align-items: center;
+    padding: 8px; border-bottom: 1px solid var(--border);
+    font-size: 12px; opacity: 0.5;
+  }
+  .reject-reason {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    color: var(--bad); text-align: right;
+  }
+  @media (max-width: 960px) {
+    .profile-grid { grid-template-columns: 1fr; }
+    .focus-stats { grid-template-columns: repeat(2, 1fr); }
+    .focus-track { grid-template-columns: 36px 1fr 50px auto; }
+    .focus-track .feat-val, .focus-track-head .feat-val { display: none; }
+  }
   </style>
 </head>
 <body>
@@ -784,9 +941,95 @@ INDEX_HTML = """<!doctype html>
   <div class="topbar-right">
     <div class="runtime-tag"><span class="runtime-dot"></span><span id="runtimeStatus">Checking runtime</span></div>
     <button class="btn btn-ghost btn-sm" id="themePickerBtn" title="Change theme">🎨 Theme</button>
+    <button class="btn btn-ghost btn-sm" id="focusModeBtn" onclick="toggleFocusPanel()">Focus mode</button>
     <button class="btn btn-primary btn-sm" id="spotifyConnectBtn">Connect Spotify</button>
   </div>
 </div>
+
+<section class="focus-panel" id="focusPanel">
+  <div class="focus-header">
+    <h2 class="focus-title">Your <em>focus</em> filter</h2>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <span class="runtime-tag"><span class="runtime-dot" style="background:var(--accent);"></span><span id="focusSpotifyStatus">Connect Spotify to begin</span></span>
+      <button class="btn btn-ghost btn-sm" onclick="toggleFocusPanel()">Close</button>
+    </div>
+  </div>
+
+  <!-- Profile editor -->
+  <div class="profile-grid">
+    <div class="profile-field">
+      <label>BPM range</label>
+      <div class="bpm-row">
+        <input class="bpm-input" type="number" id="bpmMin" value="60" min="40" max="220" />
+        <span class="bpm-sep">—</span>
+        <input class="bpm-input" type="number" id="bpmMax" value="120" min="40" max="220" />
+        <span class="bpm-sep" style="margin-left:8px;">bpm</span>
+      </div>
+    </div>
+    <div class="profile-field">
+      <label>Instrumentalness (min)</label>
+      <div class="range-wrap">
+        <input type="range" id="instrMin" min="0" max="1" step="0.05" value="0.6" oninput="document.getElementById('instrVal').textContent=parseFloat(this.value).toFixed(2)" />
+        <span class="range-val"><span id="instrVal">0.60</span> / 1.0</span>
+      </div>
+    </div>
+    <div class="profile-field">
+      <label>Energy range</label>
+      <div class="range-wrap">
+        <input type="range" id="energyMin" min="0" max="1" step="0.05" value="0" oninput="syncEnergyLabel()" />
+        <input type="range" id="energyMax" min="0" max="1" step="0.05" value="1" oninput="syncEnergyLabel()" style="margin-top:4px;" />
+        <span class="range-val"><span id="energyVal">0.00 – 1.00</span></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="profile-actions">
+    <button class="btn btn-primary btn-sm" onclick="saveProfile()">Save profile</button>
+    <button class="btn btn-ghost btn-sm" onclick="resetProfile()">Reset to defaults</button>
+    <button class="btn btn-ghost btn-sm" id="analyseTopBtn" onclick="analyseTopTracks()" disabled>Analyse my top tracks</button>
+  </div>
+
+  <!-- BPM insight -->
+  <div class="insight-bar" id="bpmInsight"></div>
+
+  <!-- Time range tabs (shown when top tracks are loaded) -->
+  <div class="time-tabs" id="timeTabs" style="display:none;">
+    <button class="time-tab active" data-range="short_term" onclick="setTimeRange('short_term',this)">Last 4 weeks</button>
+    <button class="time-tab" data-range="medium_term" onclick="setTimeRange('medium_term',this)">Last 6 months</button>
+    <button class="time-tab" data-range="long_term" onclick="setTimeRange('long_term',this)">All time</button>
+  </div>
+
+  <!-- Stats row -->
+  <div class="focus-stats" id="focusStats" style="display:none;">
+    <div class="focus-stat"><span>Focus tracks</span><strong id="statFocus">—</strong></div>
+    <div class="focus-stat"><span>Total analysed</span><strong id="statTotal">—</strong></div>
+    <div class="focus-stat"><span>Avg BPM (library)</span><strong id="statAvgBpm">—</strong></div>
+    <div class="focus-stat"><span>Best focus score</span><strong id="statTopScore">—</strong></div>
+  </div>
+
+  <!-- Track list header -->
+  <div class="focus-track-head" id="focusTrackHead" style="display:none;">
+    <div></div>
+    <div>Track</div>
+    <div style="text-align:center;">BPM</div>
+    <div class="feat-val" style="text-align:center;">Instr.</div>
+    <div class="feat-val" style="text-align:center;">Energy</div>
+    <div class="feat-val" style="text-align:center;">Score</div>
+    <div></div>
+  </div>
+  <div id="focusTracks"></div>
+
+  <!-- Rejected tracks -->
+  <div id="rejectedSection" style="display:none; margin-top:16px;">
+    <button class="rejected-toggle" onclick="toggleRejected()">
+      <span id="rejectedArrow">▸</span>
+      <span id="rejectedLabel">Show filtered-out tracks</span>
+    </button>
+    <div class="rejected-list" id="rejectedList"></div>
+  </div>
+
+  <div class="empty-state" id="focusEmpty" style="margin-top:12px;">Connect Spotify and click "Analyse my top tracks" to see which of your tracks are tuned for focus.</div>
+</section>
 
 <!-- THEME PICKER MODAL -->
 <div class="theme-modal" id="themeModal" aria-hidden="true">
@@ -2218,6 +2461,211 @@ INDEX_HTML = """<!doctype html>
     setEqualizerState('paused');
     applyRuntimeMode();
     refreshSpotifyStatus();
+
+  // ── Focus panel state ─────────────────────────────────────────────────────
+  let focusPanelOpen = false;
+  let currentTimeRange = 'medium_term';
+  let currentFocusData = null;
+
+  function toggleFocusPanel() {
+    focusPanelOpen = !focusPanelOpen;
+    document.getElementById('focusPanel').classList.toggle('visible', focusPanelOpen);
+    if (focusPanelOpen) {
+      loadProfile();
+      checkFocusSpotifyStatus();
+    }
+  }
+
+  function syncEnergyLabel() {
+    const lo = parseFloat(document.getElementById('energyMin').value).toFixed(2);
+    const hi = parseFloat(document.getElementById('energyMax').value).toFixed(2);
+    document.getElementById('energyVal').textContent = `${lo} – ${hi}`;
+  }
+
+  async function loadProfile() {
+    try {
+      const r = await fetch('/api/focus/profile');
+      if (!r.ok) return;
+      const p = await r.json();
+      document.getElementById('bpmMin').value = p.bpm_min;
+      document.getElementById('bpmMax').value = p.bpm_max;
+      document.getElementById('instrMin').value = p.instrumentalness_min;
+      document.getElementById('instrVal').textContent = parseFloat(p.instrumentalness_min).toFixed(2);
+      document.getElementById('energyMin').value = p.energy_min;
+      document.getElementById('energyMax').value = p.energy_max;
+      syncEnergyLabel();
+    } catch (_) {}
+  }
+
+  async function saveProfile() {
+    const profile = {
+      bpm_min: parseInt(document.getElementById('bpmMin').value),
+      bpm_max: parseInt(document.getElementById('bpmMax').value),
+      instrumentalness_min: parseFloat(document.getElementById('instrMin').value),
+      energy_min: parseFloat(document.getElementById('energyMin').value),
+      energy_max: parseFloat(document.getElementById('energyMax').value),
+      valence_min: 0.0,
+      valence_max: 1.0,
+    };
+    try {
+      const r = await fetch('/api/focus/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(profile),
+      });
+      if (r.ok && currentFocusData) {
+        // Re-render with updated profile
+        analyseTopTracks();
+      }
+    } catch (_) {}
+  }
+
+  async function resetProfile() {
+    await fetch('/api/focus/profile/reset', { method: 'POST' });
+    await loadProfile();
+    if (currentFocusData) analyseTopTracks();
+  }
+
+  async function checkFocusSpotifyStatus() {
+    const r = await fetch('/api/import/spotify/status');
+    if (!r.ok) return;
+    const s = await r.json();
+    const btn = document.getElementById('analyseTopBtn');
+    const status = document.getElementById('focusSpotifyStatus');
+    if (s.connected) {
+      btn.disabled = false;
+      status.textContent = 'Spotify connected';
+    } else {
+      btn.disabled = true;
+      status.textContent = s.configured ? 'Connect Spotify to begin' : 'Spotify not configured';
+    }
+  }
+
+  async function analyseTopTracks() {
+    document.getElementById('focusEmpty').style.display = 'none';
+    document.getElementById('focusTracks').innerHTML = previewSkeleton();
+    document.getElementById('focusStats').style.display = 'none';
+    document.getElementById('timeTabs').style.display = 'none';
+    document.getElementById('focusTrackHead').style.display = 'none';
+    document.getElementById('rejectedSection').style.display = 'none';
+    document.getElementById('bpmInsight').classList.remove('visible');
+
+    try {
+      const r = await fetch(`/api/focus/top-tracks?time_range=${currentTimeRange}`);
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        document.getElementById('focusTracks').innerHTML = '';
+        document.getElementById('focusEmpty').style.display = '';
+        document.getElementById('focusEmpty').textContent = e.detail || 'Failed to load top tracks.';
+        return;
+      }
+      currentFocusData = await r.json();
+      renderFocusData(currentFocusData);
+    } catch (err) {
+      document.getElementById('focusTracks').innerHTML = '';
+      document.getElementById('focusEmpty').style.display = '';
+      document.getElementById('focusEmpty').textContent = err.message || 'Request failed.';
+    }
+  }
+
+  function setTimeRange(range, btn) {
+    currentTimeRange = range;
+    document.querySelectorAll('.time-tab').forEach(t => t.classList.toggle('active', t === btn));
+    analyseTopTracks();
+  }
+
+  function renderFocusData(data) {
+    // Stats
+    document.getElementById('focusStats').style.display = '';
+    document.getElementById('statFocus').textContent = data.focus_tracks_count;
+    document.getElementById('statTotal').textContent = data.total_top_tracks;
+    document.getElementById('statAvgBpm').textContent = data.bpm_insight ? data.bpm_insight.mean : '—';
+    const topScore = data.focus_tracks[0] ? data.focus_tracks[0].focus_score : 0;
+    document.getElementById('statTopScore').textContent = topScore ? topScore.toFixed(0) : '—';
+
+    // BPM insight
+    if (data.bpm_insight) {
+      const ins = document.getElementById('bpmInsight');
+      ins.innerHTML = `<b>Your listening BPM: avg ${data.bpm_insight.mean}, range ${data.bpm_insight.min}–${data.bpm_insight.max}.</b> ${escapeHtml(data.bpm_insight.suggestion)}`;
+      ins.classList.add('visible');
+    }
+
+    // Time tabs
+    document.getElementById('timeTabs').style.display = '';
+
+    // Track list
+    document.getElementById('focusTrackHead').style.display = '';
+    const container = document.getElementById('focusTracks');
+    container.innerHTML = '';
+
+    if (!data.focus_tracks.length) {
+      container.innerHTML = '<div class="empty-state">No tracks matched your current focus profile. Try widening the BPM range or lowering the instrumentalness threshold.</div>';
+    } else {
+      data.focus_tracks.forEach(track => {
+        const row = document.createElement('div');
+        row.className = 'focus-track';
+        const scoreWidth = Math.round(track.focus_score);
+        row.innerHTML = `
+          ${artMarkup({ title: track.title, artist: track.artist, thumbnail: track.thumbnail }, 36)}
+          <div><div class="t">${escapeHtml(track.title)}</div><div class="a">${escapeHtml(track.artist)}${track.album ? ' · ' + escapeHtml(track.album) : ''}</div></div>
+          <div class="bpm-pill">${track.tempo}</div>
+          <div class="feat-val">${(track.instrumentalness * 100).toFixed(0)}%</div>
+          <div class="feat-val">${(track.energy * 100).toFixed(0)}%</div>
+          <div class="feat-val">
+            <div style="margin-bottom:3px;">${track.focus_score.toFixed(0)}</div>
+            <div class="focus-bar-wrap"><div class="focus-bar-fill" style="width:${scoreWidth}%"></div></div>
+          </div>
+          <button class="mini-btn play" onclick="playFocusTrack(event, ${JSON.stringify(escapeAttr(track.title))}, ${JSON.stringify(escapeAttr(track.artist))})">Play</button>
+        `;
+        container.appendChild(row);
+      });
+    }
+
+    // Rejected
+    if (data.rejected && data.rejected.length) {
+      document.getElementById('rejectedSection').style.display = '';
+      document.getElementById('rejectedLabel').textContent = `Show ${data.rejected_tracks} filtered-out tracks`;
+      const rejList = document.getElementById('rejectedList');
+      rejList.innerHTML = '';
+      data.rejected.forEach(track => {
+        const row = document.createElement('div');
+        row.className = 'rejected-track';
+        const reason = rejectReason(track);
+        row.innerHTML = `
+          ${artMarkup({ title: track.title, artist: track.artist, thumbnail: track.thumbnail }, 32)}
+          <div><div class="t">${escapeHtml(track.title)}</div><div class="a">${escapeHtml(track.artist)}</div></div>
+          <div class="bpm-pill" style="color:var(--ink-faint);">${track.tempo}</div>
+          <div class="reject-reason">${reason}</div>
+        `;
+        rejList.appendChild(row);
+      });
+    }
+  }
+
+  function rejectReason(track) {
+    const p = currentFocusData?.profile;
+    if (!p) return 'filtered';
+    if (track.tempo < p.bpm_min) return `${track.tempo} bpm — too slow`;
+    if (track.tempo > p.bpm_max) return `${track.tempo} bpm — too fast`;
+    if (track.instrumentalness < p.instrumentalness_min) return `${(track.instrumentalness*100).toFixed(0)}% instr.`;
+    return 'filtered';
+  }
+
+  function toggleRejected() {
+    const list = document.getElementById('rejectedList');
+    const arrow = document.getElementById('rejectedArrow');
+    const showing = list.classList.toggle('visible');
+    arrow.textContent = showing ? '▾' : '▸';
+  }
+
+  async function playFocusTrack(evt, title, artist) {
+    evt.stopPropagation();
+    const query = `${artist} - ${title}`;
+    document.getElementById('appSearchInput').value = query;
+    await playQuery(query);
+    // scroll to player
+    document.getElementById('app').scrollIntoView({ behavior: 'smooth' });
+  }
 </script>
 </body>
 </html>
