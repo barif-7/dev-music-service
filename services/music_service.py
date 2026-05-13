@@ -8,7 +8,7 @@ from urllib.parse import urlencode
 import structlog
 import yt_dlp
 
-from models import BrowserPlaybackState, SongSearchResult
+from models import BrowserPlaybackState, SongSearchResult, TrackMetadata
 
 logger = structlog.get_logger()
 
@@ -143,6 +143,26 @@ class MusicService:
         return results
 
     @staticmethod
+    def _metadata_from_entry(entry: dict, fallback_url: str | None = None) -> TrackMetadata:
+        webpage_url = entry.get("webpage_url") or fallback_url
+        if not webpage_url:
+            raise StreamResolutionError("Extracted metadata is missing a webpage URL")
+
+        return TrackMetadata(
+            title=entry.get("title", "Unknown Title"),
+            webpage_url=webpage_url,
+            stream_url=f"/stream?{urlencode({'url': webpage_url})}",
+            duration=entry.get("duration") or 0,
+            album=MusicService._album_from_entry(entry),
+            artist=entry.get("artist") or entry.get("channel") or entry.get("uploader"),
+            thumbnail=entry.get("thumbnail"),
+            artwork_source="youtube" if entry.get("thumbnail") else None,
+            artwork_confidence="video" if entry.get("thumbnail") else None,
+            release_year=MusicService._extract_year(entry),
+            source="youtube",
+        )
+
+    @staticmethod
     def first_result(query: str) -> SongSearchResult:
         results = MusicService.search(query, limit=1)
         if not results:
@@ -217,6 +237,24 @@ class MusicService:
         )
         logger.debug("audio_stream_extracted", url=webpage_url)
         return direct_url, dict(headers)
+
+    @staticmethod
+    def get_metadata(webpage_url: str) -> TrackMetadata:
+        ydl_opts = {
+            "format": MusicService._BROWSER_AUDIO_FORMAT,
+            "quiet": True,
+            "noplaylist": True,
+        }
+
+        try:
+            logger.debug("extracting_track_metadata", url=webpage_url)
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(webpage_url, download=False)
+        except Exception as exc:
+            logger.error("metadata_extraction_failed", url=webpage_url, error=str(exc))
+            raise StreamResolutionError(f"Could not extract metadata for {webpage_url}: {str(exc)}") from exc
+
+        return MusicService._metadata_from_entry(info, fallback_url=webpage_url)
 
     @staticmethod
     def ffmpeg_http_args(headers: dict[str, str], referer: str) -> list[str]:

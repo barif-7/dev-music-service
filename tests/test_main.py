@@ -262,6 +262,40 @@ class TestBrowserPlaybackEndpoint:
         assert data["artist"] == "Test Artist"
 
 
+class TestMetadataEndpoint:
+    """Tests for /api/metadata and /metadata endpoints."""
+
+    def test_metadata_requires_url(self, client: TestClient):
+        """Metadata should require url parameter."""
+        response = client.get("/api/metadata")
+
+        assert response.status_code == 422
+
+    def test_metadata_returns_payload(self, client: TestClient):
+        """Metadata should serialize the backend result."""
+        url = "https://youtube.com/watch?v=test"
+        mock_payload = {
+            "title": "Track title",
+            "webpage_url": url,
+            "stream_url": "/stream?url=https%3A%2F%2Fyoutube.com%2Fwatch%3Fv%3Dtest",
+            "duration": 123,
+            "album": "Album",
+            "artist": "Artist",
+            "thumbnail": "https://img.example/cover.jpg",
+            "artwork_source": "youtube",
+            "artwork_confidence": "video",
+            "release_year": 2024,
+            "source": "youtube",
+        }
+
+        with patch("main.MusicService.get_metadata") as mock_get_metadata:
+            mock_get_metadata.return_value = MagicMock(model_dump=lambda: mock_payload)
+            response = client.get("/api/metadata", params={"url": url})
+
+        assert response.status_code == 200
+        assert response.json() == mock_payload
+
+
 class TestSpotifyImportEndpoints:
     """Tests for Spotify import endpoints."""
 

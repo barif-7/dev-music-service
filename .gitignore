@@ -14,3 +14,5 @@ song.mp3
 *.tmp
 
 .vercel
+mcp-server/dist/
+mcp-server/node_modules/

@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "dev-music-service": {
+      "command": "node",
+      "args": [
+        "/Users/basilarif/Documents/GitHub/dev-music-service/mcp-server/dist/index.js"
+      ]
+    }
+  }
+}

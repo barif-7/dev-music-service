@@ -32,6 +32,20 @@ class SongSearchResult(BaseModel):
     release_year: Optional[int] = None
 
 
+class TrackMetadata(BaseModel):
+    title: str
+    webpage_url: str
+    stream_url: str
+    duration: int = Field(default=0, description="Track duration in seconds")
+    album: Optional[str] = None
+    artist: Optional[str] = None
+    thumbnail: Optional[str] = None
+    artwork_source: Optional[str] = None
+    artwork_confidence: Optional[str] = None
+    release_year: Optional[int] = None
+    source: str = "youtube"
+
+
 class BrowserPlaybackState(BaseModel):
     mode: str = "browser"
     title: str
