@@ -1,5 +1,6 @@
 import os
 import logging
+import subprocess
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Optional
 
@@ -243,6 +244,22 @@ def get_lyrics(
         fail_with_http_error(exc)
 
 
+@app.get("/api/metadata")
+@app.get("/metadata")
+@limiter.limit("60 per minute")
+def get_metadata(
+    request: Request,
+    url: str = Query(..., min_length=1, max_length=2000, description="Track webpage URL"),
+):
+    try:
+        logger.info("metadata_requested", url_length=len(url))
+        payload = MusicService.get_metadata(url).model_dump()
+        return JSONResponse(content=payload, headers={"Cache-Control": "public, max-age=300"})
+    except Exception as exc:
+        logger.error("metadata_failed", url_length=len(url), error=str(exc))
+        fail_with_http_error(exc)
+
+
 @app.get("/api/stream")
 @app.get("/stream")
 @limiter.limit("30 per minute")
@@ -354,3 +371,69 @@ def resume_song(request: Request):
     except Exception as exc:
         logger.error("local_resume_failed", error=str(exc))
         fail_with_http_error(exc)
+
+
+# MCP server process management
+_mcp_process: Optional[subprocess.Popen] = None
+
+def _mcp_server_path() -> str:
+    return os.path.join(os.path.dirname(__file__), "mcp-server", "dist", "index.js")
+
+def _mcp_is_running() -> bool:
+    return _mcp_process is not None and _mcp_process.poll() is None
+
+
+@app.get("/api/mcp/status")
+def mcp_status():
+    running = _mcp_is_running()
+    return {
+        "running": running,
+        "pid": _mcp_process.pid if running else None,
+        "message": "MCP server is running" if running else "MCP server is not running",
+    }
+
+
+@app.post("/api/mcp/start")
+@limiter.limit("10 per minute")
+def mcp_start(request: Request):
+    global _mcp_process
+    if _mcp_is_running():
+        return {"running": True, "pid": _mcp_process.pid, "message": "MCP server already running"}
+
+    server_path = _mcp_server_path()
+    if not os.path.exists(server_path):
+        raise HTTPException(status_code=500, detail="MCP server dist not found — run npm run build in mcp-server/")
+
+    try:
+        _mcp_process = subprocess.Popen(
+            ["node", server_path],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        logger.info("mcp_server_started", pid=_mcp_process.pid)
+        return {"running": True, "pid": _mcp_process.pid, "message": "MCP server started"}
+    except Exception as exc:
+        logger.error("mcp_server_start_failed", error=str(exc))
+        raise HTTPException(status_code=500, detail=f"Failed to start MCP server: {exc}") from exc
+
+
+@app.post("/api/mcp/stop")
+@limiter.limit("10 per minute")
+def mcp_stop(request: Request):
+    global _mcp_process
+    if not _mcp_is_running():
+        return {"running": False, "message": "MCP server was not running"}
+
+    pid = _mcp_process.pid
+    try:
+        _mcp_process.send_signal(__import__("signal").SIGTERM)
+        _mcp_process.wait(timeout=3)
+    except Exception:
+        try:
+            _mcp_process.kill()
+        except Exception:
+            pass
+    _mcp_process = None
+    logger.info("mcp_server_stopped", pid=pid)
+    return {"running": False, "pid": pid, "message": "MCP server stopped"}
