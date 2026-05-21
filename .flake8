@@ -1,0 +1,8 @@
+[flake8]
+exclude =
+    .git,
+    .venv,
+    __pycache__,
+    mcp-server/node_modules,
+    mcp-server/dist
+extend-ignore = E501,W293

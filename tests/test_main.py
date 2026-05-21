@@ -1,5 +1,4 @@
 """End-to-end tests for main API endpoints."""
-import time
 from unittest.mock import MagicMock, patch
 
 import pytest

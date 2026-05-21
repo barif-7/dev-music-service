@@ -30,7 +30,7 @@ class SpotifyImportService:
     _SCOPE = "playlist-read-private playlist-read-collaborative user-top-read user-read-recently-played"
     _STATE_COOKIE = "spotify_oauth_state"
     _VERIFIER_COOKIE = "spotify_code_verifier"
-    _TOKEN_COOKIE = "spotify_access_token"
+    _TOKEN_COOKIE = "spotify_access_token"  # nosec B105 - cookie name, not a secret
 
     @staticmethod
     def _client_id() -> str:

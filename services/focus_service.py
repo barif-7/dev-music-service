@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 import threading
 import time
 from pathlib import Path
-from typing import Optional
 
 import structlog
 
-from services.spotify_import_service import SpotifyImportError, SpotifyImportService
+from services.spotify_import_service import SpotifyImportService
 
 logger = structlog.get_logger()
 

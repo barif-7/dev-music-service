@@ -105,7 +105,7 @@ class LyricsService:
         )
 
         try:
-            with urlopen(request, timeout=10) as response:
+            with urlopen(request, timeout=10) as response:  # nosec B310
                 return json.loads(response.read().decode("utf-8"))
         except HTTPError as exc:
             if exc.code == 404:

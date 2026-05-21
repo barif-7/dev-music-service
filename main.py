@@ -1,13 +1,13 @@
 import os
 import logging
-import subprocess
+import subprocess  # nosec B404
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Optional
 
 import httpx
 import structlog
 from fastapi import FastAPI, Header, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -305,6 +305,7 @@ async def stream_song(
         logger.error("stream_failed", url_length=len(url), error=str(exc))
         fail_with_http_error(exc)
 
+
 class PlaybackRequest(BaseModel):
     url: str
     title: str = "Unknown Title"
@@ -463,8 +464,10 @@ async def focus_track_features(track_id: str, request: Request):
 # MCP server process management
 _mcp_process: Optional[subprocess.Popen] = None
 
+
 def _mcp_server_path() -> str:
     return os.path.join(os.path.dirname(__file__), "mcp-server", "dist", "index.js")
+
 
 def _mcp_is_running() -> bool:
     return _mcp_process is not None and _mcp_process.poll() is None
@@ -492,7 +495,7 @@ def mcp_start(request: Request):
         raise HTTPException(status_code=500, detail="MCP server dist not found — run npm run build in mcp-server/")
 
     try:
-        _mcp_process = subprocess.Popen(
+        _mcp_process = subprocess.Popen(  # nosec B603 B607
             ["node", server_path],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -519,8 +522,8 @@ def mcp_stop(request: Request):
     except Exception:
         try:
             _mcp_process.kill()
-        except Exception:
-            pass
+        except Exception as kill_exc:
+            logger.warning("mcp_server_kill_failed", pid=pid, error=str(kill_exc))
     _mcp_process = None
     logger.info("mcp_server_stopped", pid=pid)
     return {"running": False, "pid": pid, "message": "MCP server stopped"}

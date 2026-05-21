@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import signal
-import subprocess
+import subprocess  # nosec B404
 
 from models import LocalPlaybackState, PlaybackStatus
 from services.music_service import MusicService, SearchServiceError
@@ -26,7 +26,7 @@ class LocalPlaybackService:
     def _start_playback(cls, state: LocalPlaybackState) -> LocalPlaybackState:
         cls._ensure_local_playback_available()
         direct_url, headers = MusicService._extract_audio_source(state.webpage_url)
-        process = subprocess.Popen(
+        process = subprocess.Popen(  # nosec B603 B607
             [
                 "ffplay",
                 "-nodisp",
@@ -76,7 +76,7 @@ class LocalPlaybackService:
                 try:
                     process.kill()
                 except Exception:
-                    pass
+                    process.poll()
 
         cls._active_process = None
         return PlaybackStatus(

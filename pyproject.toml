@@ -18,6 +18,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "bandit>=1.7.10",
+    "flake8>=7.0.0",
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
     "pytest-cov>=5.0.0",
@@ -26,6 +28,10 @@ dev = [
 
 [tool.uv]
 package = false
+
+[tool.setuptools]
+py-modules = ["app", "frontend", "main", "models"]
+packages = ["api", "services"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

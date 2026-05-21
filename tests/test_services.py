@@ -1,6 +1,4 @@
 """Unit and integration tests for service layer."""
-from unittest.mock import MagicMock, patch
-
 import pytest
 
 from models import AutocompleteSuggestion, SongSearchResult

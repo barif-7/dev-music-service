@@ -1,6 +1,5 @@
 """Tests for rate limiting functionality."""
 import time
-from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 from fastapi.testclient import TestClient
