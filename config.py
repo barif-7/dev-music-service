@@ -1,0 +1,38 @@
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    dev_music_base_url: str = "http://127.0.0.1:8000"
+    dms_data_dir: Path = Path(".")
+    ytdlp_js_runtime: str | None = None
+    lrclib_user_agent: str = (
+        "dev-music-service/1.0 (lyrics integration; contact: unset)"
+    )
+    spotify_client_id: str | None = None
+    spotify_redirect_uri: str | None = None
+    vercel: bool = Field(default=False)
+
+    @property
+    def focus_profile_path(self) -> Path:
+        return self.dms_data_dir / "focus_profile.json"
+
+
+def get_settings() -> Settings:
+    return Settings()
+
+
+def configure_ytdlp_js_runtime(default: str = "node") -> None:
+    runtime = get_settings().ytdlp_js_runtime or default
+    os.environ["YTDLP_JS_RUNTIME"] = runtime

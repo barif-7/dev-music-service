@@ -13,6 +13,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
+from config import get_settings
 from frontend import INDEX_HTML
 from services.focus_service import FocusProfile, FocusService
 from services.local_playback_service import LocalPlaybackService
@@ -98,11 +99,14 @@ def debug_playback():
 
 @app.get("/health")
 def health():
+    settings = get_settings()
     return {
         "status": "ok",
         "mode": "browser-first",
         "stream_delivery": "proxy",
-        "local_integration": "disabled-on-vercel" if os.getenv("VERCEL") else "openclaw-cli-optional",
+        "local_integration": (
+            "disabled-on-vercel" if settings.vercel else "openclaw-cli-optional"
+        ),
         "spotify_import": "configured" if SpotifyImportService.is_configured() else "missing-client-id",
     }
 

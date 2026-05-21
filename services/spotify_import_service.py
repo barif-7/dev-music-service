@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
-import os
 import secrets
 
 import httpx
@@ -11,6 +10,7 @@ from fastapi import Request as FastAPIRequest
 from fastapi.responses import HTMLResponse, RedirectResponse
 from urllib.parse import urlencode
 
+from config import get_settings
 from models import (
     ImportedPlaylistPreview,
     ImportedPlaylistTrack,
@@ -34,7 +34,7 @@ class SpotifyImportService:
 
     @staticmethod
     def _client_id() -> str:
-        client_id = os.getenv("SPOTIFY_CLIENT_ID")
+        client_id = get_settings().spotify_client_id
         if not client_id:
             raise SpotifyImportError(
                 "SPOTIFY_CLIENT_ID environment variable is required. "
@@ -44,15 +44,15 @@ class SpotifyImportService:
 
     @staticmethod
     def is_configured() -> bool:
-        return bool(os.getenv("SPOTIFY_CLIENT_ID"))
+        return bool(get_settings().spotify_client_id)
 
     @staticmethod
     def _cookie_secure() -> bool:
-        return bool(os.getenv("VERCEL"))
+        return get_settings().vercel
 
     @staticmethod
     def _redirect_uri(request: FastAPIRequest) -> str:
-        configured = os.getenv("SPOTIFY_REDIRECT_URI")
+        configured = get_settings().spotify_redirect_uri
         if configured:
             return configured
         return str(request.url_for("spotify_callback"))

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import os
 import signal
 import subprocess  # nosec B404
 
+from config import get_settings
 from models import LocalPlaybackState, PlaybackStatus
 from services.music_service import MusicService, SearchServiceError
 
@@ -14,7 +14,7 @@ class LocalPlaybackService:
 
     @staticmethod
     def _local_playback_available() -> bool:
-        return not os.getenv("VERCEL")
+        return not get_settings().vercel
 
     @classmethod
     def _ensure_local_playback_available(cls) -> None:

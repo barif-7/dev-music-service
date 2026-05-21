@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import json
-import os
 import threading
 import time
-from pathlib import Path
 
 import structlog
 
+from config import get_settings
 from services.spotify_import_service import SpotifyImportService
 
 logger = structlog.get_logger()
@@ -27,7 +26,6 @@ DEFAULT_PROFILE = {
     "label": "Focus",
 }
 
-_PROFILE_PATH = Path(os.getenv("DMS_DATA_DIR", ".")) / "focus_profile.json"
 _PROFILE_LOCK = threading.Lock()
 
 
@@ -115,9 +113,10 @@ class FocusProfile:
 
     @staticmethod
     def load() -> dict:
+        profile_path = get_settings().focus_profile_path
         with _PROFILE_LOCK:
             try:
-                return json.loads(_PROFILE_PATH.read_text())
+                return json.loads(profile_path.read_text())
             except (FileNotFoundError, json.JSONDecodeError):
                 return dict(DEFAULT_PROFILE)
 
@@ -132,14 +131,17 @@ class FocusProfile:
         merged["energy_max"] = max(merged["energy_min"], min(1.0, float(merged["energy_max"])))
         merged["valence_min"] = max(0.0, min(1.0, float(merged["valence_min"])))
         merged["valence_max"] = max(merged["valence_min"], min(1.0, float(merged["valence_max"])))
+        profile_path = get_settings().focus_profile_path
         with _PROFILE_LOCK:
-            _PROFILE_PATH.write_text(json.dumps(merged, indent=2))
+            profile_path.parent.mkdir(parents=True, exist_ok=True)
+            profile_path.write_text(json.dumps(merged, indent=2))
         return merged
 
     @staticmethod
     def reset() -> dict:
+        profile_path = get_settings().focus_profile_path
         with _PROFILE_LOCK:
-            _PROFILE_PATH.unlink(missing_ok=True)
+            profile_path.unlink(missing_ok=True)
         return dict(DEFAULT_PROFILE)
 
 

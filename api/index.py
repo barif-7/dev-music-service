@@ -2,13 +2,14 @@
 # Initialize Node.js runtime for yt-dlp before importing main
 
 import subprocess  # nosec B404
-import os
+
+from config import configure_ytdlp_js_runtime
 
 # Install and setup Node.js for yt-dlp JavaScript runtime
 try:
     # Check if deno or node is available (Vercel provides Node.js)
     subprocess.run(['node', '--version'], check=True, capture_output=True)  # nosec B603 B607
-    os.environ['YTDLP_JS_RUNTIME'] = 'node'
+    configure_ytdlp_js_runtime("node")
 except (subprocess.CalledProcessError, FileNotFoundError):
     pass
 
