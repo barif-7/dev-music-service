@@ -2,12 +2,14 @@ import os
 import logging
 import subprocess  # nosec B404
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import AsyncGenerator, Optional
 
 import httpx
 import structlog
 from fastapi import FastAPI, Header, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -15,7 +17,6 @@ from slowapi.util import get_remote_address
 from starlette.concurrency import run_in_threadpool
 
 from config import get_settings
-from frontend import INDEX_HTML
 from security import (
     open_validated_stream,
     redact_sensitive_data,
@@ -49,6 +50,8 @@ logger = structlog.get_logger()
 
 # Rate limiting setup
 limiter = Limiter(key_func=get_remote_address, default_limits=["100 per minute", "1000 per hour"])
+BASE_DIR = Path(__file__).parent
+STATIC_DIR = BASE_DIR / "static"
 
 
 @asynccontextmanager
@@ -78,6 +81,7 @@ app = FastAPI(
 # Add rate limiter
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 def fail_with_http_error(exc: Exception) -> None:
@@ -94,7 +98,7 @@ def fail_with_http_error(exc: Exception) -> None:
 
 @app.get("/")
 def root():
-    return HTMLResponse(INDEX_HTML)
+    return FileResponse(STATIC_DIR / "index.html")
 
 
 @app.get("/debug-playback.html")

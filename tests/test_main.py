@@ -38,6 +38,29 @@ class TestHealthEndpoint:
         assert data["spotify_import"] == "configured"
 
 
+class TestFrontendAssets:
+    """Tests for the extracted static frontend."""
+
+    def test_root_serves_static_index(self, client: TestClient):
+        """Root should serve the static index with external assets."""
+        response = client.get("/")
+
+        assert response.status_code == 200
+        assert 'href="/static/styles.css"' in response.text
+        assert 'src="/static/app.js"' in response.text
+        assert 'id="themeModal"' in response.text
+
+    def test_static_assets_served(self, client: TestClient):
+        """Static CSS and JS assets should be mounted."""
+        css_response = client.get("/static/styles.css")
+        js_response = client.get("/static/app.js")
+
+        assert css_response.status_code == 200
+        assert js_response.status_code == 200
+        assert ".themeModal" in css_response.text
+        assert "initThemePicker" in js_response.text
+
+
 class TestSearchEndpoint:
     """Tests for /api/search and /search endpoints."""
 
