@@ -44,9 +44,13 @@ Searches for the requested track, derives title and artist metadata, and then fe
 
 ```bash
 cd mcp-server
-npm install
+npm ci
 npm run build
 ```
+
+The `.mcp.json` checked into the repo expects the compiled entrypoint at
+`mcp-server/dist/index.js`. Override that path with `DEV_MUSIC_MCP_SERVER_PATH`
+when your MCP client launches from a different working directory.
 
 ## Run
 
@@ -66,9 +70,10 @@ For a convenience wrapper from the repo root:
 {
   "mcpServers": {
     "dev-music-service": {
-      "command": "node",
+      "command": "sh",
       "args": [
-        "/ABSOLUTE/PATH/TO/dev-music-service/mcp-server/dist/index.js"
+        "-c",
+        "node \"${DEV_MUSIC_MCP_SERVER_PATH:-mcp-server/dist/index.js}\""
       ],
       "env": {
         "DEV_MUSIC_BASE_URL": "http://127.0.0.1:8000"
@@ -83,9 +88,10 @@ For a convenience wrapper from the repo root:
 ```json
 {
   "name": "dev-music-service",
-  "command": "node",
+  "command": "sh",
   "args": [
-    "/ABSOLUTE/PATH/TO/dev-music-service/mcp-server/dist/index.js"
+    "-c",
+    "node \"${DEV_MUSIC_MCP_SERVER_PATH:-mcp-server/dist/index.js}\""
   ],
   "env": {
     "DEV_MUSIC_BASE_URL": "http://127.0.0.1:8000"
