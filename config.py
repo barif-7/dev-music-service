@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,6 +23,22 @@ class Settings(BaseSettings):
     spotify_client_id: str | None = None
     spotify_redirect_uri: str | None = None
     vercel: bool = Field(default=False)
+    dms_control_auth_token: str | None = None
+    stream_allowed_hosts: tuple[str, ...] = (
+        "googlevideo.com",
+        "youtube.com",
+        "youtu.be",
+        "ytimg.com",
+        "ggpht.com",
+        "googleusercontent.com",
+    )
+
+    @field_validator("stream_allowed_hosts", mode="before")
+    @classmethod
+    def _parse_stream_allowed_hosts(cls, value):
+        if isinstance(value, str):
+            return tuple(item.strip() for item in value.split(",") if item.strip())
+        return value
 
     @property
     def focus_profile_path(self) -> Path:

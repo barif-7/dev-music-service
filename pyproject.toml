@@ -31,7 +31,7 @@ dev = [
 package = false
 
 [tool.setuptools]
-py-modules = ["app", "config", "frontend", "main", "models"]
+py-modules = ["app", "config", "frontend", "main", "models", "security"]
 packages = ["api", "services"]
 
 [tool.pytest.ini_options]

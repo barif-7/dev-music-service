@@ -48,7 +48,7 @@ class SpotifyImportService:
 
     @staticmethod
     def _cookie_secure() -> bool:
-        return get_settings().vercel
+        return True
 
     @staticmethod
     def _redirect_uri(request: FastAPIRequest) -> str:
