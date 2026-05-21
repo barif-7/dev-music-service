@@ -2,7 +2,8 @@
 import pytest
 
 from models import AutocompleteSuggestion, ImportedTrack, SongSearchResult
-from services.focus_service import AudioFeatures, DEFAULT_PROFILE
+from services.focus_service import AudioFeatures, DEFAULT_PROFILE, FocusProfile
+from services.focus_storage import KvFocusProfileStorageStub, LocalJsonFocusProfileStorage
 from services.lyrics_service import LyricsService
 from services.musicbrainz_matcher import MusicBrainzMatcher
 from services.music_service import MusicService, MusicServiceError, SearchServiceError, StreamResolutionError
@@ -390,3 +391,31 @@ class TestFocusScoring:
         features = AudioFeatures({"tempo": 180, "instrumentalness": 1.0})
 
         assert not features.matches_profile(DEFAULT_PROFILE)
+
+
+class TestFocusProfileStorage:
+    """Tests for focus profile storage adapters."""
+
+    def test_local_json_storage_roundtrip(self, tmp_path):
+        storage = LocalJsonFocusProfileStorage(tmp_path / "focus_profile.json")
+        profile = {**DEFAULT_PROFILE, "label": "Deep Work"}
+
+        storage.save(profile)
+
+        assert storage.load() == profile
+        storage.reset()
+        assert storage.load() is None
+
+    def test_focus_profile_uses_configured_local_storage(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("DMS_DATA_DIR", str(tmp_path))
+        saved = FocusProfile.save({"bpm_min": 70, "bpm_max": 90})
+
+        assert saved["bpm_min"] == 70
+        assert FocusProfile.load()["bpm_max"] == 90
+        assert (tmp_path / "focus_profile.json").exists()
+
+    def test_kv_storage_stub_fails_clearly(self):
+        storage = KvFocusProfileStorageStub("focus")
+
+        with pytest.raises(RuntimeError, match="KV focus profile storage is not wired"):
+            storage.load()

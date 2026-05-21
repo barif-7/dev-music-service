@@ -237,6 +237,25 @@ class TestStreamEndpoint:
         assert response.status_code == 200
         assert response.content == b"audio"
 
+    def test_stream_redirect_mode_returns_validated_location(self, client: TestClient, monkeypatch):
+        """Redirect mode should 302 to an allowed resolved media URL."""
+        monkeypatch.setenv("STREAM_DELIVERY_MODE", "redirect")
+
+        with patch("main.MusicService.get_stream_source") as mock_source:
+            mock_source.return_value = (
+                "https://rr1---sn.googlevideo.com/videoplayback",
+                {},
+            )
+            response = client.get(
+                "/stream",
+                params={"url": "https://youtube.com/watch?v=test"},
+                follow_redirects=False,
+            )
+
+        assert response.status_code == 302
+        assert response.headers["location"] == "https://rr1---sn.googlevideo.com/videoplayback"
+        assert response.headers["Access-Control-Allow-Origin"] == "*"
+
 
 class TestLocalPlaybackEndpoints:
     """Tests for local playback integration endpoints."""

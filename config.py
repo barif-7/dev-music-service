@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     )
 
     dev_music_base_url: str = "http://127.0.0.1:8000"
+    dev_music_frontend_origin: str = "*"
+    dev_music_backend_origin: str | None = None
+    dev_music_mcp_origin: str | None = None
     dms_data_dir: Path = Path(".")
     ytdlp_js_runtime: str | None = None
     lrclib_user_agent: str = (
@@ -32,6 +35,9 @@ class Settings(BaseSettings):
         "ggpht.com",
         "googleusercontent.com",
     )
+    stream_delivery_mode: str = "proxy"
+    focus_profile_storage_backend: str = "local-json"
+    focus_profile_kv_namespace: str | None = None
 
     @field_validator("stream_allowed_hosts", mode="before")
     @classmethod
@@ -39,6 +45,26 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return tuple(item.strip() for item in value.split(",") if item.strip())
         return value
+
+    @field_validator("stream_delivery_mode")
+    @classmethod
+    def _validate_stream_delivery_mode(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"proxy", "redirect"}:
+            raise ValueError("STREAM_DELIVERY_MODE must be proxy or redirect")
+        return normalized
+
+    @field_validator("focus_profile_storage_backend")
+    @classmethod
+    def _validate_focus_profile_storage_backend(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"local-json", "kv"}:
+            raise ValueError("FOCUS_PROFILE_STORAGE_BACKEND must be local-json or kv")
+        return normalized
+
+    @property
+    def backend_origin(self) -> str:
+        return self.dev_music_backend_origin or self.dev_music_base_url
 
     @property
     def focus_profile_path(self) -> Path:

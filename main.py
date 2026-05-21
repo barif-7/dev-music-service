@@ -8,7 +8,13 @@ from typing import AsyncGenerator, Optional
 import httpx
 import structlog
 from fastapi import FastAPI, Header, HTTPException, Query, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -117,7 +123,10 @@ def health():
     return {
         "status": "ok",
         "mode": "browser-first",
-        "stream_delivery": "proxy",
+        "stream_delivery": settings.stream_delivery_mode,
+        "backend_origin": settings.backend_origin,
+        "frontend_origin": settings.dev_music_frontend_origin,
+        "mcp_origin": settings.dev_music_mcp_origin,
         "local_integration": (
             "disabled-on-vercel" if settings.vercel else "openclaw-cli-optional"
         ),
@@ -296,6 +305,19 @@ async def stream_song(
             url,
         )
         direct_url = validate_stream_url(direct_url)
+        settings = get_settings()
+
+        if settings.stream_delivery_mode == "redirect":
+            logger.info("stream_redirect_started")
+            return RedirectResponse(
+                direct_url,
+                status_code=302,
+                headers={
+                    "Cache-Control": "no-store",
+                    "Access-Control-Allow-Origin": settings.dev_music_frontend_origin,
+                    "Access-Control-Allow-Headers": "Range, Content-Type",
+                },
+            )
 
         # Create async generator to stream audio chunks with range support
         async def stream_audio() -> AsyncGenerator[bytes, None]:
@@ -321,7 +343,7 @@ async def stream_song(
             media_type=content_type,
             headers={
                 "Cache-Control": "public, max-age=300",
-                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Origin": settings.dev_music_frontend_origin,
                 "Access-Control-Allow-Headers": "Range, Content-Type",
                 "Accept-Ranges": "bytes",
             }
