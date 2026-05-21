@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
+from starlette.concurrency import run_in_threadpool
 
 from config import get_settings
 from frontend import INDEX_HTML
@@ -286,7 +287,10 @@ async def stream_song(
         import asyncio
 
         logger.info("stream_requested", url_length=len(url))
-        direct_url, req_headers = MusicService.get_stream_source(url)
+        direct_url, req_headers = await run_in_threadpool(
+            MusicService.get_stream_source,
+            url,
+        )
         direct_url = validate_stream_url(direct_url)
 
         # Create async generator to stream audio chunks with range support

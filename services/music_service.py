@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import threading
-import time
 from urllib.parse import urlencode
 
+from cachetools import TTLCache
 import structlog
 import yt_dlp
 
@@ -26,10 +26,16 @@ class StreamResolutionError(MusicServiceError):
 
 class MusicService:
     _cache_lock = threading.Lock()
-    _search_cache: dict[str, tuple[list[dict], float]] = {}
-    _stream_cache: dict[str, tuple[tuple[str, dict[str, str]], float]] = {}
     _SEARCH_TTL_SECONDS = 300
-    _STREAM_TTL_SECONDS = 600
+    _STREAM_TTL_SECONDS = 240
+    _search_cache: TTLCache[str, list[dict]] = TTLCache(
+        maxsize=256,
+        ttl=_SEARCH_TTL_SECONDS,
+    )
+    _stream_cache: TTLCache[str, tuple[str, dict[str, str]]] = TTLCache(
+        maxsize=128,
+        ttl=_STREAM_TTL_SECONDS,
+    )
     _BROWSER_AUDIO_FORMAT = "bestaudio[ext=m4a]/best[ext=mp4]/bestaudio/best"
 
     @staticmethod
@@ -38,23 +44,13 @@ class MusicService:
 
     @staticmethod
     def _cache_get(cache: dict, key):
-        now = time.monotonic()
         with MusicService._cache_lock:
-            entry = cache.get(key)
-            if not entry:
-                return None
-
-            value, expires_at = entry
-            if expires_at <= now:
-                cache.pop(key, None)
-                return None
-
-            return value
+            return cache.get(key)
 
     @staticmethod
     def _cache_set(cache: dict, key, value, ttl_seconds: int):
         with MusicService._cache_lock:
-            cache[key] = (value, time.monotonic() + ttl_seconds)
+            cache[key] = value
         return value
 
     @staticmethod
