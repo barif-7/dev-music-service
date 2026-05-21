@@ -1,7 +1,10 @@
 """Unit and integration tests for service layer."""
 import pytest
 
-from models import AutocompleteSuggestion, SongSearchResult
+from models import AutocompleteSuggestion, ImportedTrack, SongSearchResult
+from services.focus_service import AudioFeatures, DEFAULT_PROFILE
+from services.lyrics_service import LyricsService
+from services.musicbrainz_matcher import MusicBrainzMatcher
 from services.music_service import MusicService, MusicServiceError, SearchServiceError, StreamResolutionError
 from services.metadata_service import MetadataService, MetadataServiceError
 
@@ -9,9 +12,17 @@ from services.metadata_service import MetadataService, MetadataServiceError
 class TestMusicServiceSearch:
     """Tests for MusicService.search method."""
 
-    @pytest.mark.skip(reason="Requires actual YouTube API")
-    def test_search_returns_results(self, sample_search_query):
+    def test_search_returns_results(self, sample_search_query, monkeypatch):
         """Search should return results for valid query."""
+        monkeypatch.setattr(MusicService, "_search_entries", lambda query, limit: [
+            {
+                "title": "Fixture Song",
+                "webpage_url": "https://youtube.com/watch?v=fixture",
+                "duration": 180,
+                "artist": "Fixture Artist",
+                "thumbnail": "https://img.example/cover.jpg",
+            }
+        ][:limit])
         results = MusicService.search(sample_search_query, limit=1)
         
         assert isinstance(results, list)
@@ -22,9 +33,12 @@ class TestMusicServiceSearch:
             assert result.webpage_url
             assert result.stream_url
 
-    @pytest.mark.skip(reason="Requires actual YouTube API")
-    def test_search_respects_limit(self, sample_search_query):
+    def test_search_respects_limit(self, sample_search_query, monkeypatch):
         """Search should respect limit parameter."""
+        monkeypatch.setattr(MusicService, "_search_entries", lambda query, limit: [
+            {"title": f"Fixture {idx}", "webpage_url": f"https://youtube.com/watch?v={idx}"}
+            for idx in range(5)
+        ][:limit])
         results = MusicService.search(sample_search_query, limit=3)
         
         assert len(results) <= 3
@@ -34,27 +48,51 @@ class TestMusicServiceSearch:
         with pytest.raises(SearchServiceError):
             MusicService.search("", limit=1)
 
-    @pytest.mark.skip(reason="Requires actual YouTube API")
-    def test_search_caching(self, sample_search_query):
+    def test_search_caching(self, sample_search_query, monkeypatch):
         """Search results should be cached."""
-        # First call
+        MusicService._search_cache.clear()
+        calls = {"count": 0}
+
+        class FakeYoutubeDL:
+            def __init__(self, opts):
+                self.opts = opts
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def extract_info(self, query, download=False):
+                calls["count"] += 1
+                return {
+                    "entries": [
+                        {
+                            "title": "Fixture",
+                            "webpage_url": "https://youtube.com/watch?v=fixture",
+                        }
+                    ]
+                }
+
+        monkeypatch.setattr("services.music_service.yt_dlp.YoutubeDL", FakeYoutubeDL)
         results1 = MusicService.search(sample_search_query, limit=1)
-        
-        # Second call (should use cache)
         results2 = MusicService.search(sample_search_query, limit=1)
-        
-        # Results should be the same
+
         assert len(results1) == len(results2)
-        if results1 and results2:
-            assert results1[0].title == results2[0].title
+        assert results1[0].title == results2[0].title
+        assert calls["count"] == 1
 
 
 class TestMusicServiceStream:
     """Tests for MusicService stream methods."""
 
-    @pytest.mark.skip(reason="Requires actual YouTube video")
-    def test_get_stream_source(self, sample_youtube_url):
+    def test_get_stream_source(self, sample_youtube_url, monkeypatch):
         """get_stream_source should return URL and headers."""
+        monkeypatch.setattr(
+            MusicService,
+            "_extract_audio_source",
+            lambda url: ("https://rr1---sn.googlevideo.com/videoplayback", {"User-Agent": "fixture"}),
+        )
         direct_url, headers = MusicService.get_stream_source(sample_youtube_url)
         
         assert isinstance(direct_url, str)
@@ -66,17 +104,35 @@ class TestMusicServiceStream:
         with pytest.raises(StreamResolutionError):
             MusicService.get_stream_source("invalid-url")
 
-    @pytest.mark.skip(reason="Requires actual YouTube video")
-    def test_stream_caching(self, sample_youtube_url):
+    def test_stream_caching(self, sample_youtube_url, monkeypatch):
         """Stream sources should be cached."""
-        # First call
+        MusicService._stream_cache.clear()
+        calls = {"count": 0}
+
+        class FakeYoutubeDL:
+            def __init__(self, opts):
+                self.opts = opts
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def extract_info(self, url, download=False):
+                calls["count"] += 1
+                return {
+                    "url": "https://rr1---sn.googlevideo.com/videoplayback",
+                    "http_headers": {"User-Agent": "fixture"},
+                }
+
+        monkeypatch.setattr("services.music_service.yt_dlp.YoutubeDL", FakeYoutubeDL)
         url1, headers1 = MusicService.get_stream_source(sample_youtube_url)
-        
-        # Second call (should use cache)
         url2, headers2 = MusicService.get_stream_source(sample_youtube_url)
-        
-        # Should return same URL
+
         assert url1 == url2
+        assert headers1 == headers2
+        assert calls["count"] == 1
 
 
 class TestMusicServiceHelpers:
@@ -125,9 +181,20 @@ class TestMetadataService:
     """Tests for MetadataService."""
 
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="Requires actual MusicBrainz API")
-    async def test_autocomplete_returns_suggestions(self):
+    async def test_autocomplete_returns_suggestions(self, monkeypatch):
         """Autocomplete should return suggestions."""
+        async def fake_recordings(query, limit):
+            return [{
+                "id": "rec-1",
+                "title": "Blinding Lights",
+                "length": 200000,
+                "score": 95,
+                "artist-credit": [{"name": "The Weeknd"}],
+                "releases": [{"id": "rel-1", "title": "After Hours", "date": "2020-03-20"}],
+            }]
+
+        monkeypatch.setattr(MetadataService, "_autocomplete_recordings", fake_recordings)
+        MetadataService._autocomplete_cache.clear()
         suggestions = await MetadataService.autocomplete("blinding lights", limit=3)
         
         assert isinstance(suggestions, list)
@@ -145,17 +212,21 @@ class TestMetadataService:
         assert suggestions == []
 
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="Requires actual MusicBrainz API")
-    async def test_autocomplete_caching(self):
+    async def test_autocomplete_caching(self, monkeypatch):
         """Autocomplete results should be cached."""
-        # First call
+        MetadataService._autocomplete_cache.clear()
+        calls = {"count": 0}
+
+        async def fake_recordings(query, limit):
+            calls["count"] += 1
+            return [{"id": "rec-1", "title": "Test", "score": 90}]
+
+        monkeypatch.setattr(MetadataService, "_autocomplete_recordings", fake_recordings)
         results1 = await MetadataService.autocomplete("test", limit=3)
-        
-        # Second call (should use cache)
         results2 = await MetadataService.autocomplete("test", limit=3)
-        
-        # Results should be the same
+
         assert len(results1) == len(results2)
+        assert calls["count"] == 1
 
     def test_normalize(self):
         """_normalize should normalize strings."""
@@ -204,17 +275,69 @@ class TestServiceErrorHandling:
 class TestMusicBrainzMatcher:
     """Tests for MusicBrainz matching."""
 
-    @pytest.mark.skip(reason="Requires implementation")
-    def test_match_track_by_isrc(self):
+    @pytest.mark.asyncio
+    async def test_match_track_by_isrc(self, monkeypatch):
         """Should match tracks by ISRC."""
-        # TODO: Implement when MusicBrainzMatcher.match_track is complete
-        pass
+        MusicBrainzMatcher._match_cache.clear()
+        track = ImportedTrack(
+            provider="spotify",
+            provider_playlist_id="playlist",
+            title="Fixture Song",
+            artist_names=["Fixture Artist"],
+            album="Fixture Album",
+            duration_ms=180000,
+            isrc="USRC17607839",
+        )
 
-    @pytest.mark.skip(reason="Requires implementation")
-    def test_match_track_by_text(self):
+        async def fake_by_isrc(isrc):
+            return [{
+                "id": "rec-1",
+                "title": "Fixture Song",
+                "length": 180000,
+                "score": 80,
+                "artist-credit": [{"name": "Fixture Artist"}],
+                "releases": [{
+                    "id": "rel-1",
+                    "title": "Fixture Album",
+                    "date": "2024-01-01",
+                    "release-group": {"id": "rg-1", "title": "Fixture Album"},
+                }],
+            }]
+
+        monkeypatch.setattr(MusicBrainzMatcher, "_recordings_by_isrc", fake_by_isrc)
+        result = await MusicBrainzMatcher.match_track(track)
+
+        assert result.match_reason == "isrc"
+        assert result.confidence >= 80
+        assert result.recording_mbid == "rec-1"
+
+    @pytest.mark.asyncio
+    async def test_match_track_by_text(self, monkeypatch):
         """Should match tracks by text search."""
-        # TODO: Implement when MusicBrainzMatcher.match_track is complete
-        pass
+        MusicBrainzMatcher._match_cache.clear()
+        track = ImportedTrack(
+            provider="spotify",
+            provider_playlist_id="playlist",
+            title="Fallback Song",
+            artist_names=["Fallback Artist"],
+            duration_ms=181000,
+        )
+
+        async def fake_by_text(track):
+            return [{
+                "id": "rec-2",
+                "title": "Fallback Song",
+                "length": 181000,
+                "score": 75,
+                "artist-credit": [{"name": "Fallback Artist"}],
+                "releases": [{"id": "rel-2", "title": "Fallback Release"}],
+            }]
+
+        monkeypatch.setattr(MusicBrainzMatcher, "_recordings_by_text", fake_by_text)
+        result = await MusicBrainzMatcher.match_track(track)
+
+        assert result.match_reason == "artist_title_duration"
+        assert result.confidence >= 75
 
     def test_normalize_track_title(self):
         """Matcher should normalize track titles."""
@@ -222,3 +345,48 @@ class TestMusicBrainzMatcher:
         
         assert MusicBrainzMatcher._normalize("Test Title") == "test title"
         assert MusicBrainzMatcher._normalize("Test  Title") == "test title"
+
+
+class TestLyricsParsing:
+    """Tests for LRCLIB lyric parsing."""
+
+    def test_parse_synced_lyrics(self):
+        lines = LyricsService._parse_synced_lyrics("[00:01.50]First\n[00:03.00]Second")
+
+        assert [line.text for line in lines] == ["First", "Second"]
+        assert lines[0].start_time_ms == 1500
+        assert lines[0].end_time_ms == 3000
+
+    def test_parse_plain_lyrics(self):
+        lines = LyricsService._parse_plain_lyrics(" First \n\nSecond")
+
+        assert [line.text for line in lines] == ["First", "Second"]
+        assert lines[0].start_time_ms is None
+
+    def test_parse_malformed_synced_lyrics(self):
+        assert LyricsService._parse_synced_lyrics("no timestamp\n[bad]line") == []
+
+
+class TestFocusScoring:
+    """Tests for focus audio feature scoring."""
+
+    def test_focus_feature_match_and_score(self):
+        features = AudioFeatures(
+            {
+                "id": "track",
+                "tempo": 90,
+                "energy": 0.5,
+                "valence": 0.5,
+                "instrumentalness": 0.8,
+                "speechiness": 0.01,
+                "liveness": 0.01,
+            }
+        )
+
+        assert features.matches_profile(DEFAULT_PROFILE)
+        assert features.focus_score(DEFAULT_PROFILE) > 75
+
+    def test_focus_feature_rejects_out_of_range_bpm(self):
+        features = AudioFeatures({"tempo": 180, "instrumentalness": 1.0})
+
+        assert not features.matches_profile(DEFAULT_PROFILE)
