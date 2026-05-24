@@ -12,6 +12,7 @@ import certifi
 import httpx
 
 from models import AutocompleteSuggestion
+from services.text_match import combined_score, fuzzy_score, normalize
 
 
 class MetadataServiceError(Exception):
@@ -215,40 +216,29 @@ class MetadataService:
         return " OR ".join(clauses)
 
     @staticmethod
-    def _query_confidence_bonus(recording: dict, query: str | None) -> int:
-        query_tokens = MetadataService._tokens(query)
-        if not query_tokens:
-            return 0
-
-        title_tokens = MetadataService._tokens(recording.get("title"))
-        artist_tokens = MetadataService._tokens(MetadataService._artist_credit_name(recording.get("artist-credit")))
-        matched_title = len(query_tokens & title_tokens)
-        matched_artist = len(query_tokens & artist_tokens)
-
-        bonus = matched_title * 8 + matched_artist * 6
-        if title_tokens and title_tokens <= query_tokens:
-            bonus += 12
-        if artist_tokens and artist_tokens <= query_tokens:
-            bonus += 10
-        if not matched_title:
-            bonus -= 18
-        return bonus
-
-    @staticmethod
     def _confidence(recording: dict, release: dict, query: str | None = None) -> int:
-        score = int(recording.get("score") or 0)
+        # Blend MusicBrainz Lucene score (0-100) with a rapidfuzz match between
+        # the normalized query and "artist title". Lucene catches popularity /
+        # field-match strength; fuzzy catches the actual identity match the
+        # user typed (handles "(Remastered ...)" etc. via normalization).
+        lucene = int(recording.get("score") or 0)
+        title = recording.get("title")
+        artist = MetadataService._artist_credit_name(recording.get("artist-credit"))
+
+        fuzzy = combined_score(query or "", title, artist) if query else 0.0
+        # 60% lucene, 40% fuzzy — lucene anchors popularity ordering, fuzzy
+        # promotes identity matches above mere keyword overlap.
+        score = 0.6 * lucene + 0.4 * fuzzy
+
         if release.get("title"):
-            score += 5
-        else:
-            score -= 10
-        if MetadataService._artist_credit_name(recording.get("artist-credit")):
-            score += 5
-        if recording.get("length"):
             score += 3
         else:
-            score -= 5
-        score += MetadataService._query_confidence_bonus(recording, query)
-        return max(0, min(100, score))
+            score -= 6
+        if not artist:
+            score -= 8
+        if not recording.get("length"):
+            score -= 3
+        return max(0, min(100, int(round(score))))
 
     @staticmethod
     def _suggestion_from_recording(recording: dict, query: str | None = None) -> AutocompleteSuggestion | None:
@@ -261,11 +251,11 @@ class MetadataService:
         release_group = release.get("release-group") or {}
         album = release_group.get("title") or release.get("title")
         release_year = MetadataService._release_year(release.get("date"))
-        query = f"{artist} - {title}" if artist else title
+        display_query = f"{artist} - {title}" if artist else title
 
         return AutocompleteSuggestion(
             title=title,
-            query=query,
+            query=display_query,
             artist=artist,
             album=album,
             thumbnail=MetadataService._cover_art_url(release),
@@ -279,15 +269,13 @@ class MetadataService:
         )
 
     @staticmethod
-    def _suggestion_rank(suggestion: AutocompleteSuggestion, query: str) -> tuple[int, int, int, int]:
-        query_tokens = MetadataService._tokens(query)
-        title_tokens = MetadataService._tokens(suggestion.title)
-        artist_tokens = MetadataService._tokens(suggestion.artist)
-        artist_matches = len(query_tokens & artist_tokens)
-        title_matches = len(query_tokens & title_tokens)
-        title_complete = int(bool(title_tokens) and title_tokens <= query_tokens)
-        artist_complete = int(bool(artist_tokens) and artist_tokens <= query_tokens)
-        return artist_matches + artist_complete, title_matches + title_complete, suggestion.confidence, -len(title_tokens)
+    def _suggestion_rank(suggestion: AutocompleteSuggestion, query: str) -> tuple[float, int, int]:
+        # Primary: fuzzy combined match of "artist title" against query.
+        # Tie-breakers: confidence, then prefer shorter normalized titles
+        # (less likely to be a long live/edit variant).
+        combined = combined_score(query, suggestion.title, suggestion.artist)
+        norm_title_len = len(normalize(suggestion.title))
+        return (combined, suggestion.confidence, -norm_title_len)
 
     @staticmethod
     def _index_authors(suggestions: list[AutocompleteSuggestion]) -> None:
@@ -349,47 +337,197 @@ class MetadataService:
         )
 
     @staticmethod
-    async def autocomplete(query: str, limit: int = 6) -> list[AutocompleteSuggestion]:
-        normalized = MetadataService._normalize(query)
-        if len(normalized) < 2:
-            return []
+    def _suggestion_from_spotify_track(item: dict, query: str | None = None) -> AutocompleteSuggestion | None:
+        title = item.get("name")
+        if not title:
+            return None
 
-        cached = MetadataService._cache_get(normalized)
-        if cached is not None:
-            return cached[:limit]
+        artists = [a.get("name") for a in (item.get("artists") or []) if a.get("name")]
+        artist = ", ".join(artists) if artists else None
+        album_obj = item.get("album") or {}
+        images = album_obj.get("images") or []
+        # Spotify ships 640/300/64 — pick the middle if present.
+        thumb = None
+        if images:
+            thumb = next(
+                (img.get("url") for img in images if 200 <= (img.get("width") or 0) <= 400),
+                images[0].get("url"),
+            )
 
+        release_year = MetadataService._release_year(album_obj.get("release_date"))
+        duration = int(round((item.get("duration_ms") or 0) / 1000))
+        display_query = f"{artist} - {title}" if artist else title
+
+        # Spotify popularity is 0-100; treat as a confidence anchor and blend
+        # with fuzzy identity match against the user's query.
+        popularity = int(item.get("popularity") or 0)
+        fuzzy = combined_score(query or "", title, artist) if query else 0.0
+        confidence = max(0, min(100, int(round(0.55 * popularity + 0.45 * fuzzy))))
+
+        return AutocompleteSuggestion(
+            title=title,
+            query=display_query,
+            artist=artist,
+            album=album_obj.get("name"),
+            thumbnail=thumb,
+            artwork_source="spotify" if thumb else None,
+            artwork_confidence="album" if thumb else None,
+            release_year=release_year,
+            duration=duration,
+            confidence=confidence,
+            source="spotify",
+        )
+
+    @staticmethod
+    def _fuse_candidates(
+        primary: list[AutocompleteSuggestion],
+        secondary: list[AutocompleteSuggestion],
+    ) -> list[AutocompleteSuggestion]:
+        """Merge two candidate lists keyed on normalized (artist, title).
+        When a candidate appears in both sources, keep the richer record
+        (prefer Spotify metadata + artwork) and bump confidence."""
+        def key(s: AutocompleteSuggestion) -> tuple[str, str]:
+            return (normalize(s.artist), normalize(s.title))
+
+        index: dict[tuple[str, str], AutocompleteSuggestion] = {key(s): s for s in primary}
+
+        for s in secondary:
+            k = key(s)
+            existing = index.get(k)
+            if existing is None:
+                index[k] = s
+                continue
+
+            # Same track surfaced from two sources — high confidence signal.
+            # Prefer Spotify's record for thumbnail/album/year if available,
+            # but keep MusicBrainz MBIDs for downstream lookups.
+            if s.source == "spotify" and existing.source != "spotify":
+                merged_source = "spotify+musicbrainz"
+                base = s
+                back = existing
+            elif existing.source == "spotify" and s.source != "spotify":
+                merged_source = "spotify+musicbrainz"
+                base = existing
+                back = s
+            else:
+                merged_source = existing.source
+                base = existing
+                back = s
+
+            boosted = max(existing.confidence, s.confidence) + 12
+            index[k] = base.model_copy(
+                update={
+                    "confidence": min(100, boosted),
+                    "source": merged_source,
+                    "recording_mbid": base.recording_mbid or back.recording_mbid,
+                    "release_mbid": base.release_mbid or back.release_mbid,
+                    "duration": base.duration or back.duration,
+                    "release_year": base.release_year or back.release_year,
+                    "album": base.album or back.album,
+                    "thumbnail": base.thumbnail or back.thumbnail,
+                    "artwork_source": base.artwork_source or back.artwork_source,
+                    "artwork_confidence": base.artwork_confidence or back.artwork_confidence,
+                }
+            )
+
+        return list(index.values())
+
+    @staticmethod
+    async def _spotify_candidates(token: str, query: str, limit: int) -> list[AutocompleteSuggestion]:
         try:
-            recordings = await MetadataService._autocomplete_recordings(query, max(limit, 8))
-        except Exception as exc:
-            author_matches = MetadataService._author_index_matches(query, limit)
-            if author_matches:
-                return author_matches
-            raise MetadataServiceError(f"Metadata autocomplete failed for '{query}'") from exc
-
+            items = await MetadataService._spotify_search(token, query, limit)
+        except Exception:
+            return []
         suggestions = []
-        seen: set[str] = set()
-        for recording in recordings:
-            suggestion = MetadataService._suggestion_from_recording(recording, query)
+        seen: set[tuple[str, str]] = set()
+        for item in items:
+            suggestion = MetadataService._suggestion_from_spotify_track(item, query)
             if not suggestion:
                 continue
-            key = MetadataService._normalize(suggestion.query)
+            key = (normalize(suggestion.artist), normalize(suggestion.title))
             if key in seen:
                 continue
             seen.add(key)
             suggestions.append(suggestion)
+        return suggestions
 
-        # Index authors before merging; no pre-sort needed since merged list is sorted below.
-        MetadataService._index_authors(suggestions)
+    @staticmethod
+    async def _spotify_search(token: str, query: str, limit: int) -> list[dict]:
+        # Imported lazily to avoid a circular import: spotify_import_service
+        # depends on the MusicBrainz matcher which lives alongside this module.
+        from services.spotify_import_service import SpotifyImportService
+
+        return await SpotifyImportService.search_tracks(token, query, limit)
+
+    @staticmethod
+    async def autocomplete(
+        query: str,
+        limit: int = 6,
+        spotify_token: str | None = None,
+    ) -> list[AutocompleteSuggestion]:
+        normalized = MetadataService._normalize(query)
+        if len(normalized) < 2:
+            return []
+
+        # Cache key encodes whether Spotify was queried so a connected user
+        # doesn't get a stale MB-only result.
+        cache_key = f"{normalized}|spotify" if spotify_token else normalized
+        cached = MetadataService._cache_get(cache_key)
+        if cached is not None:
+            return cached[:limit]
+
+        oversample = max(limit, 8)
+        mb_task = MetadataService._autocomplete_recordings(query, oversample)
+        if spotify_token:
+            spotify_task = MetadataService._spotify_candidates(spotify_token, query, oversample)
+            mb_result, spotify_suggestions = await asyncio.gather(
+                mb_task, spotify_task, return_exceptions=True
+            )
+        else:
+            mb_result = await mb_task
+            spotify_suggestions = []
+
+        if isinstance(mb_result, Exception):
+            author_matches = MetadataService._author_index_matches(query, limit)
+            if isinstance(spotify_suggestions, list) and spotify_suggestions:
+                # MusicBrainz failed but Spotify worked — still useful.
+                spotify_suggestions.sort(
+                    key=lambda item: MetadataService._suggestion_rank(item, query),
+                    reverse=True,
+                )
+                return MetadataService._cache_set(cache_key, spotify_suggestions)[:limit]
+            if author_matches:
+                return author_matches
+            raise MetadataServiceError(f"Metadata autocomplete failed for '{query}'") from mb_result
+
+        recordings = mb_result if isinstance(mb_result, list) else []
+        mb_suggestions: list[AutocompleteSuggestion] = []
+        mb_seen: set[tuple[str, str]] = set()
+        for recording in recordings:
+            suggestion = MetadataService._suggestion_from_recording(recording, query)
+            if not suggestion:
+                continue
+            key = (normalize(suggestion.artist), normalize(suggestion.title))
+            if key in mb_seen:
+                continue
+            mb_seen.add(key)
+            mb_suggestions.append(suggestion)
+
+        spotify_list = spotify_suggestions if isinstance(spotify_suggestions, list) else []
+        fused = MetadataService._fuse_candidates(mb_suggestions, spotify_list)
+
+        # Index authors from MB suggestions only (Spotify lacks MBIDs).
+        MetadataService._index_authors(mb_suggestions)
         indexed_matches = MetadataService._author_index_matches(query, limit)
 
         merged = []
-        merged_seen: set[str] = set()
-        for suggestion in [*indexed_matches, *suggestions]:
-            key = MetadataService._normalize(suggestion.query)
+        merged_seen: set[tuple[str, str]] = set()
+        for suggestion in [*fused, *indexed_matches]:
+            key = (normalize(suggestion.artist), normalize(suggestion.title))
             if key in merged_seen:
                 continue
             merged_seen.add(key)
             merged.append(suggestion)
         merged.sort(key=lambda item: MetadataService._suggestion_rank(item, query), reverse=True)
 
-        return MetadataService._cache_set(normalized, merged)[:limit]
+        return MetadataService._cache_set(cache_key, merged)[:limit]

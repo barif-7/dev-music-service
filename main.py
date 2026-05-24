@@ -186,10 +186,30 @@ def search_song(
     request: Request,
     query: str = Query(..., min_length=1, max_length=500, description="Resolved song query"),
     limit: int = Query(1, ge=1, le=5, description="Number of YouTube candidates to resolve"),
+    target_duration: Optional[int] = Query(
+        default=None, ge=1, le=7200, description="Expected duration in seconds; candidates outside ±5s are penalised"
+    ),
+    expected_artist: Optional[str] = Query(default=None, max_length=200),
+    expected_title: Optional[str] = Query(default=None, max_length=300),
 ):
     try:
-        logger.info("search_requested", query_length=len(query), limit=limit)
-        results = [result.model_dump() for result in MusicService.search(query, limit=limit)]
+        logger.info(
+            "search_requested",
+            query_length=len(query),
+            limit=limit,
+            target_duration=target_duration,
+            has_expected=bool(expected_title or expected_artist),
+        )
+        results = [
+            result.model_dump()
+            for result in MusicService.search(
+                query,
+                limit=limit,
+                target_duration=target_duration,
+                expected_artist=expected_artist,
+                expected_title=expected_title,
+            )
+        ]
         return JSONResponse(content=results, headers={"Cache-Control": "public, max-age=300"})
     except Exception as exc:
         logger.error("search_failed", query_length=len(query), error=str(exc))
@@ -205,8 +225,16 @@ async def autocomplete_song(
     fields: Optional[str] = Query(None, description="Comma-separated fields to include (omit for all)"),
 ):
     try:
-        logger.info("autocomplete_requested", query_length=len(query), limit=limit)
-        suggestions = await MetadataService.autocomplete(query, limit=limit)
+        spotify_token = request.cookies.get(SpotifyImportService._TOKEN_COOKIE)
+        logger.info(
+            "autocomplete_requested",
+            query_length=len(query),
+            limit=limit,
+            spotify=bool(spotify_token),
+        )
+        suggestions = await MetadataService.autocomplete(
+            query, limit=limit, spotify_token=spotify_token
+        )
         if fields:
             field_set = set(fields.split(","))
             data = [{k: v for k, v in s.model_dump().items() if k in field_set} for s in suggestions]

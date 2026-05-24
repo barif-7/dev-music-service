@@ -593,6 +593,157 @@ INDEX_HTML = """<!doctype html>
   }
   .mcpCallout button:hover{opacity:1}
   .mcpDrawer[data-trans="1"] .mcpBtn{opacity:.35;pointer-events:none}
+
+  /* ── Focus drawer (Spotify-driven focus filter) ── */
+  .focusScrim{
+    position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.42);
+    backdrop-filter:blur(2px);opacity:0;pointer-events:none;
+    transition:opacity .25s ease;
+  }
+  .focusScrim.open{opacity:1;pointer-events:auto}
+  .focusDrawer{
+    position:fixed;top:0;left:0;bottom:0;width:var(--fcs-w,440px);z-index:90;
+    background:var(--bg-elev);border-right:1px solid var(--border-strong);
+    display:flex;flex-direction:column;transform:translateX(-110%);
+    transition:transform .35s cubic-bezier(.5,.1,.2,1);
+    box-shadow:30px 0 80px rgba(0,0,0,.5);
+  }
+  .focusDrawer.open{transform:translateX(0)}
+  .focusHead{
+    display:flex;align-items:flex-start;justify-content:space-between;
+    padding:18px 18px 14px;border-bottom:1px solid var(--border);
+  }
+  .focusHead .crumb{
+    font-family:var(--mono);font-size:9.5px;letter-spacing:.16em;
+    color:var(--ink-faint);text-transform:uppercase;
+  }
+  .focusHead h2{
+    margin:6px 0 0;font-family:var(--serif);font-weight:400;
+    font-size:22px;letter-spacing:-.01em;color:var(--ink);
+  }
+  .focusHead h2 em{font-style:italic;color:var(--accent);font-weight:400}
+  .focusHead .sub{margin-top:6px;font-family:var(--mono);font-size:10.5px;color:var(--ink-faint);display:flex;align-items:center;gap:6px}
+  .focusHead .sub i.dot{width:6px;height:6px;border-radius:50%;background:var(--ink-faint);box-shadow:none}
+  .focusHead .sub.on i.dot{background:var(--accent);box-shadow:0 0 8px var(--accent)}
+  .focusClose{
+    width:26px;height:26px;border-radius:4px;border:1px solid var(--border);
+    background:transparent;color:var(--ink-dim);cursor:pointer;
+    display:grid;place-items:center;font-family:var(--mono);font-size:14px;
+  }
+  .focusClose:hover{background:var(--bg-elev-2);color:var(--ink)}
+  .focusBody{flex:1;overflow-y:auto;padding:0}
+  .focusBody::-webkit-scrollbar{width:6px}
+  .focusBody::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:3px}
+  .focusSection{padding:16px 18px;border-bottom:1px solid var(--border)}
+  .focusSection:last-child{border-bottom:0}
+  .focusSection .h{
+    font-family:var(--mono);font-size:9.5px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--ink-faint);margin-bottom:12px;
+  }
+  .fcsField{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+  .fcsField:last-child{margin-bottom:0}
+  .fcsField label{
+    font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--ink-faint);
+  }
+  .fcsBpm{display:flex;align-items:center;gap:8px}
+  .fcsInput{
+    width:64px;padding:6px 8px;border-radius:4px;background:var(--bg-elev-2);
+    border:1px solid var(--border);color:var(--ink);font-family:var(--mono);
+    font-size:12.5px;text-align:center;
+  }
+  .fcsInput:focus{outline:none;border-color:var(--accent)}
+  .fcsBpm .sep{color:var(--ink-faint);font-family:var(--mono);font-size:12px}
+  .fcsRange{display:flex;flex-direction:column;gap:4px}
+  .fcsRange input[type=range]{accent-color:var(--accent);width:100%}
+  .fcsRangeVal{font-family:var(--mono);font-size:10.5px;color:var(--ink-dim);font-variant-numeric:tabular-nums}
+  .fcsActions{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .fcsBtn{
+    font-family:var(--sans);font-weight:500;font-size:12.5px;
+    padding:7px 12px;border-radius:4px;cursor:pointer;
+    border:1px solid var(--border-strong);background:transparent;color:var(--ink);
+    transition:all .15s;
+  }
+  .fcsBtn:hover:not(:disabled){background:var(--bg-elev-2)}
+  .fcsBtn:disabled{opacity:.35;cursor:not-allowed}
+  .fcsBtn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+  .fcsBtn.primary:hover:not(:disabled){background:#e1ff55}
+  .fcsInsight{
+    padding:10px 12px;border-radius:4px;
+    border:1px solid var(--border);background:rgba(215,255,58,.04);
+    font-family:var(--mono);font-size:11px;color:var(--ink-dim);
+    line-height:1.55;display:none;
+  }
+  .fcsInsight.on{display:block}
+  .fcsInsight b{color:var(--ink);font-weight:500}
+  .fcsStats{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px}
+  .fcsStat{
+    padding:9px 11px;border:1px solid var(--border);border-radius:4px;
+    background:var(--bg-elev-2);
+  }
+  .fcsStat span{
+    display:block;font-family:var(--mono);font-size:8.5px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--ink-faint);
+  }
+  .fcsStat b{
+    display:block;font-family:var(--serif);font-size:18px;color:var(--ink);
+    margin-top:4px;font-variant-numeric:tabular-nums;font-weight:500;
+  }
+  .fcsTabs{display:flex;gap:2px;margin-bottom:10px;border-bottom:1px solid var(--border)}
+  .fcsTabs button{
+    padding:6px 10px;font-family:var(--mono);font-size:10px;letter-spacing:.08em;
+    color:var(--ink-faint);text-transform:uppercase;border-bottom:1px solid transparent;
+    background:transparent;cursor:pointer;
+  }
+  .fcsTabs button.on{color:var(--ink);border-bottom-color:var(--accent)}
+  .fcsTrackHead,.fcsTrack{
+    display:grid;grid-template-columns:1fr 40px 40px 56px 44px;gap:8px;
+    align-items:center;padding:8px 0;border-bottom:1px solid var(--border);
+  }
+  .fcsTrackHead{
+    font-family:var(--mono);font-size:9px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--ink-faint);
+  }
+  .fcsTrack .info .t{color:var(--ink);font-size:12px;line-height:1.25}
+  .fcsTrack .info .a{color:var(--ink-faint);font-size:10.5px;font-family:var(--mono);margin-top:1px}
+  .fcsTrack .pill{
+    padding:2px 6px;border-radius:3px;background:var(--bg-elev-2);
+    border:1px solid var(--border);font-family:var(--mono);font-size:10px;
+    color:var(--accent);text-align:center;
+  }
+  .fcsTrack .feat{font-family:var(--mono);font-size:10.5px;color:var(--ink-dim);text-align:center}
+  .fcsTrack .score{font-family:var(--mono);font-size:10.5px;color:var(--ink);text-align:center}
+  .fcsBar{height:3px;background:var(--border);border-radius:2px;overflow:hidden;margin-top:4px}
+  .fcsBar i{display:block;height:100%;background:var(--accent);border-radius:2px}
+  .fcsTrack .play{
+    font-family:var(--mono);font-size:10px;padding:4px 8px;border-radius:3px;
+    border:1px solid var(--border-strong);color:var(--ink);background:transparent;
+    cursor:pointer;
+  }
+  .fcsTrack .play:hover{background:var(--bg-elev-2)}
+  .fcsEmpty{
+    padding:14px;text-align:center;font-family:var(--mono);font-size:11px;
+    color:var(--ink-faint);border:1px dashed var(--border);border-radius:4px;
+  }
+  .fcsRejToggle{
+    margin-top:10px;font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;
+    color:var(--ink-dim);background:transparent;border:0;cursor:pointer;padding:4px 0;
+  }
+  .fcsRejToggle:hover{color:var(--ink)}
+  .fcsRejList{display:none;margin-top:6px}
+  .fcsRejList.on{display:block}
+  .fcsRejList .row{
+    display:grid;grid-template-columns:1fr 40px auto;gap:8px;align-items:center;
+    padding:6px 0;border-bottom:1px solid var(--border);
+  }
+  .fcsRejList .row .t{color:var(--ink-dim);font-size:11.5px}
+  .fcsRejList .row .a{color:var(--ink-faint);font-size:10px;font-family:var(--mono)}
+  .fcsRejList .row .pill{
+    padding:2px 6px;border-radius:3px;background:transparent;
+    border:1px solid var(--border);font-family:var(--mono);font-size:10px;
+    color:var(--ink-faint);text-align:center;
+  }
+  .fcsRejList .row .why{font-family:var(--mono);font-size:9.5px;color:var(--ink-faint)}
 </style>
 </head>
 <body>
@@ -605,7 +756,7 @@ INDEX_HTML = """<!doctype html>
       <div class="brand-tag">dev-music-service · v0.4 · browser-first</div>
     </div>
     <nav class="nav">
-      <a href="#" class="on">Focus</a>
+      <a href="#" class="on" id="focusOpen">Focus</a>
       <a href="/docs">API</a>
       <a href="/api/import/spotify/start">Spotify</a>
     </nav>
@@ -805,6 +956,88 @@ INDEX_HTML = """<!doctype html>
 
 <div class="mcpScrim" id="mcpScrim"></div>
 <aside class="mcpDrawer" id="mcpDrawer"></aside>
+
+<div class="focusScrim" id="focusScrim"></div>
+<aside class="focusDrawer" id="focusDrawer" aria-hidden="true">
+  <div class="focusHead">
+    <div>
+      <div class="crumb">dev-music-service · spotify</div>
+      <h2>Your <em>focus</em> filter</h2>
+      <div class="sub" id="focusSpotifyStatus"><i class="dot"></i><span>Checking Spotify…</span></div>
+    </div>
+    <button class="focusClose" data-act="close" aria-label="Close">×</button>
+  </div>
+  <div class="focusBody">
+    <div class="focusSection">
+      <div class="h">Profile</div>
+      <div class="fcsField">
+        <label>BPM range</label>
+        <div class="fcsBpm">
+          <input class="fcsInput" type="number" id="bpmMin" value="60" min="40" max="220" />
+          <span class="sep">—</span>
+          <input class="fcsInput" type="number" id="bpmMax" value="120" min="40" max="220" />
+          <span class="sep">bpm</span>
+        </div>
+      </div>
+      <div class="fcsField">
+        <label>Instrumentalness (min)</label>
+        <div class="fcsRange">
+          <input type="range" id="instrMin" min="0" max="1" step="0.05" value="0.6" />
+          <span class="fcsRangeVal"><span id="instrVal">0.60</span> / 1.0</span>
+        </div>
+      </div>
+      <div class="fcsField">
+        <label>Energy range</label>
+        <div class="fcsRange">
+          <input type="range" id="energyMin" min="0" max="1" step="0.05" value="0" />
+          <input type="range" id="energyMax" min="0" max="1" step="0.05" value="1" />
+          <span class="fcsRangeVal"><span id="energyVal">0.00 – 1.00</span></span>
+        </div>
+      </div>
+      <div class="fcsActions">
+        <button class="fcsBtn primary" data-act="save">Save profile</button>
+        <button class="fcsBtn" data-act="reset">Reset</button>
+        <button class="fcsBtn" id="analyseTopBtn" data-act="analyse" disabled>Analyse top tracks</button>
+      </div>
+    </div>
+
+    <div class="focusSection">
+      <div class="h">Insight</div>
+      <div class="fcsInsight" id="bpmInsight">No analysis yet.</div>
+    </div>
+
+    <div class="focusSection">
+      <div class="h"><span>Top tracks</span></div>
+      <div class="fcsTabs" id="timeTabs" style="display:none;">
+        <button data-range="short_term" class="">4w</button>
+        <button data-range="medium_term" class="on">6mo</button>
+        <button data-range="long_term" class="">All</button>
+      </div>
+      <div class="fcsStats" id="focusStats" style="display:none;">
+        <div class="fcsStat"><span>Focus tracks</span><b id="statFocus">—</b></div>
+        <div class="fcsStat"><span>Analysed</span><b id="statTotal">—</b></div>
+        <div class="fcsStat"><span>Avg BPM</span><b id="statAvgBpm">—</b></div>
+        <div class="fcsStat"><span>Top score</span><b id="statTopScore">—</b></div>
+      </div>
+      <div class="fcsTrackHead" id="focusTrackHead" style="display:none;">
+        <div>Track</div>
+        <div style="text-align:center;">BPM</div>
+        <div style="text-align:center;">Instr</div>
+        <div style="text-align:center;">Score</div>
+        <div></div>
+      </div>
+      <div id="focusTracks"></div>
+      <div class="fcsEmpty" id="focusEmpty">Connect Spotify and click "Analyse top tracks" to see which of your tracks fit your focus profile.</div>
+      <div id="rejectedSection" style="display:none;">
+        <button class="fcsRejToggle" data-act="toggle-rejected">
+          <span id="rejectedArrow">▸</span>
+          <span id="rejectedLabel">Show filtered-out tracks</span>
+        </button>
+        <div class="fcsRejList" id="rejectedList"></div>
+      </div>
+    </div>
+  </div>
+</aside>
 
 <script id="shader-vert" type="x-shader/x-vertex">
 attribute vec2 a_pos;
@@ -1355,46 +1588,103 @@ function setActiveShader(i){
 const searchInput = document.getElementById('searchInput');
 const suggBox = document.getElementById('suggestions');
 let acTimer = null;
+let acInFlight = null;  // AbortController for the latest pending request
+
+// Small LRU keyed on lowercased query. Hit returns instantly without fetch.
+const AC_CACHE_MAX = 50;
+const acCache = new Map();
+function acCacheGet(key){
+  if(!acCache.has(key)) return null;
+  const v = acCache.get(key);
+  // Refresh recency
+  acCache.delete(key); acCache.set(key, v);
+  return v;
+}
+function acCacheSet(key, value){
+  if(acCache.has(key)) acCache.delete(key);
+  acCache.set(key, value);
+  if(acCache.size > AC_CACHE_MAX){
+    const oldest = acCache.keys().next().value;
+    acCache.delete(oldest);
+  }
+}
+
+function srcShortFor(s){
+  const src = s.source || s.artwork_source || '';
+  if(src.includes('spotify') && src.includes('musicbrainz')) return '★';
+  if(src.includes('spotify')) return 'SP';
+  if(src.includes('musicbrainz') || s.artwork_source==='cover_art_archive') return 'MB';
+  if(src === 'youtube' || s.artwork_source==='youtube') return 'YT';
+  return '✷';
+}
+
+function renderSuggestions(pool){
+  suggBox.innerHTML = '';
+  pool.forEach((s,i)=>{
+    const conf = Math.min(99,Math.max(20,s.confidence||50));
+    const tier = conf>=85?'high':conf>=60?'mid':'low';
+    const srcShort = srcShortFor(s);
+    const row = document.createElement('div');
+    row.className = 'sugg'+(i===0?' active':'');
+    const thumbHtml = s.thumbnail
+      ? `<img src="${s.thumbnail}" alt="" loading="lazy">`
+      : `<div class="placeholder">♪</div>`;
+    row.innerHTML = `
+      <div class="sugg-art">${thumbHtml}<div class="src">${srcShort}</div></div>
+      <div>
+        <div class="name">${s.title||''}</div>
+        <div class="meta">
+          <span>${s.artist||''}</span>
+          <span class="sep">·</span>
+          <span>${s.album||'—'}</span>
+          <span class="sep">·</span>
+          <span class="yr">${s.release_year||'—'}</span>
+        </div>
+      </div>
+      <div class="score ${tier}"><span class="pct">${conf}%</span><span class="lbl">match</span></div>`;
+    suggBox.appendChild(row);
+    row.addEventListener('click', ()=>{ closeSuggestions(); searchInput.value=''; loadTrack(s); });
+  });
+  if(pool.length>0) suggBox.classList.add('open');
+  else closeSuggestions();
+}
 
 async function openSuggestions(query){
   if(!query || !query.trim()){ closeSuggestions(); return; }
+  const key = query.trim().toLowerCase();
+
+  // Cache hit → render immediately, no fetch.
+  const cached = acCacheGet(key);
+  if(cached){ renderSuggestions(cached); return; }
+
   clearTimeout(acTimer);
+  // Cancel any in-flight request — last keystroke wins.
+  if(acInFlight){ acInFlight.abort(); acInFlight = null; }
+
   acTimer = setTimeout(async ()=>{
+    const ctrl = new AbortController();
+    acInFlight = ctrl;
     try {
       const t0 = performance.now();
-      const r = await fetch(`/api/autocomplete?query=${encodeURIComponent(query.trim())}&limit=6`);
+      const r = await fetch(
+        `/api/autocomplete?query=${encodeURIComponent(key)}&limit=6`,
+        { signal: ctrl.signal }
+      );
+      // Ignore stale responses (controller changed before reply landed).
+      if(acInFlight !== ctrl) return;
       const latMs = Math.round(performance.now()-t0);
       document.getElementById('latAc').textContent = latMs+'ms';
       if(!r.ok) return;
       const pool = await r.json();
-      suggBox.innerHTML = '';
-      pool.forEach((s,i)=>{
-        const conf = Math.min(99,Math.max(20,s.confidence||50));
-        const tier = conf>=85?'high':conf>=60?'mid':'low';
-        const srcShort = s.artwork_source==='musicbrainz'?'MB':s.artwork_source==='youtube'?'YT':'✷';
-        const row = document.createElement('div');
-        row.className = 'sugg'+(i===0?' active':'');
-        const thumbHtml = s.thumbnail
-          ? `<img src="${s.thumbnail}" alt="" loading="lazy">`
-          : `<div class="placeholder">♪</div>`;
-        row.innerHTML = `
-          <div class="sugg-art">${thumbHtml}<div class="src">${srcShort}</div></div>
-          <div>
-            <div class="name">${s.title||''}</div>
-            <div class="meta">
-              <span>${s.artist||''}</span>
-              <span class="sep">·</span>
-              <span>${s.album||'—'}</span>
-              <span class="sep">·</span>
-              <span class="yr">${s.release_year||'—'}</span>
-            </div>
-          </div>
-          <div class="score ${tier}"><span class="pct">${conf}%</span><span class="lbl">match</span></div>`;
-        suggBox.appendChild(row);
-        row.addEventListener('click', ()=>{ closeSuggestions(); searchInput.value=''; loadTrack(s); });
-      });
-      if(pool.length>0) suggBox.classList.add('open');
-    } catch(e){ console.warn('autocomplete', e); }
+      acCacheSet(key, pool);
+      // Double-check freshness: only render if user hasn't moved on.
+      if(searchInput.value.trim().toLowerCase() !== key) return;
+      renderSuggestions(pool);
+    } catch(e){
+      if(e.name !== 'AbortError') console.warn('autocomplete', e);
+    } finally {
+      if(acInFlight === ctrl) acInFlight = null;
+    }
   }, 120);
 }
 function closeSuggestions(){ suggBox.classList.remove('open'); }
@@ -1415,7 +1705,13 @@ async function loadTrack(s){
   const query = [s.title, s.artist].filter(Boolean).join(' ');
   try {
     const t0 = performance.now();
-    const r = await fetch(`/api/search?query=${encodeURIComponent(query)}&limit=1`);
+    // Pass identity hints so the backend can rerank by duration coherence
+    // and prefer official/Topic channels over covers and live takes.
+    const params = new URLSearchParams({ query, limit: '1' });
+    if(s.duration) params.set('target_duration', String(s.duration));
+    if(s.title)    params.set('expected_title', s.title);
+    if(s.artist)   params.set('expected_artist', s.artist);
+    const r = await fetch(`/api/search?${params.toString()}`);
     document.getElementById('latSr').textContent = Math.round(performance.now()-t0)+'ms';
     if(!r.ok) return;
     const results = await r.json();
@@ -1961,6 +2257,252 @@ document.addEventListener('keydown', e=>{
     mcpDrawerEl.classList.remove('open'); mcpScrim.classList.remove('open');
   }
 });
+
+/* ====== Focus drawer (Spotify-driven focus filter) ====== */
+(function initFocusDrawer(){
+  const drawer = document.getElementById('focusDrawer');
+  const scrim  = document.getElementById('focusScrim');
+  const openBtn = document.getElementById('focusOpen');
+  const instrInput = document.getElementById('instrMin');
+  const eMin = document.getElementById('energyMin');
+  const eMax = document.getElementById('energyMax');
+  const analyseBtn = document.getElementById('analyseTopBtn');
+  const statusEl = document.getElementById('focusSpotifyStatus');
+  const statusLbl = statusEl.querySelector('span');
+  let currentTimeRange = 'medium_term';
+  let currentFocusData = null;
+  let loadedOnce = false;
+
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]); }
+  function escAttr(s){ return esc(s).replace(/`/g,'&#96;'); }
+
+  function open(){
+    drawer.classList.add('open'); scrim.classList.add('open');
+    drawer.setAttribute('aria-hidden','false');
+    if(!loadedOnce){ loadedOnce = true; loadProfile(); }
+    checkSpotifyStatus();
+  }
+  function close(){
+    drawer.classList.remove('open'); scrim.classList.remove('open');
+    drawer.setAttribute('aria-hidden','true');
+  }
+
+  openBtn.addEventListener('click', e=>{ e.preventDefault(); open(); });
+  scrim.addEventListener('click', close);
+  document.addEventListener('keydown', e=>{
+    if(e.key==='Escape' && drawer.classList.contains('open')) close();
+  });
+
+  drawer.addEventListener('click', e=>{
+    const b = e.target.closest('[data-act]'); if(!b) return;
+    const act = b.dataset.act;
+    if(act==='close') close();
+    else if(act==='save') saveProfile();
+    else if(act==='reset') resetProfile();
+    else if(act==='analyse') analyseTopTracks();
+    else if(act==='toggle-rejected') toggleRejected();
+  });
+
+  drawer.querySelectorAll('.fcsTabs button').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      currentTimeRange = btn.dataset.range;
+      drawer.querySelectorAll('.fcsTabs button').forEach(t=>t.classList.toggle('on', t===btn));
+      analyseTopTracks();
+    });
+  });
+
+  instrInput.addEventListener('input', ()=>{
+    document.getElementById('instrVal').textContent = parseFloat(instrInput.value).toFixed(2);
+  });
+  function syncEnergyLabel(){
+    document.getElementById('energyVal').textContent =
+      `${parseFloat(eMin.value).toFixed(2)} – ${parseFloat(eMax.value).toFixed(2)}`;
+  }
+  eMin.addEventListener('input', syncEnergyLabel);
+  eMax.addEventListener('input', syncEnergyLabel);
+
+  async function loadProfile(){
+    try{
+      const r = await fetch('/api/focus/profile');
+      if(!r.ok) return;
+      const p = await r.json();
+      document.getElementById('bpmMin').value = p.bpm_min;
+      document.getElementById('bpmMax').value = p.bpm_max;
+      instrInput.value = p.instrumentalness_min;
+      document.getElementById('instrVal').textContent = parseFloat(p.instrumentalness_min).toFixed(2);
+      eMin.value = p.energy_min;
+      eMax.value = p.energy_max;
+      syncEnergyLabel();
+    }catch(_){}
+  }
+
+  async function saveProfile(){
+    const profile = {
+      bpm_min: parseInt(document.getElementById('bpmMin').value),
+      bpm_max: parseInt(document.getElementById('bpmMax').value),
+      instrumentalness_min: parseFloat(instrInput.value),
+      energy_min: parseFloat(eMin.value),
+      energy_max: parseFloat(eMax.value),
+      valence_min: 0.0,
+      valence_max: 1.0,
+    };
+    try{
+      const r = await fetch('/api/focus/profile', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(profile),
+      });
+      if(r.ok && currentFocusData) analyseTopTracks();
+    }catch(_){}
+  }
+
+  async function resetProfile(){
+    await fetch('/api/focus/profile/reset', {method:'POST'});
+    await loadProfile();
+    if(currentFocusData) analyseTopTracks();
+  }
+
+  async function checkSpotifyStatus(){
+    try{
+      const r = await fetch('/api/import/spotify/status');
+      if(!r.ok) return;
+      const s = await r.json();
+      if(s.connected){
+        analyseBtn.disabled = false;
+        statusEl.classList.add('on');
+        statusLbl.textContent = 'Spotify connected';
+      }else{
+        analyseBtn.disabled = true;
+        statusEl.classList.remove('on');
+        statusLbl.textContent = s.configured ? 'Connect Spotify to begin' : 'Spotify not configured';
+      }
+    }catch(_){}
+  }
+
+  function previewSkeleton(){
+    return `<div class="fcsEmpty">Loading…</div>`;
+  }
+
+  async function analyseTopTracks(){
+    document.getElementById('focusEmpty').style.display = 'none';
+    document.getElementById('focusTracks').innerHTML = previewSkeleton();
+    document.getElementById('focusStats').style.display = 'none';
+    document.getElementById('timeTabs').style.display = 'none';
+    document.getElementById('focusTrackHead').style.display = 'none';
+    document.getElementById('rejectedSection').style.display = 'none';
+    document.getElementById('bpmInsight').classList.remove('on');
+
+    try{
+      const r = await fetch(`/api/focus/top-tracks?time_range=${currentTimeRange}`);
+      if(!r.ok){
+        const e = await r.json().catch(()=>({}));
+        document.getElementById('focusTracks').innerHTML = '';
+        document.getElementById('focusEmpty').style.display = '';
+        document.getElementById('focusEmpty').textContent = e.detail || 'Failed to load top tracks.';
+        return;
+      }
+      currentFocusData = await r.json();
+      renderFocusData(currentFocusData);
+    }catch(err){
+      document.getElementById('focusTracks').innerHTML = '';
+      document.getElementById('focusEmpty').style.display = '';
+      document.getElementById('focusEmpty').textContent = err.message || 'Request failed.';
+    }
+  }
+
+  function renderFocusData(data){
+    document.getElementById('focusStats').style.display = '';
+    document.getElementById('statFocus').textContent = data.focus_tracks_count;
+    document.getElementById('statTotal').textContent = data.total_top_tracks;
+    document.getElementById('statAvgBpm').textContent = data.bpm_insight ? data.bpm_insight.mean : '—';
+    const topScore = data.focus_tracks[0] ? data.focus_tracks[0].focus_score : 0;
+    document.getElementById('statTopScore').textContent = topScore ? topScore.toFixed(0) : '—';
+
+    if(data.bpm_insight){
+      const ins = document.getElementById('bpmInsight');
+      ins.innerHTML = `<b>Listening BPM: avg ${data.bpm_insight.mean}, range ${data.bpm_insight.min}–${data.bpm_insight.max}.</b><br/>${esc(data.bpm_insight.suggestion||'')}`;
+      ins.classList.add('on');
+    }
+
+    document.getElementById('timeTabs').style.display = '';
+    document.getElementById('focusTrackHead').style.display = '';
+    const container = document.getElementById('focusTracks');
+    container.innerHTML = '';
+
+    if(!data.focus_tracks.length){
+      container.innerHTML = '<div class="fcsEmpty">No tracks matched your current focus profile. Try widening the BPM range or lowering the instrumentalness threshold.</div>';
+    } else {
+      data.focus_tracks.forEach(track=>{
+        const row = document.createElement('div');
+        row.className = 'fcsTrack';
+        const scoreWidth = Math.max(0, Math.min(100, Math.round(track.focus_score)));
+        row.innerHTML = `
+          <div class="info">
+            <div class="t">${esc(track.title)}</div>
+            <div class="a">${esc(track.artist)}${track.album?' · '+esc(track.album):''}</div>
+          </div>
+          <div class="pill">${track.tempo}</div>
+          <div class="feat">${(track.instrumentalness*100).toFixed(0)}%</div>
+          <div class="score">
+            ${track.focus_score.toFixed(0)}
+            <div class="fcsBar"><i style="width:${scoreWidth}%"></i></div>
+          </div>
+          <button class="play" data-play="1" data-title="${escAttr(track.title)}" data-artist="${escAttr(track.artist)}">Play</button>
+        `;
+        container.appendChild(row);
+      });
+    }
+
+    if(data.rejected && data.rejected.length){
+      document.getElementById('rejectedSection').style.display = '';
+      document.getElementById('rejectedLabel').textContent = `Show ${data.rejected_tracks} filtered-out tracks`;
+      const list = document.getElementById('rejectedList');
+      list.innerHTML = '';
+      data.rejected.forEach(track=>{
+        const row = document.createElement('div');
+        row.className = 'row';
+        row.innerHTML = `
+          <div>
+            <div class="t">${esc(track.title)}</div>
+            <div class="a">${esc(track.artist)}</div>
+          </div>
+          <div class="pill">${track.tempo}</div>
+          <div class="why">${rejectReason(track)}</div>
+        `;
+        list.appendChild(row);
+      });
+    }
+  }
+
+  function rejectReason(track){
+    const p = currentFocusData && currentFocusData.profile;
+    if(!p) return 'filtered';
+    if(track.tempo < p.bpm_min) return `${track.tempo} bpm — too slow`;
+    if(track.tempo > p.bpm_max) return `${track.tempo} bpm — too fast`;
+    if(track.instrumentalness < p.instrumentalness_min) return `${(track.instrumentalness*100).toFixed(0)}% instr.`;
+    return 'filtered';
+  }
+
+  function toggleRejected(){
+    const list = document.getElementById('rejectedList');
+    const arrow = document.getElementById('rejectedArrow');
+    const showing = list.classList.toggle('on');
+    arrow.textContent = showing ? '▾' : '▸';
+  }
+
+  // Delegate Play clicks → loadTrack({title, artist})
+  document.getElementById('focusTracks').addEventListener('click', e=>{
+    const b = e.target.closest('[data-play="1"]');
+    if(!b) return;
+    e.stopPropagation();
+    const title = b.dataset.title || '';
+    const artist = b.dataset.artist || '';
+    if(typeof loadTrack === 'function'){
+      loadTrack({ title, artist });
+      close();
+    }
+  });
+})();
 </script>
 </body>
 </html>

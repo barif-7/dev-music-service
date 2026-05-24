@@ -9,6 +9,7 @@ import structlog
 import yt_dlp
 
 from models import BrowserPlaybackState, SongSearchResult, TrackMetadata
+from services.text_match import combined_score, normalize
 
 logger = structlog.get_logger()
 
@@ -86,13 +87,20 @@ class MusicService:
 
         return None
 
+    _DURATION_TOLERANCE_SECONDS = 5
+    _OFFICIAL_CHANNEL_TOKENS = ("topic", "vevo", "official")
+
     @staticmethod
-    def _search_entries(query: str, limit: int = 5) -> list[dict]:
+    def _search_entries(query: str, limit: int = 5, oversample: int = 1) -> list[dict]:
+        # `oversample` lets the caller fetch extra candidates so we can filter/
+        # rerank by duration and channel quality without paying for it on every
+        # cache hit. Cache always stores the oversampled pool.
         cache_key = MusicService._normalize_query(query)
+        fetch_count = max(1, limit * max(1, oversample))
         cached = MusicService._cache_get(MusicService._search_cache, cache_key)
-        if cached is not None and len(cached) >= limit:
+        if cached is not None and len(cached) >= fetch_count:
             logger.debug("search_cache_hit", query=cache_key)
-            return cached[:limit]
+            return cached
 
         ydl_opts = {
             "format": MusicService._BROWSER_AUDIO_FORMAT,
@@ -101,9 +109,9 @@ class MusicService:
         }
 
         try:
-            logger.debug("youtube_search_started", query=cache_key, limit=limit)
+            logger.debug("youtube_search_started", query=cache_key, fetch=fetch_count)
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(f"ytsearch{max(1, limit)}:{query}", download=False)
+                info = ydl.extract_info(f"ytsearch{fetch_count}:{query}", download=False)
         except Exception as exc:
             logger.error("youtube_search_failed", query=cache_key, error=str(exc))
             raise SearchServiceError(f"Search failed for query '{query}'") from exc
@@ -115,16 +123,102 @@ class MusicService:
             cache_key,
             entries,
             MusicService._SEARCH_TTL_SECONDS,
-        )[:limit]
+        )
 
     @staticmethod
-    def search(query: str, limit: int = 5) -> list[SongSearchResult]:
-        results: list[SongSearchResult] = []
-        for entry in MusicService._search_entries(query, limit=limit):
-            webpage_url = entry.get("webpage_url")
-            if not webpage_url:
-                continue
+    def _channel_quality_bonus(entry: dict) -> float:
+        # "- Topic" channels are auto-generated official audio uploads; VEVO /
+        # "Official" channels are typically the artist-owned canonical version.
+        channel = (entry.get("channel") or entry.get("uploader") or "").lower()
+        if not channel:
+            return 0.0
+        if "- topic" in channel or channel.endswith(" topic"):
+            return 25.0
+        if any(token in channel for token in MusicService._OFFICIAL_CHANNEL_TOKENS):
+            return 15.0
+        return 0.0
 
+    @staticmethod
+    def _entry_score(
+        entry: dict,
+        query: str,
+        target_duration: int | None,
+        expected_artist: str | None,
+        expected_title: str | None,
+    ) -> float:
+        # Identity match against title/artist (normalized + fuzzy)
+        candidate_title = entry.get("title") or ""
+        candidate_artist = entry.get("artist") or entry.get("channel") or entry.get("uploader")
+
+        if expected_title or expected_artist:
+            score = combined_score(
+                f"{expected_artist or ''} {expected_title or ''}".strip(),
+                candidate_title,
+                candidate_artist,
+            )
+        else:
+            score = combined_score(query, candidate_title, candidate_artist)
+
+        # Duration coherence: if we have an expected duration, anything more
+        # than the tolerance gets penalised heavily (linear ramp). Inside the
+        # tolerance window the score is unchanged.
+        duration = entry.get("duration") or 0
+        if target_duration and duration:
+            delta = abs(duration - target_duration)
+            if delta > MusicService._DURATION_TOLERANCE_SECONDS:
+                # 1.0 point lost per extra second outside the tolerance window,
+                # capped so wildly-off durations don't go negative beyond -60.
+                score -= min(60.0, delta - MusicService._DURATION_TOLERANCE_SECONDS)
+        elif target_duration and not duration:
+            # No duration metadata on a candidate we expected to match → slight
+            # penalty so candidates with verifiable duration win.
+            score -= 5
+
+        score += MusicService._channel_quality_bonus(entry)
+
+        # Penalise obvious non-canonical variants by title keywords.
+        lowered = candidate_title.lower()
+        for bad in ("cover", "karaoke", "instrumental", "remix", "sped up", "slowed", "8d audio"):
+            if bad in lowered and (not expected_title or bad not in expected_title.lower()):
+                score -= 12
+                break
+
+        return score
+
+    @staticmethod
+    def search(
+        query: str,
+        limit: int = 5,
+        target_duration: int | None = None,
+        expected_artist: str | None = None,
+        expected_title: str | None = None,
+    ) -> list[SongSearchResult]:
+        # When the caller knows what they're looking for (duration / title /
+        # artist), oversample so we have room to rerank by identity match,
+        # duration coherence, and channel quality.
+        oversample = 5 if (target_duration or expected_title or expected_artist) else 1
+        entries = MusicService._search_entries(query, limit=limit, oversample=oversample)
+
+        usable: list[tuple[float, dict]] = []
+        for entry in entries:
+            if not entry.get("webpage_url"):
+                continue
+            score = MusicService._entry_score(
+                entry, query, target_duration, expected_artist, expected_title
+            )
+            # When a duration target is set, hard-drop entries that are wildly
+            # off (10x tolerance) so live versions / loops don't survive.
+            if target_duration and entry.get("duration"):
+                delta = abs(entry["duration"] - target_duration)
+                if delta > MusicService._DURATION_TOLERANCE_SECONDS * 10:
+                    continue
+            usable.append((score, entry))
+
+        usable.sort(key=lambda pair: pair[0], reverse=True)
+
+        results: list[SongSearchResult] = []
+        for _, entry in usable[:limit]:
+            webpage_url = entry["webpage_url"]
             results.append(
                 SongSearchResult(
                     title=entry.get("title", "Unknown Title"),

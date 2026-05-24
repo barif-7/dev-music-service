@@ -9,3 +9,4 @@ structlog>=24.0.0
 slowapi>=0.1.9
 limits>=3.0
 nodeenv>=1.9.1
+rapidfuzz>=3.6,<4.0

@@ -315,6 +315,17 @@ class SpotifyImportService:
         )
 
     @staticmethod
+    async def search_tracks(access_token: str, query: str, limit: int = 5) -> list[dict]:
+        """Lightweight Spotify track search for autocomplete. Returns raw items
+        from the /v1/search endpoint; caller is responsible for shaping them."""
+        payload = await SpotifyImportService._spotify_get(
+            access_token,
+            "/search",
+            {"q": query, "type": "track", "limit": max(1, min(limit, 10))},
+        )
+        return ((payload.get("tracks") or {}).get("items") or [])
+
+    @staticmethod
     def clear_connection() -> HTMLResponse:
         response = HTMLResponse('{"status":"disconnected"}', media_type="application/json")
         response.delete_cookie(SpotifyImportService._TOKEN_COOKIE)
