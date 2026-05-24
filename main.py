@@ -1,19 +1,34 @@
 import os
 import logging
-import subprocess
+import subprocess  # nosec B404
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import AsyncGenerator, Optional
 
 import httpx
 import structlog
 from fastapi import FastAPI, Header, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    StreamingResponse,
+)
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
+from starlette.concurrency import run_in_threadpool
 
-from frontend import INDEX_HTML
+from config import get_settings
+from security import (
+    open_validated_stream,
+    redact_sensitive_data,
+    validate_control_auth,
+    validate_stream_url,
+)
 from services.focus_service import FocusProfile, FocusService
 from services.local_playback_service import LocalPlaybackService
 from services.metadata_service import MetadataService, MetadataServiceError
@@ -28,6 +43,7 @@ structlog.configure(
         structlog.processors.add_log_level,
         structlog.processors.StackInfoRenderer(),
         structlog.processors.TimeStamper(fmt="iso"),
+        redact_sensitive_data,
         structlog.processors.JSONRenderer()
     ],
     wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
@@ -40,6 +56,8 @@ logger = structlog.get_logger()
 
 # Rate limiting setup
 limiter = Limiter(key_func=get_remote_address, default_limits=["100 per minute", "1000 per hour"])
+BASE_DIR = Path(__file__).parent
+STATIC_DIR = BASE_DIR / "static"
 
 
 @asynccontextmanager
@@ -69,9 +87,12 @@ app = FastAPI(
 # Add rate limiter
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 def fail_with_http_error(exc: Exception) -> None:
+    if isinstance(exc, HTTPException):
+        raise exc
     if isinstance(exc, LyricsRequestError):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if isinstance(exc, LyricsNotFoundError):
@@ -83,7 +104,7 @@ def fail_with_http_error(exc: Exception) -> None:
 
 @app.get("/")
 def root():
-    return HTMLResponse(INDEX_HTML)
+    return FileResponse(STATIC_DIR / "index.html")
 
 
 @app.get("/debug-playback.html")
@@ -98,11 +119,17 @@ def debug_playback():
 
 @app.get("/health")
 def health():
+    settings = get_settings()
     return {
         "status": "ok",
         "mode": "browser-first",
-        "stream_delivery": "proxy",
-        "local_integration": "disabled-on-vercel" if os.getenv("VERCEL") else "openclaw-cli-optional",
+        "stream_delivery": settings.stream_delivery_mode,
+        "backend_origin": settings.backend_origin,
+        "frontend_origin": settings.dev_music_frontend_origin,
+        "mcp_origin": settings.dev_music_mcp_origin,
+        "local_integration": (
+            "disabled-on-vercel" if settings.vercel else "openclaw-cli-optional"
+        ),
         "spotify_import": "configured" if SpotifyImportService.is_configured() else "missing-client-id",
     }
 
@@ -301,7 +328,24 @@ async def stream_song(
         import asyncio
 
         logger.info("stream_requested", url_length=len(url))
-        direct_url, req_headers = MusicService.get_stream_source(url)
+        direct_url, req_headers = await run_in_threadpool(
+            MusicService.get_stream_source,
+            url,
+        )
+        direct_url = validate_stream_url(direct_url)
+        settings = get_settings()
+
+        if settings.stream_delivery_mode == "redirect":
+            logger.info("stream_redirect_started")
+            return RedirectResponse(
+                direct_url,
+                status_code=302,
+                headers={
+                    "Cache-Control": "no-store",
+                    "Access-Control-Allow-Origin": settings.dev_music_frontend_origin,
+                    "Access-Control-Allow-Headers": "Range, Content-Type",
+                },
+            )
 
         # Create async generator to stream audio chunks with range support
         async def stream_audio() -> AsyncGenerator[bytes, None]:
@@ -310,10 +354,13 @@ async def stream_song(
                 headers_copy["Range"] = range_header
 
             async with httpx.AsyncClient() as client:
-                async with client.stream("GET", direct_url, headers=headers_copy, timeout=30.0) as response:
+                response = await open_validated_stream(client, direct_url, headers_copy)
+                try:
                     async for chunk in response.aiter_bytes(chunk_size=8192):
                         yield chunk
                         await asyncio.sleep(0)  # Allow other tasks to run
+                finally:
+                    await response.aclose()
 
         # Get content type from the stream
         content_type = "audio/mp4"
@@ -324,7 +371,7 @@ async def stream_song(
             media_type=content_type,
             headers={
                 "Cache-Control": "public, max-age=300",
-                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Origin": settings.dev_music_frontend_origin,
                 "Access-Control-Allow-Headers": "Range, Content-Type",
                 "Accept-Ranges": "bytes",
             }
@@ -332,6 +379,7 @@ async def stream_song(
     except Exception as exc:
         logger.error("stream_failed", url_length=len(url), error=str(exc))
         fail_with_http_error(exc)
+
 
 class PlaybackRequest(BaseModel):
     url: str
@@ -370,6 +418,7 @@ def browser_playback(request: Request, body: PlaybackRequest):
 @app.get("/play")
 @limiter.limit("30 per minute")
 def play_song(request: Request, query: str = Query(..., min_length=1, max_length=500, description="Song name or YouTube query")):
+    validate_control_auth(request)
     try:
         logger.info("local_play_requested", query_length=len(query))
         return LocalPlaybackService.play_query(query).model_dump()
@@ -382,6 +431,7 @@ def play_song(request: Request, query: str = Query(..., min_length=1, max_length
 @app.get("/stop")
 @limiter.limit("30 per minute")
 def stop_song(request: Request):
+    validate_control_auth(request)
     try:
         logger.info("local_stop_requested")
         return LocalPlaybackService.stop().model_dump()
@@ -394,6 +444,7 @@ def stop_song(request: Request):
 @app.get("/resume")
 @limiter.limit("30 per minute")
 def resume_song(request: Request):
+    validate_control_auth(request)
     try:
         logger.info("local_resume_requested")
         return LocalPlaybackService.resume().model_dump()
@@ -414,6 +465,7 @@ def get_focus_profile():
 @limiter.limit("30 per minute")
 def update_focus_profile(request: Request, profile: dict):
     """Update and persist the focus profile."""
+    validate_control_auth(request)
     try:
         return FocusProfile.save(profile)
     except Exception as exc:
@@ -421,8 +473,9 @@ def update_focus_profile(request: Request, profile: dict):
 
 
 @app.post("/api/focus/profile/reset")
-def reset_focus_profile():
+def reset_focus_profile(request: Request):
     """Reset to defaults."""
+    validate_control_auth(request)
     return FocusProfile.reset()
 
 
@@ -437,6 +490,7 @@ async def focus_filter_playlist(
     Filter a Spotify playlist to only tracks that match the focus profile,
     ranked by focus score. Returns audio features for every track.
     """
+    validate_control_auth(request)
     try:
         token = SpotifyImportService._access_token(request)
         profile = FocusProfile.load()
@@ -458,6 +512,7 @@ async def focus_top_tracks(
     Returns BPM insights and ranked focus-suitable tracks.
     Requires user-top-read scope (users must reconnect Spotify after this update).
     """
+    validate_control_auth(request)
     try:
         token = SpotifyImportService._access_token(request)
         profile = FocusProfile.load()
@@ -474,6 +529,7 @@ async def focus_track_features(track_id: str, request: Request):
     """
     Return audio features + focus score for a single Spotify track ID.
     """
+    validate_control_auth(request)
     try:
         token = SpotifyImportService._access_token(request)
         profile = FocusProfile.load()
@@ -491,15 +547,18 @@ async def focus_track_features(track_id: str, request: Request):
 # MCP server process management
 _mcp_process: Optional[subprocess.Popen] = None
 
+
 def _mcp_server_path() -> str:
     return os.path.join(os.path.dirname(__file__), "mcp-server", "dist", "index.js")
+
 
 def _mcp_is_running() -> bool:
     return _mcp_process is not None and _mcp_process.poll() is None
 
 
 @app.get("/api/mcp/status")
-def mcp_status():
+def mcp_status(request: Request):
+    validate_control_auth(request)
     running = _mcp_is_running()
     return {
         "running": running,
@@ -512,6 +571,7 @@ def mcp_status():
 @limiter.limit("10 per minute")
 def mcp_start(request: Request):
     global _mcp_process
+    validate_control_auth(request)
     if _mcp_is_running():
         return {"running": True, "pid": _mcp_process.pid, "message": "MCP server already running"}
 
@@ -520,7 +580,7 @@ def mcp_start(request: Request):
         raise HTTPException(status_code=500, detail="MCP server dist not found — run npm run build in mcp-server/")
 
     try:
-        _mcp_process = subprocess.Popen(
+        _mcp_process = subprocess.Popen(  # nosec B603 B607
             ["node", server_path],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -537,6 +597,7 @@ def mcp_start(request: Request):
 @limiter.limit("10 per minute")
 def mcp_stop(request: Request):
     global _mcp_process
+    validate_control_auth(request)
     if not _mcp_is_running():
         return {"running": False, "message": "MCP server was not running"}
 
@@ -547,8 +608,8 @@ def mcp_stop(request: Request):
     except Exception:
         try:
             _mcp_process.kill()
-        except Exception:
-            pass
+        except Exception as kill_exc:
+            logger.warning("mcp_server_kill_failed", pid=pid, error=str(kill_exc))
     _mcp_process = None
     logger.info("mcp_server_stopped", pid=pid)
     return {"running": False, "pid": pid, "message": "MCP server stopped"}

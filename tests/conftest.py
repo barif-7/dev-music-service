@@ -1,11 +1,10 @@
 """Pytest fixtures and configuration for E2E testing."""
-import os
-from typing import AsyncGenerator, Generator
+from typing import Generator
 
 import pytest
 from fastapi.testclient import TestClient
 
-from main import app, limiter
+from main import app
 
 
 @pytest.fixture(scope="session")

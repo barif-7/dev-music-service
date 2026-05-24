@@ -20,4 +20,4 @@ python -m pip install -e ".[dev]"
 
 echo ""
 echo "Running tests..."
-python -m pytest tests/ -v --tb=short --cov=. --cov-report=term-missing "${@}"
+python -m pytest tests/ -v --tb=short --cov=. --cov-report=term-missing ${@+"$@"}

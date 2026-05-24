@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import threading
 import time
@@ -11,6 +10,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+from config import get_settings
 from models import LyricsLine, LyricsResponse
 from services.music_service import MusicServiceError
 
@@ -88,10 +88,7 @@ class LyricsService:
 
     @staticmethod
     def _user_agent() -> str:
-        return os.getenv(
-            "LRCLIB_USER_AGENT",
-            "dev-music-service/1.0 (lyrics integration; contact: unset)",
-        )
+        return get_settings().lrclib_user_agent
 
     @staticmethod
     def _request_json(path: str, params: dict[str, Any]) -> dict[str, Any]:
@@ -105,7 +102,7 @@ class LyricsService:
         )
 
         try:
-            with urlopen(request, timeout=10) as response:
+            with urlopen(request, timeout=10) as response:  # nosec B310
                 return json.loads(response.read().decode("utf-8"))
         except HTTPError as exc:
             if exc.code == 404:

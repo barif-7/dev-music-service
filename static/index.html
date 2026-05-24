@@ -1,0 +1,541 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Phase · dev-music-service</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;1,9..144,400&family=JetBrains+Mono:wght@400;500;600&family=Inter+Tight:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="tl">
+    <div class="brand">
+      <div class="brand-mark">P</div>
+      <div class="brand-name">Phase</div>
+      <div class="brand-tag">dev-music-service · v0.4 · browser-first</div>
+    </div>
+    <nav class="nav">
+      <a href="#" class="on">Focus</a>
+      <a href="/docs">API</a>
+      <a href="/api/import/spotify/start">Spotify</a>
+    </nav>
+  </div>
+  <div class="tr">
+    <div class="runtime" id="runtimePill"><i class="dot"></i><span id="runtimeText">GET&nbsp;/health · checking…</span></div>
+    <button class="btn themeBtn" id="themeOpen" aria-haspopup="dialog" aria-controls="themeModal">
+      <span class="themeBtnSwatch" id="themeBtnSwatch"></span>
+      <span>Theme</span>
+    </button>
+    <button class="mcpPill" id="mcpOpen" aria-haspopup="dialog">
+      <span class="mcpDot stopped" id="mcpPillDot"></span>
+      <span class="lbl">MCP</span>
+      <span class="stat" id="mcpPillStat">stopped</span>
+      <svg class="chev" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 6l6 6-6 6"/></svg>
+    </button>
+  </div>
+</header>
+
+<div class="stage">
+  <div class="window" id="window">
+    <div class="chrome">
+      <div class="traffic"><i></i><i></i><i></i></div>
+      <div class="title">phase · <b id="trackTitleChrome">—</b> · LRCLIB synced</div>
+      <div class="right"><span class="k">⌘ K</span><span class="k">Focus</span></div>
+    </div>
+
+    <canvas class="main" id="mainCanvas"></canvas>
+
+    <div class="modeToggle" title="Playback delivery">
+      <button class="on" data-mode="browser">Browser stream</button>
+      <button data-mode="openclaw">OpenClaw local</button>
+    </div>
+
+    <div class="endpointPill"><span class="verb">GET</span><span id="endpointPath"> /api/stream · </span><b id="endStatus">ready</b></div>
+
+    <div class="searchBlock">
+      <div class="searchAnchor">
+        <div class="searchBar">
+          <span class="prompt">&gt;</span>
+          <input id="searchInput" type="text" placeholder="search a track — MusicBrainz first, then YouTube…" autocomplete="off" />
+          <span class="endpoint">GET <b>/api/autocomplete</b></span>
+        </div>
+        <div class="suggestions" id="suggestions"></div>
+      </div>
+    </div>
+
+    <div class="heroArt" id="heroArt">
+      <img id="heroArtImg" alt="">
+      <div class="ph">♪</div>
+    </div>
+
+    <div class="lyricsBlock" id="lyricsBlock">
+      <div class="row prev" id="lyrPrev"></div>
+      <div class="row cur"  id="lyrCur"></div>
+      <div class="row next" id="lyrNext"></div>
+      <div class="meta"><span class="live"></span><span id="lyrProvider">LRCLIB · synced · </span><span id="lyrTs">—</span></div>
+    </div>
+
+    <div class="eqOverlay">
+      <div class="eqLabel"><span class="dot"></span>FFT · 32 bands · post-stream</div>
+      <canvas id="eqCanvas"></canvas>
+    </div>
+
+    <div class="scrubArea">
+      <span id="elapsed">00:00</span>
+      <div class="bar" id="scrubBar"><div class="fill" id="scrubFill"></div><div class="head" id="scrubHead"></div></div>
+      <span id="duration">00:00</span>
+    </div>
+
+    <div class="nowPlaying">
+      <div class="np-track">
+        <div class="np-art">
+          <div id="artPlaceholder">♪</div>
+          <img id="artImg" alt="cover art">
+          <div class="miniEq" id="miniEq"><i></i><i></i><i></i><i></i></div>
+          <div class="srcBadge" id="artSrc">—</div>
+        </div>
+        <div class="np-meta">
+          <div class="name" id="trackTitle">—</div>
+          <div class="sub">
+            <span id="artistName">—</span>
+            <span class="sep">·</span>
+            <span class="alb" id="albumName">—</span>
+            <span class="yr" id="releaseYear">—</span>
+          </div>
+        </div>
+      </div>
+      <div class="np-controls">
+        <button title="Previous" id="prevBtn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zm12 0L9 12l9 7z"/></svg></button>
+        <button class="play" title="Play / pause" id="playBtn"><svg id="playIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
+        <button title="Next" id="nextBtn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM6 5l9 7-9 7z"/></svg></button>
+      </div>
+      <div class="np-right">
+        <div class="bpmCard">
+          <div class="heart" id="bpmHeart"></div>
+          <div class="num" id="bpmNum">72</div>
+          <div class="lbl">BPM<br/><span style="color:rgba(255,255,255,.35);font-size:8.5px" id="bpmBand">FLOW</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <aside class="side">
+    <div class="card">
+      <h4>Wallpapers <span class="ix" id="wpIx">1 / 5</span></h4>
+      <div class="picker" id="picker"></div>
+    </div>
+
+    <div class="card lyricsCard">
+      <h4>Synced lyrics <span class="ix live">LRCLIB</span></h4>
+      <div id="lyricsList"></div>
+      <div class="source">
+        <span>provider · lrclib</span>
+        <span id="lyrSync">— no track —</span>
+      </div>
+    </div>
+
+    <div class="card eqCard">
+      <h4>Spectrum <span class="ix" id="eqMode">bars · 32 · lime</span></h4>
+      <canvas id="eqSideCanvas"></canvas>
+      <div class="eqLegend">
+        <span>20 Hz</span><span><b id="eqPeak">−∞</b> dB peak</span><span>20 kHz</span>
+      </div>
+      <div class="eqControls" id="eqControls">
+        <div class="eqRow">
+          <span class="lbl">View</span>
+          <div class="eqChips" data-key="style">
+            <span class="eqChip on" data-v="bars">Bars</span>
+            <span class="eqChip" data-v="mirror">Mirror</span>
+            <span class="eqChip" data-v="wave">Wave</span>
+            <span class="eqChip" data-v="dots">Dots</span>
+            <span class="eqChip" data-v="ribbon">Ribbon</span>
+          </div>
+        </div>
+        <div class="eqRow">
+          <span class="lbl">Bands</span>
+          <div class="eqChips" data-key="bands">
+            <span class="eqChip" data-v="16">16</span>
+            <span class="eqChip on" data-v="32">32</span>
+            <span class="eqChip" data-v="64">64</span>
+            <span class="eqChip" data-v="96">96</span>
+          </div>
+        </div>
+        <div class="eqRow">
+          <span class="lbl">Color</span>
+          <div class="eqChips" data-key="palette">
+            <span class="eqChip on" data-v="lime"><span class="sw" style="background:#d7ff3a"></span>Lime</span>
+            <span class="eqChip" data-v="ice"><span class="sw" style="background:#7ad9ff"></span>Ice</span>
+            <span class="eqChip" data-v="magma"><span class="sw" style="background:#ff6a3d"></span>Magma</span>
+            <span class="eqChip" data-v="mono"><span class="sw" style="background:#f4f4f5"></span>Mono</span>
+          </div>
+        </div>
+        <div class="eqRow">
+          <span class="lbl">Scale</span>
+          <div class="eqChips" data-key="scale">
+            <span class="eqChip on" data-v="linear">Linear</span>
+            <span class="eqChip" data-v="log">Log</span>
+          </div>
+          <div class="eqChips" data-key="peaks" style="flex:none">
+            <span class="eqChip on" data-v="on">Peaks</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h4>Fidget <span class="ix">drag vertically</span></h4>
+      <div class="knobs">
+        <div class="knob" data-k="intensity"><span class="lbl">Intensity</span><span class="val" id="kIntensity">0.65</span><div class="track"><i id="tIntensity"></i></div></div>
+        <div class="knob" data-k="warp"><span class="lbl">Warp</span><span class="val" id="kWarp">0.40</span><div class="track"><i id="tWarp"></i></div></div>
+        <div class="knob" data-k="hue"><span class="lbl">Hue shift</span><span class="val" id="kHue">+0°</span><div class="track"><i id="tHue"></i></div></div>
+        <div class="knob" data-k="grain"><span class="lbl">Grain</span><span class="val" id="kGrain">0.18</span><div class="track"><i id="tGrain"></i></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h4>BPM target <span class="ix" id="bpmDescIx">flow state</span></h4>
+      <div class="bpmPresets" id="bpmPresets"></div>
+    </div>
+
+    <div class="card endpoints">
+      <h4>Runtime · <span class="ix" id="healthIx">/health · checking</span></h4>
+      <div class="ep"><span class="verb">GET</span><span class="path">/api/autocomplete</span><span class="lat" id="latAc">—</span></div>
+      <div class="ep"><span class="verb">GET</span><span class="path">/api/search</span><span class="lat" id="latSr">—</span></div>
+      <div class="ep"><span class="verb">GET</span><span class="path">/api/stream</span><span class="lat" id="latSt">—</span></div>
+      <div class="ep"><span class="verb">GET</span><span class="path">/api/lyrics</span><span class="lat" id="latLy">—</span></div>
+      <div class="ep warn"><span class="verb">GET</span><span class="path">/api/integrations/openclaw/play</span><span class="lat">local-only</span></div>
+    </div>
+  </aside>
+</div>
+
+<div class="below">
+  <div class="blip"><div class="k">Resonance window</div><div class="v"><em>62–84</em></div><div class="d">BPM band most cited for sustained attention. Wallpapers tune softer; LRCLIB ticker eases line transitions.</div></div>
+  <div class="blip"><div class="k">Artwork cascade</div><div class="v">MB → YT → ✷</div><div class="d">Cover Art Archive first, then YouTube thumb, then generated placeholder — each track keeps an <code style="font-family:var(--mono);font-size:11px;color:var(--ink-dim)">artwork_source</code> badge.</div></div>
+  <div class="blip"><div class="k">Pulse latency</div><div class="v">&lt; <em>4ms</em></div><div class="d">Beat callback drives shader uniforms in the same frame; LRCLIB <code style="font-family:var(--mono);font-size:11px;color:var(--ink-dim)">start_time_ms</code> drives the lyric cross-fade.</div></div>
+  <div class="blip"><div class="k">Modes</div><div class="v"><em>Browser</em> · OpenClaw</div><div class="d">Browser-first proxy stream is default. Local <code style="font-family:var(--mono);font-size:11px;color:var(--ink-dim)">/api/integrations/openclaw</code> handles ffplay sessions.</div></div>
+</div>
+
+<audio id="audioEl" preload="none"></audio>
+
+<div class="mcpScrim" id="mcpScrim"></div>
+<aside class="mcpDrawer" id="mcpDrawer"></aside>
+
+<div class="themeScrim" id="themeScrim"></div>
+<section class="themeModal" id="themeModal" role="dialog" aria-modal="true" aria-labelledby="themeTitle">
+  <div class="themeHead">
+    <div>
+      <div class="themeCrumb">appearance</div>
+      <h2 id="themeTitle">Theme</h2>
+    </div>
+    <button class="themeClose" id="themeClose" aria-label="Close">×</button>
+  </div>
+  <div class="themeBody">
+    <div class="themePresetGrid" id="themePresetGrid">
+      <button class="themePreset" data-theme="default"><span class="themeSwatch default"></span><span>Default</span></button>
+      <button class="themePreset" data-theme="sunset"><span class="themeSwatch sunset"></span><span>Sunset</span></button>
+      <button class="themePreset" data-theme="ocean"><span class="themeSwatch ocean"></span><span>Ocean</span></button>
+      <button class="themePreset" data-theme="forest"><span class="themeSwatch forest"></span><span>Forest</span></button>
+      <button class="themePreset" data-theme="midnight"><span class="themeSwatch midnight"></span><span>Midnight</span></button>
+    </div>
+    <div class="themeCustom">
+      <div class="themeCustomHead">
+        <span>Custom accent</span>
+        <button class="themeMiniBtn" id="themeCustomApply">Apply</button>
+      </div>
+      <div class="themeColorRow">
+        <label><span>Accent</span><input id="themeAccent" type="color" value="#d7ff3a"></label>
+        <label><span>Glow</span><input id="themeGlow" type="color" value="#6ee7a8"></label>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script id="shader-vert" type="x-shader/x-vertex">
+attribute vec2 a_pos;
+void main(){ gl_Position = vec4(a_pos, 0.0, 1.0); }
+</script>
+
+<script id="shader-common" type="x-shader/x-fragment">
+precision highp float;
+uniform vec2 iResolution;
+uniform float iTime;
+uniform vec2 iMouse;
+uniform vec2 iDrag;
+uniform float iClick;
+uniform float iPulse;
+uniform float iBass;
+uniform float iTreble;
+uniform float iEnergy;
+uniform float iIntensity;
+uniform float iWarp;
+uniform float iHue;
+uniform float iGrain;
+uniform float iPlaying;
+float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
+float noise(vec2 p){
+  vec2 i=floor(p), f=fract(p);
+  float a=hash(i), b=hash(i+vec2(1,0)), c=hash(i+vec2(0,1)), d=hash(i+vec2(1,1));
+  vec2 u=f*f*(3.0-2.0*f);
+  return mix(a,b,u.x)+(c-a)*u.y*(1.0-u.x)+(d-b)*u.x*u.y;
+}
+float fbm(vec2 p){
+  float v=0., a=0.5;
+  for(int i=0;i<5;i++){ v+=a*noise(p); p*=2.02; a*=0.5; }
+  return v;
+}
+vec3 hueShift(vec3 c, float h){
+  const mat3 toYIQ = mat3(0.299,0.587,0.114, 0.596,-0.274,-0.322, 0.211,-0.523,0.312);
+  const mat3 toRGB = mat3(1.0,0.956,0.621, 1.0,-0.272,-0.647, 1.0,-1.107,1.704);
+  vec3 yiq = toYIQ * c;
+  float cos_h=cos(h), sin_h=sin(h);
+  yiq.yz = mat2(cos_h,-sin_h,sin_h,cos_h) * yiq.yz;
+  return toRGB * yiq;
+}
+float grain(vec2 uv, float t){ return (hash(uv*1234.0 + t) - 0.5); }
+</script>
+
+<script id="frag-pulse" type="x-shader/x-fragment">
+void main(){
+  vec2 uv = (gl_FragCoord.xy - 0.5*iResolution)/min(iResolution.x,iResolution.y);
+  vec2 m  = (iMouse - 0.5) * vec2(iResolution.x/iResolution.y, 1.0);
+  vec2 d = uv - m; float r = length(d);
+  float warp = 0.12 + 0.5*iWarp;
+  uv -= d * warp * exp(-r*2.4);
+  float rr = length(uv);
+  /* rings — modest brightening with energy */
+  float rings = 0.0;
+  for(int i=0;i<4;i++){
+    float age = iPulse - float(i)*0.14;
+    if(age>0.0){
+      float ring = exp(-pow((rr - age*0.95)*9.0, 2.0));
+      rings += ring * (1.0 - age) * (0.7 + 0.25*iEnergy);
+    }
+  }
+  float clickR = exp(-pow((length(uv-m) - (1.0-iClick)*0.9)*8.0, 2.0)) * iClick;
+  float a = atan(uv.y, uv.x);
+  /* energy slightly accelerates time */
+  float tmod = iTime * (0.25 + 0.20*iEnergy);
+  float wob = fbm(vec2(rr*3.0 - tmod, a*0.7 + tmod*0.4));
+  /* bass gently expands the orb */
+  float body = smoothstep(1.0, 0.05, rr - 0.16*wob - 0.10*iBass);
+  /* treble shimmer in outer halo (subtle) */
+  float shimmer = noise(vec2(uv.x*9.0 + iTime*2.0, uv.y*9.0 - iTime*1.5)) * exp(-rr*2.2);
+  vec3 c1 = vec3(0.05, 0.06, 0.12);
+  vec3 c2 = vec3(0.18, 0.08, 0.22);
+  vec3 c3 = vec3(1.0, 0.65, 0.42);
+  vec3 c4 = vec3(1.0, 0.88, 0.65);
+  vec3 col = mix(c1, c2, body);
+  col = mix(col, c3, rings * iIntensity);
+  col = mix(col, c4, clickR*0.8);
+  /* bass-driven center glow */
+  col += c3 * (0.18 + 0.15*iBass) * exp(-rr*1.8) * (0.5 + 0.3*iEnergy);
+  /* treble shimmer */
+  col += c4 * shimmer * iTreble * 0.45;
+  col += iGrain * 0.06 * grain(gl_FragCoord.xy, iTime);
+  col = hueShift(col, iHue);
+  col *= mix(0.82, 1.0, iPlaying);
+  gl_FragColor = vec4(col, 1.0);
+}
+</script>
+
+<script id="frag-tide" type="x-shader/x-fragment">
+void main(){
+  vec2 uv = gl_FragCoord.xy / iResolution.xy;
+  vec2 p  = uv*2.0-1.0; p.x *= iResolution.x/iResolution.y;
+  float mx = (iMouse.x-0.5);
+  float my = (iMouse.y-0.5);
+  /* energy slightly accelerates waves */
+  float t = iTime*0.18 + iEnergy*0.35;
+  vec3 col = vec3(0.02, 0.04, 0.06);
+  for(int i=0;i<5;i++){
+    float fi = float(i);
+    float yOff = -0.6 + fi*0.30 + my*0.6*(fi-2.0)*0.18;
+    float speed = 0.25 + fi*0.07;
+    /* bass gently swells wave amplitude — capped well below band spacing */
+    float amp = 0.18 + 0.05*iBass;
+    float wave = sin(p.x*1.4 + t*speed + fi*1.7) * amp
+               + sin(p.x*3.0 - t*speed*1.3 + fi*0.6) * 0.06
+               + fbm(vec2(p.x*1.2 + t*0.3, fi)) * 0.18;
+    float split = (1.0 + 0.6*iWarp) * (1.0 - exp(-pow((p.x - mx*1.4)*1.0, 2.0)));
+    wave += (p.y>yOff?1.0:-1.0) * (1.0 - split) * 0.25 * iWarp;
+    float d = abs(p.y - (yOff + wave));
+    /* keep band width near original; subtle treble sharpening only */
+    float bandW = max(0.08, 0.16 - 0.03*iEnergy - 0.02*iTreble);
+    float band = smoothstep(bandW, 0.0, d);
+    vec3 hue = mix(vec3(0.05,0.45,0.55), vec3(0.55,0.95,0.85), fi/4.0);
+    hue = mix(hue, vec3(0.95,0.85,0.55), iBass*0.35);
+    col += hue * band * (0.35 + 0.65*iIntensity) * (0.7 + 0.4*iPulse);
+    /* treble glint on wave crests (subtle) */
+    col += vec3(0.9,1.0,0.95) * exp(-d*d*400.0) * iTreble * 0.30;
+  }
+  vec2 mp = vec2(iMouse.x-0.5, iMouse.y-0.5);
+  mp.x *= iResolution.x/iResolution.y;
+  float cr = length(p-mp);
+  col += vec3(0.6,0.95,0.85) * exp(-cr*4.0) * iClick * 0.9;
+  float v = smoothstep(1.1, 0.2, abs(p.y));
+  col *= 0.7 + 0.3*v;
+  col += iGrain * 0.05 * grain(gl_FragCoord.xy, iTime);
+  col = hueShift(col, iHue);
+  col *= mix(0.82, 1.0, iPlaying);
+  gl_FragColor = vec4(col, 1.0);
+}
+</script>
+
+<script id="frag-cells" type="x-shader/x-fragment">
+vec2 cellPoint(vec2 ip){ return vec2(hash(ip+1.3), hash(ip+5.7)); }
+void main(){
+  vec2 uv = gl_FragCoord.xy / iResolution.xy;
+  vec2 p  = uv * vec2(iResolution.x/iResolution.y, 1.0);
+  p *= 7.0 + iWarp*4.0;
+  vec2 mp = vec2(iMouse.x*iResolution.x/iResolution.y, iMouse.y) * (7.0 + iWarp*4.0);
+  vec2 ip = floor(p);
+  vec2 fp = fract(p);
+  float minD = 10.0;
+  vec2 minCell = vec2(0.0);
+  for(int y=-1;y<=1;y++) for(int x=-1;x<=1;x++){
+    vec2 off = vec2(float(x),float(y));
+    vec2 cc = ip + off;
+    vec2 cp = cellPoint(cc);
+    cp += 0.25*vec2(sin(iTime*0.3 + cc.x*1.7), cos(iTime*0.4 + cc.y*2.1));
+    vec2 toM = (mp - (cc+cp));
+    cp += toM * 0.05 * iWarp;
+    float d = length(off + cp - fp);
+    if(d<minD){ minD = d; minCell = cc; }
+  }
+  float beatHash = hash(minCell + floor(iTime*2.0));
+  float beat = smoothstep(0.65, 1.0, beatHash) * iPulse;
+  float secD = 10.0;
+  for(int y=-1;y<=1;y++) for(int x=-1;x<=1;x++){
+    vec2 off = vec2(float(x),float(y));
+    vec2 cc = ip + off;
+    vec2 cp = cellPoint(cc);
+    cp += 0.25*vec2(sin(iTime*0.3 + cc.x*1.7), cos(iTime*0.4 + cc.y*2.1));
+    vec2 toM = (mp - (cc+cp));
+    cp += toM * 0.05 * iWarp;
+    float d = length(off + cp - fp);
+    if(d>minD-0.001) secD = min(secD, d);
+  }
+  float edgeDist = secD - minD;
+  float seam = 1.0 - smoothstep(0.004, 0.028, edgeDist);
+  float h = hash(minCell + 0.7);
+  vec3 hotC = vec3(1.0, 0.65, 0.25);
+  vec3 cellCol = mix(vec3(1.00, 0.55, 0.18), vec3(1.00, 0.92, 0.50), h);
+  vec3 col = cellCol * (1.10 + 0.30*h);
+  col *= (1.0 - 0.92 * seam);
+  col += hotC * 0.35 * (1.0 - smoothstep(0.0, 0.18, edgeDist)) * iEnergy;
+  col = mix(col, vec3(1.0, 0.95, 0.75), beat * (0.6 + 0.4*iIntensity));
+  vec2 mpUv = (uv - vec2(iMouse.x, iMouse.y));
+  mpUv.x *= iResolution.x/iResolution.y;
+  float ring = exp(-pow((length(mpUv) - (1.0-iClick)*0.7)*10.0, 2.0)) * iClick;
+  col += hotC * ring;
+  col += iGrain * 0.06 * grain(gl_FragCoord.xy, iTime);
+  col = hueShift(col, iHue);
+  gl_FragColor = vec4(col, 1.0);
+}
+</script>
+
+<script id="frag-mercury" type="x-shader/x-fragment">
+void main(){
+  vec2 uv = (gl_FragCoord.xy - 0.5*iResolution)/min(iResolution.x,iResolution.y);
+  vec2 m  = (iMouse - 0.5) * vec2(iResolution.x/iResolution.y, 1.0);
+  float f = 0.0;
+  f += 0.18 / max(length(uv - m), 0.02);
+  /* energy gently accelerates blob speed */
+  float spd = 0.35 + 0.30*iEnergy;
+  for(int i=0;i<5;i++){
+    float fi = float(i);
+    float t = iTime*spd + fi*1.7;
+    vec2 c = vec2(
+      cos(t*0.9 + fi)*0.55 + sin(t*0.43)*0.18,
+      sin(t*0.7 + fi*1.3)*0.42 + cos(t*0.27)*0.18
+    );
+    c = mix(c, m, 0.18*iWarp);
+    /* bass slightly inflates blob radius */
+    float radius = 0.11 + 0.04*iBass + 0.02*sin(t*2.0);
+    f += radius / max(length(uv - c), 0.025);
+  }
+  /* pulse merges blobs (conservative — prevents full coverage) */
+  float thresh = 2.4 - 0.6*iIntensity - 0.28*iPulse - 0.10*iBass;
+  float surface = smoothstep(thresh-0.05, thresh+0.05, f);
+  float inner   = smoothstep(thresh+0.4, thresh+0.2, f);
+  vec3 bg = vec3(0.04, 0.05, 0.07);
+  vec3 chrome1 = vec3(0.55, 0.62, 0.78);
+  vec3 chrome2 = vec3(0.92, 0.95, 1.0);
+  /* treble slightly warms specular */
+  vec3 spec = mix(vec3(0.45, 0.7, 1.0), vec3(1.0, 0.85, 0.5), iTreble * 0.45);
+  float env = 0.5 + 0.5*sin(uv.x*4.0 + uv.y*6.0 + iTime*0.4);
+  vec3 chrome = mix(chrome1, chrome2, env);
+  vec3 col = bg;
+  col = mix(col, chrome, surface);
+  float rim = surface - inner;
+  col += spec * rim * (0.7 + 0.5*iEnergy);
+  /* subtle treble noise texture on surface */
+  float trebleTex = noise(uv*14.0 + vec2(iTime*2.0)) * iTreble * surface * 0.18;
+  col += chrome2 * trebleTex;
+  col += vec3(1.0) * iClick * 0.3 * surface;
+  col += chrome2 * 0.15 * smoothstep(0.4, 0.0, length(uv-m)) * iIntensity;
+  col += iGrain * 0.05 * grain(gl_FragCoord.xy, iTime);
+  col = hueShift(col, iHue);
+  col *= mix(0.82, 1.0, iPlaying);
+  gl_FragColor = vec4(col, 1.0);
+}
+</script>
+
+<script id="frag-lattice" type="x-shader/x-fragment">
+mat2 rot(float a){ float c=cos(a),s=sin(a); return mat2(c,-s,s,c); }
+void main(){
+  vec2 uv = (gl_FragCoord.xy - 0.5*iResolution)/min(iResolution.x,iResolution.y);
+  vec2 m  = (iMouse - 0.5);
+  /* energy gently accelerates rotation (bass would cause jitter as a velocity multiplier) */
+  uv = rot(iTime*(0.08 + 0.15*iEnergy)) * uv;
+  uv.x += m.x * 0.3 * iWarp;
+  uv.y += m.y * 0.3 * iWarp;
+  float scale = 7.0 + iWarp*3.0;
+  vec2 p = uv * scale;
+  vec2 q = vec2(p.x + p.y*0.577, p.y*1.155);
+  vec2 iq = floor(q);
+  vec2 fq = fract(q);
+  float tri = step(fq.x + fq.y, 1.0);
+  vec2 cellId = iq + vec2(tri<0.5?1.0:0.0);
+  float d3 = 1.0 - fq.x - fq.y;
+  float dEdge = min(min(fq.x, fq.y), abs(d3));
+  if(tri<0.5){ dEdge = min(min(1.0-fq.x, 1.0-fq.y), abs(d3)); }
+  /* bass slightly fattens grid lines */
+  float edgeW = 0.05 + 0.03*iBass;
+  float edge = smoothstep(edgeW, 0.0, dEdge);
+  float beatH = hash(cellId + floor(iTime*1.5));
+  float beat = smoothstep(0.7, 1.0, beatH) * iPulse;
+  vec2 cen = (tri<0.5)? vec2(1.0/3.0, 1.0/3.0) : vec2(2.0/3.0, 2.0/3.0);
+  float nodeD = length(fq - cen);
+  /* bass slightly expands nodes */
+  float node = exp(-nodeD*max(7.0, 10.0 - 2.5*iBass));
+  float r = length(uv);
+  float shock = exp(-pow((r - (1.0-iClick)*1.2)*6.0, 2.0)) * iClick;
+  vec3 bg     = vec3(0.04, 0.03, 0.07);
+  vec3 line   = vec3(0.40, 0.18, 0.55);
+  vec3 hot    = vec3(1.0, 0.45, 0.85);
+  vec3 hotter = vec3(1.0, 0.75, 0.95);
+  /* treble subtly brightens grid lines */
+  vec3 edgeC = mix(line, hotter, iTreble * 0.45);
+  vec3 col = bg;
+  col = mix(col, edgeC, edge*(0.35 + 0.65*iIntensity));
+  col += hot * node * (0.5 + 0.4*iEnergy);
+  col = mix(col, hotter, beat);
+  col += hotter * shock;
+  /* treble sparkles on nodes (gentle) */
+  col += hotter * exp(-nodeD*15.0) * iTreble * 0.35;
+  col += hot * (0.18 + 0.12*iBass) * exp(-r*2.2) * iIntensity;
+  col += iGrain * 0.06 * grain(gl_FragCoord.xy, iTime);
+  col = hueShift(col, iHue);
+  col *= mix(0.82, 1.0, iPlaying);
+  gl_FragColor = vec4(col, 1.0);
+}
+</script>
+
+<script src="/static/app.js" defer></script>
+</body>
+</html>

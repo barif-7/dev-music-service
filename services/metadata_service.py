@@ -2,11 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import functools
-import json
 import re
 import threading
 import time
-from urllib.parse import urlencode
 
 import certifi
 import httpx

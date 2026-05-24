@@ -1,16 +1,13 @@
 from __future__ import annotations
 
-import asyncio
-import json
-import os
 import threading
 import time
-from pathlib import Path
-from typing import Optional
 
 import structlog
 
-from services.spotify_import_service import SpotifyImportError, SpotifyImportService
+from config import get_settings
+from services.focus_storage import build_focus_profile_storage
+from services.spotify_import_service import SpotifyImportService
 
 logger = structlog.get_logger()
 
@@ -29,7 +26,6 @@ DEFAULT_PROFILE = {
     "label": "Focus",
 }
 
-_PROFILE_PATH = Path(os.getenv("DMS_DATA_DIR", ".")) / "focus_profile.json"
 _PROFILE_LOCK = threading.Lock()
 
 
@@ -118,10 +114,8 @@ class FocusProfile:
     @staticmethod
     def load() -> dict:
         with _PROFILE_LOCK:
-            try:
-                return json.loads(_PROFILE_PATH.read_text())
-            except (FileNotFoundError, json.JSONDecodeError):
-                return dict(DEFAULT_PROFILE)
+            profile = build_focus_profile_storage(get_settings()).load()
+            return {**DEFAULT_PROFILE, **profile} if profile else dict(DEFAULT_PROFILE)
 
     @staticmethod
     def save(profile: dict) -> dict:
@@ -135,13 +129,13 @@ class FocusProfile:
         merged["valence_min"] = max(0.0, min(1.0, float(merged["valence_min"])))
         merged["valence_max"] = max(merged["valence_min"], min(1.0, float(merged["valence_max"])))
         with _PROFILE_LOCK:
-            _PROFILE_PATH.write_text(json.dumps(merged, indent=2))
+            build_focus_profile_storage(get_settings()).save(merged)
         return merged
 
     @staticmethod
     def reset() -> dict:
         with _PROFILE_LOCK:
-            _PROFILE_PATH.unlink(missing_ok=True)
+            build_focus_profile_storage(get_settings()).reset()
         return dict(DEFAULT_PROFILE)
 
 

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import os
 import signal
-import subprocess
+import subprocess  # nosec B404
+import threading
 
+from config import get_settings
 from models import LocalPlaybackState, PlaybackStatus
 from services.music_service import MusicService, SearchServiceError
 
@@ -11,10 +13,11 @@ from services.music_service import MusicService, SearchServiceError
 class LocalPlaybackService:
     _active_process: subprocess.Popen | None = None
     _last_state: LocalPlaybackState | None = None
+    _process_lock = threading.Lock()
 
     @staticmethod
     def _local_playback_available() -> bool:
-        return not os.getenv("VERCEL")
+        return not get_settings().vercel
 
     @classmethod
     def _ensure_local_playback_available(cls) -> None:
@@ -25,8 +28,9 @@ class LocalPlaybackService:
     @classmethod
     def _start_playback(cls, state: LocalPlaybackState) -> LocalPlaybackState:
         cls._ensure_local_playback_available()
+        cls.stop()
         direct_url, headers = MusicService._extract_audio_source(state.webpage_url)
-        process = subprocess.Popen(
+        process = subprocess.Popen(  # nosec B603 B607
             [
                 "ffplay",
                 "-nodisp",
@@ -50,7 +54,6 @@ class LocalPlaybackService:
     def play_query(cls, query: str) -> LocalPlaybackState:
         cls._ensure_local_playback_available()
         result = MusicService.first_result(query)
-        cls.stop()
         return cls._start_playback(
             LocalPlaybackState(
                 title=result.title,
@@ -63,22 +66,23 @@ class LocalPlaybackService:
     @classmethod
     def stop(cls) -> PlaybackStatus:
         cls._ensure_local_playback_available()
-        process = cls._active_process
-        if not process:
-            return PlaybackStatus(playing=False, mode="local", message="No active local playback")
+        with cls._process_lock:
+            process = cls._active_process
+            if not process:
+                return PlaybackStatus(playing=False, mode="local", message="No active local playback")
 
-        pid = process.pid
-        if process.poll() is None:
-            try:
-                process.send_signal(signal.SIGTERM)
-                process.wait(timeout=2)
-            except Exception:
+            pid = process.pid
+            if process.poll() is None:
                 try:
-                    process.kill()
+                    os.killpg(os.getpgid(pid), signal.SIGTERM)
+                    process.wait(timeout=2)
                 except Exception:
-                    pass
+                    try:
+                        os.killpg(os.getpgid(pid), signal.SIGKILL)
+                    except Exception:
+                        process.poll()
 
-        cls._active_process = None
+            cls._active_process = None
         return PlaybackStatus(
             playing=False,
             mode="local",

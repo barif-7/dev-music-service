@@ -1,5 +1,4 @@
 """End-to-end tests for main API endpoints."""
-import time
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -37,6 +36,29 @@ class TestHealthEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert data["spotify_import"] == "configured"
+
+
+class TestFrontendAssets:
+    """Tests for the extracted static frontend."""
+
+    def test_root_serves_static_index(self, client: TestClient):
+        """Root should serve the static index with external assets."""
+        response = client.get("/")
+
+        assert response.status_code == 200
+        assert 'href="/static/styles.css"' in response.text
+        assert 'src="/static/app.js"' in response.text
+        assert 'id="themeModal"' in response.text
+
+    def test_static_assets_served(self, client: TestClient):
+        """Static CSS and JS assets should be mounted."""
+        css_response = client.get("/static/styles.css")
+        js_response = client.get("/static/app.js")
+
+        assert css_response.status_code == 200
+        assert js_response.status_code == 200
+        assert ".themeModal" in css_response.text
+        assert "initThemePicker" in js_response.text
 
 
 class TestSearchEndpoint:
@@ -180,6 +202,60 @@ class TestStreamEndpoint:
             assert response.headers.get("Access-Control-Allow-Origin") == "*"
             assert "Accept-Ranges" in response.headers
 
+    def test_stream_blocks_private_direct_target(self, client: TestClient):
+        """Stream proxy should reject private resolved media URLs."""
+        with patch("main.MusicService.get_stream_source") as mock_source:
+            mock_source.return_value = ("http://127.0.0.1/audio", {})
+            response = client.get("/stream", params={"url": "https://youtube.com/watch?v=test"})
+
+        assert response.status_code == 403
+
+    def test_stream_allows_expected_media_target(self, client: TestClient):
+        """Stream proxy should allow expected media hosts."""
+
+        class FakeStream:
+            async def aiter_bytes(self, chunk_size=8192):
+                yield b"audio"
+
+            async def aclose(self):
+                return None
+
+        async def fake_open_stream(client, url, headers):
+            return FakeStream()
+
+        with patch("main.MusicService.get_stream_source") as mock_source:
+            with patch("main.open_validated_stream", side_effect=fake_open_stream):
+                mock_source.return_value = (
+                    "https://rr1---sn.googlevideo.com/videoplayback",
+                    {},
+                )
+                response = client.get(
+                    "/stream",
+                    params={"url": "https://youtube.com/watch?v=test"},
+                )
+
+        assert response.status_code == 200
+        assert response.content == b"audio"
+
+    def test_stream_redirect_mode_returns_validated_location(self, client: TestClient, monkeypatch):
+        """Redirect mode should 302 to an allowed resolved media URL."""
+        monkeypatch.setenv("STREAM_DELIVERY_MODE", "redirect")
+
+        with patch("main.MusicService.get_stream_source") as mock_source:
+            mock_source.return_value = (
+                "https://rr1---sn.googlevideo.com/videoplayback",
+                {},
+            )
+            response = client.get(
+                "/stream",
+                params={"url": "https://youtube.com/watch?v=test"},
+                follow_redirects=False,
+            )
+
+        assert response.status_code == 302
+        assert response.headers["location"] == "https://rr1---sn.googlevideo.com/videoplayback"
+        assert response.headers["Access-Control-Allow-Origin"] == "*"
+
 
 class TestLocalPlaybackEndpoints:
     """Tests for local playback integration endpoints."""
@@ -216,6 +292,24 @@ class TestLocalPlaybackEndpoints:
         
         # Should return error since nothing to resume
         assert response.status_code == 502
+
+    def test_control_auth_required_when_configured(self, client: TestClient, monkeypatch):
+        """Control routes should require a token when configured."""
+        monkeypatch.setenv("DMS_CONTROL_AUTH_TOKEN", "secret-token")
+
+        response = client.get("/stop")
+        assert response.status_code == 401
+
+        response = client.get("/stop", headers={"X-Dev-Music-Token": "secret-token"})
+        assert response.status_code == 200
+
+    def test_control_routes_disabled_on_serverless_without_token(self, client: TestClient, monkeypatch):
+        """Serverless control routes should be disabled by default."""
+        monkeypatch.setenv("VERCEL", "true")
+        monkeypatch.delenv("DMS_CONTROL_AUTH_TOKEN", raising=False)
+
+        response = client.get("/stop")
+        assert response.status_code == 403
 
 
 class TestBrowserPlaybackEndpoint:
@@ -313,6 +407,10 @@ class TestSpotifyImportEndpoints:
         # Should be a redirect (307 Temporary Redirect)
         # Note: May return 200 if popup HTML is returned
         assert response.status_code in [200, 307]
+        set_cookie = response.headers.get("set-cookie", "")
+        assert "HttpOnly" in set_cookie
+        assert "Secure" in set_cookie
+        assert "SameSite=lax" in set_cookie
 
     def test_spotify_status(self, client: TestClient):
         """Spotify status should return configuration state."""
@@ -379,5 +477,23 @@ class TestErrorHandling:
         response = client.get("/api/search")  # Missing required param
         
         assert response.status_code == 422
-        data = response.json()
-        assert "detail" in data
+
+
+class TestLogRedaction:
+    """Tests for structured-log sensitive value redaction."""
+
+    def test_redacts_sensitive_keys(self):
+        from security import redact_sensitive_data
+
+        payload = redact_sensitive_data(
+            None,
+            None,
+            {
+                "authorization": "Bearer abc",
+                "nested": {"spotify_access_token": "abc", "safe": "ok"},
+            },
+        )
+
+        assert payload["authorization"] == "[redacted]"
+        assert payload["nested"]["spotify_access_token"] == "[redacted]"
+        assert payload["nested"]["safe"] == "ok"

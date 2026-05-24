@@ -32,7 +32,7 @@ The main product surface is the web app served from `/`, backed by search and st
 
 ## Local requirements
 
-- Python dependencies: `fastapi`, `yt_dlp`, `uvicorn`
+- Python dependencies: `fastapi`, pinned `yt-dlp`, `uvicorn`
 - Optional local integration tool: `ffplay`
 
 ## Local development
@@ -44,6 +44,19 @@ Run the service locally with:
 ```
 
 The script creates `.venv` when needed, installs `requirements.txt`, and starts `uvicorn` on `127.0.0.1:8000`.
+
+### yt-dlp maintenance
+
+`yt-dlp` is pinned in `requirements.txt` and `pyproject.toml` because extractor
+behavior can change. Run the lightweight extractor self-test after dependency
+updates:
+
+```sh
+.venv/bin/python scripts/ytdlp_self_test.py
+```
+
+Review and bump `yt-dlp` at least monthly, or sooner when YouTube extraction
+starts failing.
 
 ## Deployment notes
 
