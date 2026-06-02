@@ -543,6 +543,33 @@ class TestSpotifyImportEndpoints:
         assert kwargs["limit"] == 5
         assert kwargs["offset"] == 5
 
+    def test_spotify_playlists_paginates(self, client: TestClient, mock_spotify_env):
+        """Playlist endpoint should pass limit and offset through to the service."""
+        client.cookies.set("spotify_access_token", "test_access_token")
+
+        mock_playlist = MagicMock(
+            model_dump=lambda: {
+                "provider": "spotify",
+                "id": "playlist_2",
+                "name": "Second Page",
+                "track_count": 12,
+                "owner": "Test Owner",
+                "thumbnail": None,
+                "provider_url": "https://open.spotify.com/playlist/playlist_2",
+            }
+        )
+
+        with patch("main.SpotifyImportService.list_playlists") as mock_playlists:
+            mock_playlists.return_value = [mock_playlist]
+            response = client.get("/api/import/spotify/playlists", params={"limit": 10, "offset": 10})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data[0]["id"] == "playlist_2"
+        _, kwargs = mock_playlists.call_args
+        assert kwargs["limit"] == 10
+        assert kwargs["offset"] == 10
+
     def test_spotify_playlist_preview(self, client: TestClient, mock_spotify_env):
         """Playlist preview should return matched tracks when connected."""
         client.cookies.set("spotify_access_token", "test_access_token")

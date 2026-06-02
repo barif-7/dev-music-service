@@ -2,12 +2,13 @@
 import pytest
 
 from models import AutocompleteSuggestion, ImportedTrack, SongSearchResult
-from services.focus_service import AudioFeatures, DEFAULT_PROFILE, FocusProfile
+from services.focus_service import AudioFeatures, DEFAULT_PROFILE, FocusProfile, FocusService
 from services.focus_storage import KvFocusProfileStorageStub, LocalJsonFocusProfileStorage
 from services.lyrics_service import LyricsService
 from services.musicbrainz_matcher import MusicBrainzMatcher
 from services.music_service import MusicService, MusicServiceError, SearchServiceError, StreamResolutionError
 from services.metadata_service import MetadataService, MetadataServiceError
+from services.spotify_import_service import SpotifyImportError
 
 
 class TestMusicServiceSearch:
@@ -391,6 +392,36 @@ class TestFocusScoring:
         features = AudioFeatures({"tempo": 180, "instrumentalness": 1.0})
 
         assert not features.matches_profile(DEFAULT_PROFILE)
+
+    @pytest.mark.asyncio
+    async def test_top_tracks_falls_back_when_audio_features_are_blocked(self, monkeypatch):
+        async def fake_spotify_get(access_token, path, params=None):
+            if path == "/me/top/tracks":
+                return {
+                    "items": [
+                        {
+                            "id": "track-1",
+                            "name": "Fixture Song",
+                            "artists": [{"name": "Fixture Artist"}],
+                            "album": {"name": "Fixture Album", "images": [{"url": "https://img.example/cover.jpg"}]},
+                            "popularity": 80,
+                        }
+                    ]
+                }
+            if path == "/audio-features":
+                raise SpotifyImportError(
+                    'Spotify API request to /audio-features failed with 403: { "error" : { "status" : 403 } }'
+                )
+            raise AssertionError(f"unexpected Spotify path {path}")
+
+        monkeypatch.setattr("services.spotify_import_service.SpotifyImportService._spotify_get", fake_spotify_get)
+
+        result = await FocusService.analyse_top_tracks("token", profile=DEFAULT_PROFILE)
+
+        assert result["audio_features_available"] is False
+        assert result["bpm_insight"] is None
+        assert result["top_tracks"][0]["title"] == "Fixture Song"
+        assert "audio features" in result["warning"].lower()
 
 
 class TestFocusProfileStorage:

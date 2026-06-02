@@ -445,10 +445,12 @@
     letter-spacing:.06em;text-transform:uppercase;text-align:center;
   }
   .spotifyLoadMore{
+    display:block;width:100%;background:transparent;cursor:pointer;
     padding:10px 12px;margin-top:6px;border:1px dashed var(--border);
     border-radius:8px;color:var(--ink-faint);font-family:var(--mono);
     font-size:10px;letter-spacing:.06em;text-transform:uppercase;text-align:center;
   }
+  .spotifyLoadMore:hover{border-color:var(--accent);color:var(--accent)}
   .spotifyNote{
     font-family:var(--mono);font-size:10px;color:var(--ink-faint);
     letter-spacing:.04em;margin:8px 0 0;line-height:1.6;

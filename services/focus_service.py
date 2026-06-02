@@ -8,8 +8,14 @@ import structlog
 from config import get_settings
 from services.focus_storage import build_focus_profile_storage
 from services.spotify_import_service import SpotifyImportService
+from services.spotify_import_service import SpotifyImportError
 
 logger = structlog.get_logger()
+
+_AUDIO_FEATURES_UNAVAILABLE_MESSAGE = (
+    "Spotify no longer exposes audio features to this app, so BPM and focus scoring are unavailable. "
+    "Showing your top tracks without analysis."
+)
 
 # ---------------------------------------------------------------------------
 # Data models (plain dicts / dataclasses — no heavy deps)
@@ -105,6 +111,13 @@ class AudioFeatures:
         }
 
 
+class AudioFeaturesUnavailableError(Exception):
+    """Raised when Spotify blocks the deprecated audio-features endpoint."""
+
+    def __init__(self) -> None:
+        super().__init__(_AUDIO_FEATURES_UNAVAILABLE_MESSAGE)
+
+
 # ---------------------------------------------------------------------------
 # Focus profile persistence
 # ---------------------------------------------------------------------------
@@ -191,11 +204,16 @@ class FocusService:
                 chunk_ids = missing_ids[chunk_start:chunk_start + 100]
                 chunk_indices = missing_indices[chunk_start:chunk_start + 100]
 
-                payload = await SpotifyImportService._spotify_get(
-                    access_token,
-                    "/audio-features",
-                    {"ids": ",".join(chunk_ids)},
-                )
+                try:
+                    payload = await SpotifyImportService._spotify_get(
+                        access_token,
+                        "/audio-features",
+                        {"ids": ",".join(chunk_ids)},
+                    )
+                except SpotifyImportError as exc:
+                    if _is_audio_features_unavailable_error(exc):
+                        raise AudioFeaturesUnavailableError() from exc
+                    raise
                 features_list = payload.get("audio_features") or []
 
                 with FocusService._cache_lock:
@@ -213,7 +231,10 @@ class FocusService:
         access_token: str,
         track_id: str,
     ) -> AudioFeatures | None:
-        results = await FocusService._get_audio_features_batch(access_token, [track_id])
+        try:
+            results = await FocusService._get_audio_features_batch(access_token, [track_id])
+        except AudioFeaturesUnavailableError:
+            return None
         return results[0] if results else None
 
     # ---------------------------------------------------------------------------
@@ -233,7 +254,10 @@ class FocusService:
         if profile is None:
             profile = FocusProfile.load()
 
-        features = await FocusService._get_audio_features_batch(access_token, track_ids)
+        try:
+            features = await FocusService._get_audio_features_batch(access_token, track_ids)
+        except AudioFeaturesUnavailableError:
+            return []
 
         results = []
         for af in features:
@@ -301,7 +325,19 @@ class FocusService:
 
         # Batch fetch audio features
         features_map: dict[str, AudioFeatures] = {}
-        features_list = await FocusService._get_audio_features_batch(access_token, track_ids)
+        try:
+            features_list = await FocusService._get_audio_features_batch(access_token, track_ids)
+        except AudioFeaturesUnavailableError:
+            return {
+                "profile": profile,
+                "total_tracks": len(tracks_meta),
+                "focus_tracks": 0,
+                "rejected_tracks": 0,
+                "tracks": [],
+                "rejected": [],
+                "audio_features_available": False,
+                "warning": _AUDIO_FEATURES_UNAVAILABLE_MESSAGE,
+            }
         for af in features_list:
             features_map[af.track_id] = af
 
@@ -333,6 +369,7 @@ class FocusService:
             "rejected_tracks": len(rejected),
             "tracks": matched,
             "rejected": rejected[:10],  # first 10 rejected so UI can explain why
+            "audio_features_available": True,
         }
 
     # ---------------------------------------------------------------------------
@@ -376,7 +413,20 @@ class FocusService:
                     "popularity": t.get("popularity") or 0,
                 }
 
-        features_list = await FocusService._get_audio_features_batch(access_token, track_ids)
+        try:
+            features_list = await FocusService._get_audio_features_batch(access_token, track_ids)
+        except AudioFeaturesUnavailableError:
+            return {
+                "profile": profile,
+                "time_range": time_range,
+                "total_top_tracks": len(track_ids),
+                "focus_tracks_count": 0,
+                "focus_tracks": [],
+                "top_tracks": [meta_map[tid] for tid in track_ids if tid in meta_map],
+                "bpm_insight": None,
+                "audio_features_available": False,
+                "warning": _AUDIO_FEATURES_UNAVAILABLE_MESSAGE,
+            }
         features_map = {af.track_id: af for af in features_list}
 
         focus_tracks = []
@@ -415,6 +465,7 @@ class FocusService:
             "focus_tracks_count": len(focus_tracks),
             "focus_tracks": focus_tracks[:20],
             "bpm_insight": bpm_insight,
+            "audio_features_available": True,
         }
 
 
@@ -428,3 +479,8 @@ def _bpm_suggestion(avg_bpm: float) -> str:
     if avg_bpm > 140:
         return "Your listening skews fast — a 90–130 BPM focus window may feel more natural than the default."
     return "Your average listening BPM fits well within a standard focus range."
+
+
+def _is_audio_features_unavailable_error(exc: SpotifyImportError) -> bool:
+    message = str(exc)
+    return "/audio-features" in message and "failed with 403" in message
