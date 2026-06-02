@@ -23,6 +23,7 @@ from slowapi.util import get_remote_address
 from starlette.concurrency import run_in_threadpool
 
 from config import get_settings
+from models import ImportedPlaylistTrack
 from security import (
     open_validated_stream,
     redact_sensitive_data,
@@ -201,6 +202,33 @@ async def spotify_playlist_preview(
         fail_with_http_error(exc)
 
 
+@app.get("/api/import/spotify/liked-tracks")
+@limiter.limit("20 per minute")
+async def spotify_liked_tracks(
+    request: Request,
+    limit: int = Query(50, ge=1, le=50, description="Number of liked tracks to return"),
+    offset: int = Query(0, ge=0, description="Pagination offset"),
+):
+    try:
+        logger.info("spotify_liked_tracks_listed", limit=limit, offset=offset)
+        payload = await SpotifyImportService.liked_tracks_preview(request, limit=limit, offset=offset)
+        return payload.model_dump()
+    except Exception as exc:
+        logger.error("spotify_liked_tracks_failed", error=str(exc))
+        fail_with_http_error(exc)
+
+
+@app.post("/api/import/spotify/playback")
+@limiter.limit("30 per minute")
+async def spotify_track_playback(request: Request, body: ImportedPlaylistTrack):
+    try:
+        logger.info("spotify_track_playback_requested", title=body.source.title)
+        return (await SpotifyImportService.resolve_track_playback(body)).model_dump()
+    except Exception as exc:
+        logger.error("spotify_track_playback_failed", error=str(exc))
+        fail_with_http_error(exc)
+
+
 @app.post("/api/import/spotify/disconnect")
 def spotify_disconnect():
     return SpotifyImportService.clear_connection()
@@ -218,6 +246,8 @@ def search_song(
     ),
     expected_artist: Optional[str] = Query(default=None, max_length=200),
     expected_title: Optional[str] = Query(default=None, max_length=300),
+    expected_album: Optional[str] = Query(default=None, max_length=300),
+    expected_year: Optional[int] = Query(default=None, ge=1900, le=2100),
 ):
     try:
         logger.info(
@@ -235,6 +265,8 @@ def search_song(
                 target_duration=target_duration,
                 expected_artist=expected_artist,
                 expected_title=expected_title,
+                expected_album=expected_album,
+                expected_year=expected_year,
             )
         ]
         return JSONResponse(content=results, headers={"Cache-Control": "public, max-age=300"})

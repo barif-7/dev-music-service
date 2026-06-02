@@ -463,15 +463,45 @@ searchInput.addEventListener('input', ()=>openSuggestions(searchInput.value));
 searchInput.addEventListener('blur',  ()=>setTimeout(closeSuggestions, 180));
 
 /* ====== Track loading ====== */
-async function loadTrack(s){
-  document.getElementById('trackTitle').textContent = s.title||'…';
-  document.getElementById('trackTitleChrome').textContent = s.title||'…';
-  document.getElementById('artistName').textContent = s.artist||'—';
-  document.getElementById('albumName').textContent = s.album||'—';
-  document.getElementById('releaseYear').textContent = s.release_year||'—';
-  artImg.style.display='none'; artImg.src=''; artPlaceholder.style.display='flex';
-  setHeroArt(null);
+function applyPlaybackState(payload, fallback = {}){
+  const title = payload?.title || fallback.title || '…';
+  const artist = payload?.artist || fallback.artist || '—';
+  const album = payload?.album || fallback.album || '—';
+  const releaseYear = payload?.release_year || fallback.release_year || '—';
+  const duration = payload?.duration || fallback.duration || 0;
+  const thumbnail = payload?.thumbnail || fallback.thumbnail || '';
+  const artworkSource = payload?.artwork_source || fallback.artwork_source || '';
 
+  state.currentWebpageUrl = payload?.webpage_url || fallback.webpage_url || state.currentWebpageUrl;
+  state.duration = duration;
+  state.elapsed = 0;
+
+  document.getElementById('trackTitle').textContent = title;
+  document.getElementById('trackTitleChrome').textContent = title;
+  document.getElementById('artistName').textContent = artist;
+  document.getElementById('albumName').textContent = album;
+  document.getElementById('releaseYear').textContent = releaseYear;
+
+  document.getElementById('artSrc').textContent =
+    artworkSource === 'musicbrainz' ? 'MB · cover' :
+    artworkSource === 'youtube' ? 'YT · thumb' :
+    artworkSource === 'spotify' ? 'SP · thumb' :
+    '✷ · gen';
+
+  if(thumbnail){
+    artImg.src = thumbnail;
+    artImg.style.display = 'block';
+    artPlaceholder.style.display = 'none';
+  } else {
+    artImg.style.display = 'none';
+    artImg.src = '';
+    artPlaceholder.style.display = 'flex';
+  }
+  setHeroArt(thumbnail || null);
+}
+
+async function loadTrack(s){
+  applyPlaybackState({}, s);
   const query = [s.title, s.artist].filter(Boolean).join(' ');
   try {
     const t0 = performance.now();
@@ -481,30 +511,15 @@ async function loadTrack(s){
     if(s.duration) params.set('target_duration', String(s.duration));
     if(s.title)    params.set('expected_title', s.title);
     if(s.artist)   params.set('expected_artist', s.artist);
+    if(s.album)    params.set('expected_album', s.album);
+    if(s.release_year) params.set('expected_year', String(s.release_year));
     const r = await fetch(`/api/search?${params.toString()}`);
     document.getElementById('latSr').textContent = Math.round(performance.now()-t0)+'ms';
     if(!r.ok) return;
     const results = await r.json();
     if(!results||!results.length) return;
     const result = results[0];
-
-    state.currentWebpageUrl = result.webpage_url;
-    state.duration = result.duration||s.duration||0;
-    state.elapsed = 0;
-
-    document.getElementById('trackTitle').textContent = result.title||s.title;
-    document.getElementById('trackTitleChrome').textContent = result.title||s.title;
-    document.getElementById('artistName').textContent = result.artist||s.artist||'—';
-    document.getElementById('albumName').textContent = result.album||s.album||'—';
-    document.getElementById('releaseYear').textContent = result.release_year||s.release_year||'—';
-    const artSrc = result.artwork_source||s.artwork_source||'';
-    document.getElementById('artSrc').textContent =
-      artSrc==='musicbrainz'?'MB · cover':artSrc==='youtube'?'YT · thumb':'✷ · gen';
-
-    const thumb = result.thumbnail||result.artwork_url||'';
-    if(thumb){ artImg.src=thumb; artImg.style.display='block'; artPlaceholder.style.display='none'; }
-    else { artImg.style.display='none'; artImg.src=''; artPlaceholder.style.display='flex'; }
-    setHeroArt(thumb||null);
+    applyPlaybackState(result, s);
 
     if(state.mode==='browser'){
       const t1 = performance.now();
@@ -644,6 +659,523 @@ async function checkHealth(){
   } catch(e){}
 }
 checkHealth();
+
+/* ====== Spotify import ====== */
+const spotify = {
+  connected:false,
+  loading:false,
+  popup:null,
+  playlists:[],
+  likedTracks:[],
+  likedOffset:0,
+  likedLimit:5,
+  likedTotal:0,
+  likedDone:false,
+  likedLoading:false,
+  preview:null,
+  view:'playlists',
+};
+
+const spotifyConnectLink = document.getElementById('spotifyConnect');
+const spotifyConnectBtn = document.getElementById('spotifyConnectBtn');
+const spotifyPlaylistsBtn = document.getElementById('spotifyPlaylistsBtn');
+const spotifyLikedBtn = document.getElementById('spotifyLikedBtn');
+const spotifyList = document.getElementById('plList');
+const spotifyIx = document.getElementById('spStat');
+const spotifyAccount = document.getElementById('spotifyAccount');
+const spotifyScope = document.getElementById('spotifyScope');
+const spotifyConnText = document.getElementById('spotifyConnText');
+const spotifyConnDot = document.getElementById('spotifyConnDot');
+
+function setSpotifyStatus(label, detail){
+  if(spotifyIx) spotifyIx.textContent = label;
+  if(spotifyScope) spotifyScope.textContent = detail || label;
+}
+
+function setSpotifyConnection(state, text){
+  if(spotifyConnectBtn) spotifyConnectBtn.dataset.state = state;
+  if(spotifyConnText) spotifyConnText.textContent = text;
+  if(spotifyConnDot) spotifyConnDot.className = `dot ${state}`;
+}
+
+function setSpotifyEmpty(text){
+  if(!spotifyList) return;
+  spotifyList.innerHTML = '';
+  const empty = document.createElement('div');
+  empty.className = 'empty';
+  empty.textContent = text;
+  spotifyList.appendChild(empty);
+}
+
+function clearSpotifyLikedLoadMore(){
+  spotifyList?.querySelector('.spotifyLoadMore')?.remove();
+}
+
+function setSpotifyLikedLoadMore(text){
+  if(!spotifyList) return;
+  clearSpotifyLikedLoadMore();
+  const more = document.createElement('div');
+  more.className = 'spotifyLoadMore';
+  more.textContent = text;
+  spotifyList.appendChild(more);
+}
+
+function setSpotifyView(view){
+  spotify.view = view === 'liked' ? 'liked' : 'playlists';
+  spotify.preview = null;
+  spotifyPlaylistsBtn?.classList.toggle('on', spotify.view === 'playlists');
+  spotifyLikedBtn?.classList.toggle('on', spotify.view === 'liked');
+  if(spotify.view === 'liked'){
+    if(spotifyAccount) spotifyAccount.textContent = 'Liked songs';
+    if(spotifyScope) spotifyScope.textContent = 'saved tracks · read-only';
+  } else if(spotify.connected) {
+    if(spotifyAccount) spotifyAccount.textContent = 'Spotify library';
+    if(spotifyScope) spotifyScope.textContent = 'read-only playlist import';
+  }
+  if(!spotify.connected) return;
+  if(spotify.view === 'liked' && spotify.likedLoading){
+    setSpotifyEmpty('loading liked songs');
+    return;
+  }
+  if(spotify.view === 'liked' && spotify.likedTracks.length){
+    renderSpotifyLikedTracks(spotify.likedTracks);
+  } else if(spotify.view === 'liked') {
+    setSpotifyEmpty('connect spotify to load liked songs');
+  } else if(spotify.view === 'playlists' && spotify.playlists.length){
+    renderSpotifyPlaylists(spotify.playlists);
+  } else if(spotify.view === 'playlists') {
+    setSpotifyEmpty('connect spotify to fetch playlists');
+  }
+}
+
+function openSpotifyAuth(){
+  const w = 520, h = 720;
+  const left = Math.max(0, Math.round(window.screenX + (window.outerWidth - w) / 2));
+  const top = Math.max(0, Math.round(window.screenY + (window.outerHeight - h) / 2));
+  spotify.popup = window.open(
+    '/api/import/spotify/start',
+    'spotify-import',
+    `popup=yes,width=${w},height=${h},left=${left},top=${top}`
+  );
+  if(!spotify.popup){
+    window.location.href = '/api/import/spotify/start';
+    return;
+  }
+  setSpotifyConnection('loading', 'waiting');
+  setSpotifyStatus('connecting', 'waiting for spotify');
+}
+
+async function refreshSpotifyStatus(){
+  try {
+    const r = await fetch('/api/import/spotify/status', { cache:'no-store' });
+    if(!r.ok) throw new Error('status failed');
+    const d = await r.json();
+    spotify.connected = !!d.connected;
+    if(!d.configured){
+      setSpotifyStatus('missing id', 'client id missing');
+      setSpotifyConnection('disconnected', 'missing');
+      setSpotifyEmpty('spotify client id missing');
+      return false;
+    }
+    if(!d.connected){
+      setSpotifyStatus('not connected', 'connect to fetch');
+      setSpotifyConnection('disconnected', 'connect');
+      if(spotifyAccount) spotifyAccount.textContent = 'Spotify library';
+      setSpotifyView('playlists');
+      setSpotifyEmpty('connect spotify to fetch playlists');
+      return false;
+    }
+    setSpotifyConnection('connected', 'linked');
+    setSpotifyStatus('connected · scope read', 'read-only playlist import');
+    setSpotifyView(spotify.view);
+    return true;
+  } catch(e) {
+    setSpotifyStatus('error', 'status failed');
+    setSpotifyConnection('disconnected', 'error');
+    setSpotifyEmpty('spotify status failed');
+    return false;
+  }
+}
+
+function renderSpotifyPlaylists(playlists){
+  spotify.preview = null;
+  spotifyList.innerHTML = '';
+  if(!playlists.length){
+    setSpotifyEmpty('no playlists found');
+    return;
+  }
+  playlists.forEach(pl=>{
+    const row = document.createElement('div');
+    row.className = 'plRow';
+    row.dataset.playlistId = pl.id;
+
+    const meta = document.createElement('div');
+    const name = document.createElement('div');
+    name.className = 'pl-name';
+    name.textContent = pl.name || 'Untitled playlist';
+    const sub = document.createElement('div');
+    sub.className = 'pl-sub';
+    const owner = pl.owner ? ` · ${pl.owner}` : '';
+    sub.textContent = `${pl.track_count || 0} tracks${owner}`;
+    meta.append(name, sub);
+
+    const match = document.createElement('div');
+    match.className = 'match';
+    const badge = document.createElement('span');
+    badge.className = 'ok';
+    badge.textContent = 'preview';
+    match.appendChild(badge);
+
+    row.append(meta, match);
+    row.addEventListener('click', ()=>previewSpotifyPlaylist(row, pl));
+    spotifyList.appendChild(row);
+    });
+}
+
+function renderSpotifyTrackRows(tracks, options = {}){
+  const {
+    headline = '',
+    subline = '',
+    emptyText = 'no tracks found',
+    onBack = null,
+    backLabel = 'Back',
+  } = options;
+
+  spotifyList.innerHTML = '';
+
+  if(headline || subline || onBack){
+    const head = document.createElement('div');
+    head.className = 'spotifyPreviewHead';
+
+    if(onBack){
+      const back = document.createElement('button');
+      back.type = 'button';
+      back.className = 'spotifyBack';
+      back.textContent = backLabel;
+      back.addEventListener('click', e=>{
+        e.preventDefault();
+        e.stopPropagation();
+        onBack();
+      });
+      head.appendChild(back);
+    }
+
+    const meta = document.createElement('div');
+    meta.className = 'spotifyPreviewMeta';
+    if(headline){
+      const title = document.createElement('div');
+      title.className = 'spotifyPreviewTitle';
+      title.textContent = headline;
+      meta.appendChild(title);
+    }
+    if(subline){
+      const sub = document.createElement('div');
+      sub.className = 'spotifyPreviewSub';
+      sub.textContent = subline;
+      meta.appendChild(sub);
+    }
+    head.appendChild(meta);
+    spotifyList.appendChild(head);
+  }
+
+  if(!tracks.length){
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.textContent = emptyText;
+    spotifyList.appendChild(empty);
+    return;
+  }
+
+  tracks.forEach(item=>{
+    const track = item.source || {};
+    const match = item.musicbrainz || {};
+    const conf = Math.min(99, Math.max(20, match.confidence || 0));
+    const tier = conf >= 85 ? 'high' : conf >= 60 ? 'mid' : 'low';
+    const playable = conf >= 80;
+    const row = document.createElement('div');
+    row.className = `likedRow${playable ? ' playable' : ''}`;
+    row.title = playable ? 'Play this well-matched track' : 'Track is not matched well enough to play directly';
+
+    const meta = document.createElement('div');
+    const title = document.createElement('div');
+    title.className = 'title';
+    title.textContent = match.title || track.title || 'Untitled track';
+    const sub = document.createElement('div');
+    sub.className = 'meta';
+    const artist = (match.artist || (track.artist_names || []).join(', ')) || '—';
+    const album = match.album || track.album || '—';
+    sub.innerHTML = `<span>${artist}</span><span class="sep">·</span><span>${album}</span>`;
+    meta.append(title, sub);
+
+    const matchCol = document.createElement('div');
+    matchCol.className = 'match';
+    const good = document.createElement('span');
+    good.className = tier;
+    good.textContent = `${conf}%`;
+    matchCol.appendChild(good);
+
+    const saved = document.createElement('div');
+    saved.className = 'saved';
+    saved.textContent = match.match_reason === 'unmatched' ? 'unmatched' : (match.match_reason || 'linked');
+
+    const hint = document.createElement('div');
+    hint.className = 'playHint';
+    hint.textContent = playable ? 'Play' : 'Match low';
+
+    row.append(meta, matchCol, saved, hint);
+    if(playable){
+      row.addEventListener('click', ()=>playSpotifyExportedTrack(item));
+    }
+    spotifyList.appendChild(row);
+  });
+}
+
+function createSpotifyLikedRow(item){
+  const track = item.source || {};
+  const match = item.musicbrainz || {};
+  const conf = Math.min(99, Math.max(20, match.confidence || 0));
+  const tier = conf >= 85 ? 'high' : conf >= 60 ? 'mid' : 'low';
+  const playable = conf >= 80;
+  const row = document.createElement('div');
+  row.className = `likedRow${playable ? ' playable' : ''}`;
+  row.title = playable ? 'Play this well-matched track' : 'Track is not matched well enough to play directly';
+
+  const meta = document.createElement('div');
+  const title = document.createElement('div');
+  title.className = 'title';
+  title.textContent = match.title || track.title || 'Untitled track';
+  const sub = document.createElement('div');
+  sub.className = 'meta';
+  const artist = (match.artist || (track.artist_names || []).join(', ')) || '—';
+  const album = match.album || track.album || '—';
+  sub.innerHTML = `<span>${artist}</span><span class="sep">·</span><span>${album}</span>`;
+  meta.append(title, sub);
+
+  const matchCol = document.createElement('div');
+  matchCol.className = 'match';
+  const good = document.createElement('span');
+  good.className = tier;
+  good.textContent = `${conf}%`;
+  matchCol.appendChild(good);
+
+  const saved = document.createElement('div');
+  saved.className = 'saved';
+  saved.textContent = match.match_reason === 'unmatched' ? 'unmatched' : (match.match_reason || 'linked');
+
+  const hint = document.createElement('div');
+  hint.className = 'playHint';
+  hint.textContent = playable ? 'Play' : 'Match low';
+
+  row.append(meta, matchCol, saved, hint);
+  if(playable){
+    row.addEventListener('click', ()=>playSpotifyExportedTrack(item));
+  }
+  return row;
+}
+
+function renderSpotifyLikedTracksPage(tracks, { append = false } = {}){
+  spotify.preview = null;
+  if(!append){
+    spotifyList.innerHTML = '';
+    clearSpotifyLikedLoadMore();
+  }
+  if(!tracks.length && !append){
+    setSpotifyEmpty('no liked songs found');
+    return;
+  }
+  tracks.forEach(item=>spotifyList.appendChild(createSpotifyLikedRow(item)));
+}
+
+function updateSpotifyLikedFooter(){
+  clearSpotifyLikedLoadMore();
+  if(spotify.likedLoading){
+    setSpotifyLikedLoadMore('loading more liked songs');
+  } else if(!spotify.likedDone && spotify.likedTracks.length){
+    setSpotifyLikedLoadMore('scroll to load more');
+  }
+}
+
+function renderSpotifyLikedTracks(tracks){
+  renderSpotifyLikedTracksPage(tracks, { append: false });
+  updateSpotifyLikedFooter();
+}
+
+function renderSpotifyPlaylistPreview(data, playlist){
+  spotify.preview = {playlist, data};
+  const tracks = data.tracks || [];
+  const subline = `${data.matched_count || 0} ok · ${data.low_confidence_count || 0} low · ${data.unmatched_count || 0} unmatched`;
+  renderSpotifyTrackRows(tracks, {
+    headline: playlist.name || 'Playlist preview',
+    subline,
+    emptyText: 'no matched tracks found',
+    backLabel: 'Back to playlists',
+    onBack: ()=>{
+      spotify.preview = null;
+      renderSpotifyPlaylists(spotify.playlists);
+      if(spotifyAccount) spotifyAccount.textContent = 'Spotify library';
+      if(spotifyScope) spotifyScope.textContent = 'read-only playlist import';
+      setSpotifyStatus(`connected · ${spotify.playlists.length} lists`, `${spotify.playlists.length} playlists · read-only`);
+    },
+  });
+  if(spotifyAccount) spotifyAccount.textContent = playlist.name || 'Playlist preview';
+  setSpotifyStatus('previewed', playlist.name || 'playlist');
+}
+
+async function playSpotifyExportedTrack(item){
+  const track = item?.source || {};
+  const match = item?.musicbrainz || {};
+  const queryParts = [match.title || track.title, match.artist || (track.artist_names || []).join(', ')].filter(Boolean);
+  const query = queryParts.join(' ');
+  const fallback = {
+    title: match.title || track.title || 'Untitled track',
+    artist: match.artist || (track.artist_names || []).join(', ') || '—',
+    album: match.album || track.album || undefined,
+    duration: track.duration_ms ? Math.round(track.duration_ms / 1000) : undefined,
+    thumbnail: match.artwork_url || track.artwork_url || undefined,
+    artwork_source: match.artwork_url ? 'musicbrainz' : (track.artwork_url ? 'spotify' : undefined),
+    release_year: match.release_year || undefined,
+  };
+  applyPlaybackState({}, fallback);
+  try {
+    await loadTrack({
+      title: fallback.title,
+      artist: fallback.artist,
+      album: fallback.album,
+      duration: fallback.duration,
+      thumbnail: fallback.thumbnail,
+      artwork_source: fallback.artwork_source,
+      release_year: fallback.release_year,
+    });
+    if(query) document.getElementById('searchInput').value = query;
+  } catch(e) {
+    console.warn('spotify playback', e);
+    setSpotifyStatus('playback failed', String(e?.message || e || 'resolve failed'));
+    document.getElementById('endStatus').textContent = 'resolve failed';
+    if(query) document.getElementById('searchInput').value = query;
+  }
+}
+
+async function fetchSpotifyLikedTracks({ reset = false, append = false } = {}){
+  if(spotify.likedLoading) return;
+  if(reset){
+    spotify.likedOffset = 0;
+    spotify.likedTotal = 0;
+    spotify.likedDone = false;
+    spotify.likedTracks = [];
+    spotifyList.innerHTML = '';
+    clearSpotifyLikedLoadMore();
+  }
+  spotify.likedLoading = true;
+  spotify.loading = true;
+  setSpotifyView('liked');
+  setSpotifyStatus('loading', append ? 'loading more liked songs' : 'fetching liked songs');
+  updateSpotifyLikedFooter();
+  try {
+    const connected = await refreshSpotifyStatus();
+    if(!connected) return;
+    const limit = spotify.likedLimit || 5;
+    const offset = reset ? 0 : spotify.likedOffset;
+    const r = await fetch(`/api/import/spotify/liked-tracks?limit=${limit}&offset=${offset}`, { cache:'no-store' });
+    if(!r.ok) throw new Error(await r.text());
+    const payload = await r.json();
+    const page = payload.tracks || [];
+    spotify.likedTotal = payload.total || 0;
+    spotify.likedOffset = (payload.offset || offset) + page.length;
+    spotify.likedDone = !page.length || spotify.likedOffset >= spotify.likedTotal;
+    spotify.likedTracks = reset ? page : spotify.likedTracks.concat(page);
+    renderSpotifyLikedTracksPage(page, { append });
+    updateSpotifyLikedFooter();
+    setSpotifyStatus(
+      `connected · ${spotify.likedOffset}/${payload.total || spotify.likedTracks.length} liked`,
+      `${payload.matched_count || 0} linked · ${payload.low_confidence_count || 0} low · ${payload.unmatched_count || 0} unmatched`
+    );
+    if(spotifyAccount) spotifyAccount.textContent = 'Liked songs';
+  } catch(e) {
+    console.warn('spotify liked tracks', e);
+    const msg = String(e?.message || e || '').toLowerCase();
+    if(msg.includes('scope') || msg.includes('reconnect')){
+      setSpotifyStatus('reconnect spotify', 'liked songs needs new scope');
+      setSpotifyConnection('disconnected', 'reconnect');
+      setSpotifyEmpty('reconnect spotify to load liked songs');
+    } else {
+      setSpotifyStatus('error', 'liked tracks failed');
+      setSpotifyConnection('disconnected', 'retry');
+      setSpotifyEmpty('liked tracks failed');
+    }
+  } finally {
+    spotify.likedLoading = false;
+    spotify.loading = false;
+    updateSpotifyLikedFooter();
+  }
+}
+
+async function fetchSpotifyPlaylists(){
+  if(spotify.loading) return;
+  spotify.loading = true;
+  setSpotifyStatus('loading', 'fetching playlists');
+  try {
+    const connected = await refreshSpotifyStatus();
+    if(!connected) return;
+    const r = await fetch('/api/import/spotify/playlists?limit=50', { cache:'no-store' });
+    if(!r.ok) throw new Error(await r.text());
+    const playlists = await r.json();
+    spotify.playlists = playlists;
+    renderSpotifyPlaylists(playlists);
+    setSpotifyStatus(`connected · ${playlists.length} lists`, `${playlists.length} playlists · read-only`);
+    if(spotifyAccount) spotifyAccount.textContent = 'Spotify library';
+  } catch(e) {
+    console.warn('spotify playlists', e);
+    setSpotifyStatus('error', 'playlist fetch failed');
+    setSpotifyConnection('disconnected', 'retry');
+    setSpotifyEmpty('playlist fetch failed');
+  } finally {
+    spotify.loading = false;
+  }
+}
+
+async function previewSpotifyPlaylist(row, playlist){
+  try {
+    const r = await fetch(`/api/import/spotify/playlists/${encodeURIComponent(playlist.id)}/preview?limit=25`);
+    if(!r.ok) throw new Error(await r.text());
+    const data = await r.json();
+    renderSpotifyPlaylistPreview(data, playlist);
+  } catch(e) {
+    console.warn('spotify preview', e);
+    setSpotifyStatus('error', 'preview failed');
+  }
+}
+
+function wireSpotifyImport(){
+  if(!spotifyList) return;
+  spotifyConnectLink?.addEventListener('click', e=>{ e.preventDefault(); openSpotifyAuth(); });
+  spotifyConnectBtn?.addEventListener('click', ()=>{
+    if(spotify.connected) (spotify.view === 'liked' ? fetchSpotifyLikedTracks({ reset:true }) : fetchSpotifyPlaylists());
+    else openSpotifyAuth();
+  });
+  spotifyPlaylistsBtn?.addEventListener('click', ()=>setSpotifyView('playlists'));
+  spotifyLikedBtn?.addEventListener('click', ()=>{
+    if(spotify.connected) fetchSpotifyLikedTracks({ reset:true });
+    else openSpotifyAuth();
+  });
+  spotifyList?.addEventListener('scroll', ()=>{
+    if(spotify.view !== 'liked' || !spotify.connected || spotify.likedLoading || spotify.likedDone) return;
+    const threshold = 28;
+    if(spotifyList.scrollTop + spotifyList.clientHeight >= spotifyList.scrollHeight - threshold){
+      fetchSpotifyLikedTracks({ append:true });
+    }
+  });
+  window.addEventListener('message', e=>{
+    if(e.origin !== window.location.origin) return;
+    if(e.data && e.data.type === 'spotify-connected') {
+      (spotify.view === 'liked' ? fetchSpotifyLikedTracks({ reset:true }) : fetchSpotifyPlaylists());
+    }
+  });
+  refreshSpotifyStatus().then(connected=>{
+    if(!connected) return;
+    (spotify.view === 'liked' ? fetchSpotifyLikedTracks({ reset:true }) : fetchSpotifyPlaylists());
+  });
+}
+wireSpotifyImport();
 
 /* ====== Equalizer ====== */
 const eqOpts = {style:'bars', bands:32, palette:'lime', scale:'linear', peaks:true};
@@ -893,7 +1425,14 @@ const MCP_TOOLS = [
   {n:'music_resume',         d:'Resume from the last persisted position.',               a:0},
 ];
 
-const mcp = { state:'stopped', pid:null, startedAt:null, calloutDismissed:false };
+const mcp = {
+  state:'stopped',
+  pid:null,
+  startedAt:null,
+  calloutDismissed:false,
+  log:[],
+  width:'360',
+};
 
 function fmtUptime(ms){
   if(!ms||ms<0) return '—';
@@ -907,14 +1446,25 @@ function nowHMS(){
   return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());
 }
 
-function renderMcpDrawer(target, st){
+function fmtArity(n){ return n===0 ? 'no params' : (n===1 ? '1 param' : n+' params'); }
+
+function addMcpLog(name, ok=true){
+  mcp.log.unshift({ts:nowHMS(), n:name, ok});
+  mcp.log = mcp.log.slice(0, 5);
+}
+
+function renderMcpDrawer(target, st, opts={}){
   const {state:s, pid, startedAt} = st;
   const labels={stopped:'Stopped',starting:'Starting…',running:'Running'};
   const uptime=s==='running'?fmtUptime(Date.now()-startedAt):null;
+  const compact=!!opts.compact;
   const toolsHtml=s==='running'
-    ?MCP_TOOLS.map(t=>`<div class="mcpTool"><div class="name">${t.n}</div><div class="arity ${t.a===0?'':'has'}">${t.a===0?'no params':t.a+' param'+(t.a>1?'s':'')}</div><div class="desc">${t.d}</div></div>`).join('')
+    ?MCP_TOOLS.map(t=>`<div class="mcpTool"><div class="name">${t.n}</div><div class="arity ${t.a===0?'zero':'has'}">${fmtArity(t.a)}</div>${compact?'':`<div class="desc">${t.d}</div>`}</div>`).join('')
     :`<div class="mcpToolsEmpty">${s==='starting'?'— initializing —':'— tools register on start —'}</div>`;
-  const calloutHtml=st.calloutDismissed?'':`
+  const logHtml=st.log.length
+    ?st.log.map(l=>`<div class="mcpLogRow"><span class="ts">${l.ts}</span><span class="nm">${l.n}</span><span class="bd ${l.ok?'ok':'err'}">${l.ok?'ok':'err'}</span></div>`).join('')
+    :`<div style="font-family:var(--mono);font-size:10.5px;color:var(--ink-faint);text-align:center;padding:10px">— no calls yet —</div>`;
+  const calloutHtml=(st.calloutDismissed||compact)?'':`
     <div class="mcpSection"><div class="mcpCallout">
       <span class="ic">!</span>
       <span class="tx"><b>Restart Claude Code</b> after toggling to reload the tool list.</span>
@@ -955,6 +1505,28 @@ function renderMcpDrawer(target, st){
         <div class="h"><span>Tools</span><span>${s==='running'?MCP_TOOLS.length+' registered':'—'}</span></div>
         <div class="mcpTools">${toolsHtml}</div>
       </div>
+      <div class="mcpSection">
+        <div class="h"><span>Activity</span><span>last 5</span></div>
+        <div class="mcpLog">${logHtml}</div>
+      </div>
+      <div class="mcpSection">
+        <div class="h"><span>Tweaks</span><span>drawer</span></div>
+        <div class="mcpTweakRow">
+          <span>Accent</span>
+          <span class="mcpTweakGroup">
+            <button class="mcpSwatch" data-mcp-accent="#d7ff3a" style="background:#d7ff3a" aria-label="Lime accent"></button>
+            <button class="mcpSwatch" data-mcp-accent="#7ad9ff" style="background:#7ad9ff" aria-label="Ice accent"></button>
+            <button class="mcpSwatch" data-mcp-accent="#ff6a3d" style="background:#ff6a3d" aria-label="Magma accent"></button>
+            <button class="mcpSwatch" data-mcp-accent="#c79bff" style="background:#c79bff" aria-label="Violet accent"></button>
+          </span>
+        </div>
+        <div class="mcpTweakRow" style="margin-top:10px">
+          <span>Width</span>
+          <span class="mcpTweakGroup">
+            ${['320','360','420'].map(w=>`<button class="mcpWidthBtn ${st.width===w?'on':''}" data-mcp-width="${w}">${w}</button>`).join('')}
+          </span>
+        </div>
+      </div>
       ${calloutHtml}
     </div>`;
 }
@@ -969,18 +1541,19 @@ function syncMcpPill(){
 async function mcpStart(){
   if(mcp.state!=='stopped') return;
   mcp.state='starting'; syncMcpPill(); renderMcpDrawer(mcpDrawerEl, mcp);
+  addMcpLog('mcp_start', true);
   try {
     const r=await fetch('/api/mcp/start',{method:'POST'});
     const d=await r.json();
-    if(d.running){ mcp.state='running'; mcp.pid=d.pid; mcp.startedAt=Date.now(); }
-    else { mcp.state='stopped'; }
-  } catch(e){ mcp.state='stopped'; }
+    if(d.running){ mcp.state='running'; mcp.pid=d.pid; mcp.startedAt=Date.now(); addMcpLog('music_health_check', true); }
+    else { mcp.state='stopped'; addMcpLog('mcp_start', false); }
+  } catch(e){ mcp.state='stopped'; addMcpLog('mcp_start', false); }
   syncMcpPill(); renderMcpDrawer(mcpDrawerEl, mcp);
 }
 
 async function mcpStop(){
   if(mcp.state!=='running') return;
-  try { await fetch('/api/mcp/stop',{method:'POST'}); } catch(e){}
+  try { await fetch('/api/mcp/stop',{method:'POST'}); addMcpLog('mcp_stop', true); } catch(e){ addMcpLog('mcp_stop', false); }
   mcp.state='stopped'; mcp.pid=null; mcp.startedAt=null;
   syncMcpPill(); renderMcpDrawer(mcpDrawerEl, mcp);
 }
@@ -993,16 +1566,19 @@ async function pollMcpStatus(){
     const d=await r.json();
     if(d.running&&mcp.state!=='running'){
       mcp.state='running'; mcp.pid=d.pid; if(!mcp.startedAt) mcp.startedAt=Date.now();
+      addMcpLog('mcp_status', true);
       syncMcpPill(); renderMcpDrawer(mcpDrawerEl, mcp);
     } else if(!d.running&&mcp.state==='running'){
       mcp.state='stopped'; mcp.pid=null; mcp.startedAt=null;
+      addMcpLog('mcp_status', true);
       syncMcpPill(); renderMcpDrawer(mcpDrawerEl, mcp);
     }
-  } catch(e){}
+  } catch(e){ addMcpLog('mcp_status', false); }
 }
 
 const mcpDrawerEl=document.getElementById('mcpDrawer');
 const mcpScrim=document.getElementById('mcpScrim');
+document.documentElement.style.setProperty('--mcp-w', mcp.width+'px');
 renderMcpDrawer(mcpDrawerEl, mcp);
 syncMcpPill();
 pollMcpStatus();
@@ -1014,6 +1590,19 @@ document.getElementById('mcpOpen').addEventListener('click', ()=>{
 });
 mcpScrim.addEventListener('click', ()=>{ mcpDrawerEl.classList.remove('open'); mcpScrim.classList.remove('open'); });
 mcpDrawerEl.addEventListener('click', e=>{
+  const accent=e.target.closest('[data-mcp-accent]');
+  if(accent){
+    document.documentElement.style.setProperty('--accent', accent.dataset.mcpAccent);
+    renderMcpDrawer(mcpDrawerEl,mcp);
+    return;
+  }
+  const width=e.target.closest('[data-mcp-width]');
+  if(width){
+    mcp.width=width.dataset.mcpWidth;
+    document.documentElement.style.setProperty('--mcp-w', mcp.width+'px');
+    renderMcpDrawer(mcpDrawerEl,mcp);
+    return;
+  }
   const b=e.target.closest('[data-act]'); if(!b) return;
   const act=b.dataset.act;
   if(act==='close'){ mcpDrawerEl.classList.remove('open'); mcpScrim.classList.remove('open'); }
@@ -1027,3 +1616,219 @@ document.addEventListener('keydown', e=>{
     mcpDrawerEl.classList.remove('open'); mcpScrim.classList.remove('open');
   }
 });
+
+/* ====== Focus panel helpers ====== */
+function escapeHtml(s){
+  const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML;
+}
+function escapeAttr(s){
+  return (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function focusArtMarkup(track, size){
+  size=size||40;
+  if(track.thumbnail){
+    return `<div class="focus-art" style="width:${size}px;height:${size}px;"><img src="${escapeAttr(track.thumbnail)}" alt="" loading="lazy"><div class="ph">♪</div></div>`;
+  }
+  return `<div class="focus-art" style="width:${size}px;height:${size}px;"><div class="ph">♪</div></div>`;
+}
+function focusSkeleton(){
+  return '<div class="focus-skeleton">Loading…</div>';
+}
+
+/* ====== Focus panel state ====== */
+let focusPanelOpen = false;
+let currentTimeRange = 'medium_term';
+let currentFocusData = null;
+
+function toggleFocusPanel() {
+  focusPanelOpen = !focusPanelOpen;
+  document.getElementById('focusPanel').classList.toggle('visible', focusPanelOpen);
+  if (focusPanelOpen) {
+    loadProfile();
+    checkFocusSpotifyStatus();
+  }
+}
+
+function syncEnergyLabel() {
+  const lo = parseFloat(document.getElementById('energyMin').value).toFixed(2);
+  const hi = parseFloat(document.getElementById('energyMax').value).toFixed(2);
+  document.getElementById('energyVal').textContent = `${lo} – ${hi}`;
+}
+
+async function loadProfile() {
+  try {
+    const r = await fetch('/api/focus/profile');
+    if (!r.ok) return;
+    const p = await r.json();
+    document.getElementById('bpmMin').value = p.bpm_min;
+    document.getElementById('bpmMax').value = p.bpm_max;
+    document.getElementById('instrMin').value = p.instrumentalness_min;
+    document.getElementById('instrVal').textContent = parseFloat(p.instrumentalness_min).toFixed(2);
+    document.getElementById('energyMin').value = p.energy_min;
+    document.getElementById('energyMax').value = p.energy_max;
+    syncEnergyLabel();
+  } catch (_) {}
+}
+
+async function saveProfile() {
+  const profile = {
+    bpm_min: parseInt(document.getElementById('bpmMin').value),
+    bpm_max: parseInt(document.getElementById('bpmMax').value),
+    instrumentalness_min: parseFloat(document.getElementById('instrMin').value),
+    energy_min: parseFloat(document.getElementById('energyMin').value),
+    energy_max: parseFloat(document.getElementById('energyMax').value),
+    valence_min: 0.0,
+    valence_max: 1.0,
+  };
+  try {
+    const r = await fetch('/api/focus/profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(profile),
+    });
+    if (r.ok && currentFocusData) {
+      analyseTopTracks();
+    }
+  } catch (_) {}
+}
+
+async function resetProfile() {
+  await fetch('/api/focus/profile/reset', { method: 'POST' });
+  await loadProfile();
+  if (currentFocusData) analyseTopTracks();
+}
+
+async function checkFocusSpotifyStatus() {
+  try {
+    const r = await fetch('/api/import/spotify/status');
+    if (!r.ok) return;
+    const s = await r.json();
+    const btn = document.getElementById('analyseTopBtn');
+    const status = document.getElementById('focusSpotifyStatus');
+    if (s.connected) {
+      btn.disabled = false;
+      status.textContent = 'Spotify connected';
+    } else {
+      btn.disabled = true;
+      status.textContent = s.configured ? 'Connect Spotify to begin' : 'Spotify not configured';
+    }
+  } catch(_){}
+}
+
+async function analyseTopTracks() {
+  document.getElementById('focusEmpty').style.display = 'none';
+  document.getElementById('focusTracks').innerHTML = focusSkeleton();
+  document.getElementById('focusStats').style.display = 'none';
+  document.getElementById('timeTabs').style.display = 'none';
+  document.getElementById('focusTrackHead').style.display = 'none';
+  document.getElementById('rejectedSection').style.display = 'none';
+  document.getElementById('bpmInsight').classList.remove('visible');
+
+  try {
+    const r = await fetch(`/api/focus/top-tracks?time_range=${currentTimeRange}`);
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}));
+      document.getElementById('focusTracks').innerHTML = '';
+      document.getElementById('focusEmpty').style.display = '';
+      document.getElementById('focusEmpty').textContent = e.detail || 'Failed to load top tracks.';
+      return;
+    }
+    currentFocusData = await r.json();
+    renderFocusData(currentFocusData);
+  } catch (err) {
+    document.getElementById('focusTracks').innerHTML = '';
+    document.getElementById('focusEmpty').style.display = '';
+    document.getElementById('focusEmpty').textContent = err.message || 'Request failed.';
+  }
+}
+
+function setTimeRange(range, btn) {
+  currentTimeRange = range;
+  document.querySelectorAll('.time-tab').forEach(t => t.classList.toggle('active', t === btn));
+  analyseTopTracks();
+}
+
+function renderFocusData(data) {
+  document.getElementById('focusStats').style.display = '';
+  document.getElementById('statFocus').textContent = data.focus_tracks_count;
+  document.getElementById('statTotal').textContent = data.total_top_tracks;
+  document.getElementById('statAvgBpm').textContent = data.bpm_insight ? data.bpm_insight.mean : '—';
+  const topScore = data.focus_tracks[0] ? data.focus_tracks[0].focus_score : 0;
+  document.getElementById('statTopScore').textContent = topScore ? topScore.toFixed(0) : '—';
+
+  if (data.bpm_insight) {
+    const ins = document.getElementById('bpmInsight');
+    ins.innerHTML = `<b>Your listening BPM: avg ${data.bpm_insight.mean}, range ${data.bpm_insight.min}–${data.bpm_insight.max}.</b> ${escapeHtml(data.bpm_insight.suggestion)}`;
+    ins.classList.add('visible');
+  }
+
+  document.getElementById('timeTabs').style.display = '';
+  document.getElementById('focusTrackHead').style.display = '';
+  const container = document.getElementById('focusTracks');
+  container.innerHTML = '';
+
+  if (!data.focus_tracks.length) {
+    container.innerHTML = '<div class="focus-skeleton">No tracks matched your current focus profile. Try widening the BPM range or lowering the instrumentalness threshold.</div>';
+  } else {
+    data.focus_tracks.forEach(track => {
+      const row = document.createElement('div');
+      row.className = 'focus-track';
+      const scoreWidth = Math.round(track.focus_score);
+      row.innerHTML = `
+        ${focusArtMarkup({ title: track.title, artist: track.artist, thumbnail: track.thumbnail }, 36)}
+        <div><div class="t">${escapeHtml(track.title)}</div><div class="a">${escapeHtml(track.artist)}${track.album ? ' · ' + escapeHtml(track.album) : ''}</div></div>
+        <div class="bpm-pill">${track.tempo}</div>
+        <div class="feat-val">${(track.instrumentalness * 100).toFixed(0)}%</div>
+        <div class="feat-val">${(track.energy * 100).toFixed(0)}%</div>
+        <div class="feat-val">
+          <div style="margin-bottom:3px;">${track.focus_score.toFixed(0)}</div>
+          <div class="focus-bar-wrap"><div class="focus-bar-fill" style="width:${scoreWidth}%"></div></div>
+        </div>
+        <button class="btn" style="font-size:10px;padding:4px 8px;" onclick="playFocusTrack(event, ${JSON.stringify(escapeAttr(track.title))}, ${JSON.stringify(escapeAttr(track.artist))})">Play</button>
+      `;
+      container.appendChild(row);
+    });
+  }
+
+  if (data.rejected && data.rejected.length) {
+    document.getElementById('rejectedSection').style.display = '';
+    document.getElementById('rejectedLabel').textContent = `Show ${data.rejected_tracks} filtered-out tracks`;
+    const rejList = document.getElementById('rejectedList');
+    rejList.innerHTML = '';
+    data.rejected.forEach(track => {
+      const row = document.createElement('div');
+      row.className = 'rejected-track';
+      const reason = rejectReason(track);
+      row.innerHTML = `
+        ${focusArtMarkup({ title: track.title, artist: track.artist, thumbnail: track.thumbnail }, 32)}
+        <div><div class="t">${escapeHtml(track.title)}</div><div class="a">${escapeHtml(track.artist)}</div></div>
+        <div class="bpm-pill" style="color:var(--ink-faint);">${track.tempo}</div>
+        <div class="reject-reason">${reason}</div>
+      `;
+      rejList.appendChild(row);
+    });
+  }
+}
+
+function rejectReason(track) {
+  const p = currentFocusData?.profile;
+  if (!p) return 'filtered';
+  if (track.tempo < p.bpm_min) return `${track.tempo} bpm — too slow`;
+  if (track.tempo > p.bpm_max) return `${track.tempo} bpm — too fast`;
+  if (track.instrumentalness < p.instrumentalness_min) return `${(track.instrumentalness*100).toFixed(0)}% instr.`;
+  return 'filtered';
+}
+
+function toggleRejected() {
+  const list = document.getElementById('rejectedList');
+  const arrow = document.getElementById('rejectedArrow');
+  const showing = list.classList.toggle('visible');
+  arrow.textContent = showing ? '▾' : '▸';
+}
+
+async function playFocusTrack(evt, title, artist) {
+  evt.stopPropagation();
+  const query = `${artist} - ${title}`;
+  document.getElementById('searchInput').value = query;
+  await loadTrack({title, artist});
+}

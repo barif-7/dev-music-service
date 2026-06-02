@@ -21,11 +21,12 @@
     <nav class="nav">
       <a href="#" class="on">Focus</a>
       <a href="/docs">API</a>
-      <a href="/api/import/spotify/start">Spotify</a>
+      <a href="/api/import/spotify/start" id="spotifyConnect">Spotify</a>
     </nav>
   </div>
   <div class="tr">
     <div class="runtime" id="runtimePill"><i class="dot"></i><span id="runtimeText">GET&nbsp;/health · checking…</span></div>
+    <button class="btn" id="focusModeBtn" onclick="toggleFocusPanel()">Focus mode</button>
     <button class="btn themeBtn" id="themeOpen" aria-haspopup="dialog" aria-controls="themeModal">
       <span class="themeBtnSwatch" id="themeBtnSwatch"></span>
       <span>Theme</span>
@@ -138,6 +139,29 @@
       </div>
     </div>
 
+    <div class="card spotify">
+      <h4>Spotify import <span class="ix" id="spStat">checking</span></h4>
+      <div class="head">
+        <div class="icon">S</div>
+        <div class="who">
+          <b id="spotifyAccount">Spotify library</b>
+          <span id="spotifyScope">read-only playlist import</span>
+        </div>
+        <button class="conn" id="spotifyConnectBtn">
+          <i class="dot" id="spotifyConnDot"></i>
+          <span id="spotifyConnText">connect</span>
+        </button>
+      </div>
+      <div class="spotifyViews">
+        <button class="spotifyView on" id="spotifyPlaylistsBtn">Playlists</button>
+        <button class="spotifyView" id="spotifyLikedBtn">Liked songs</button>
+      </div>
+      <div id="plList"></div>
+      <p class="spotifyNote">
+        Phase pulls your playlists and liked songs read-only, maps each track to MusicBrainz, and lets well-matched rows play directly.
+      </p>
+    </div>
+
     <div class="card eqCard">
       <h4>Spectrum <span class="ix" id="eqMode">bars · 32 · lime</span></h4>
       <canvas id="eqSideCanvas"></canvas>
@@ -223,6 +247,85 @@
 
 <div class="mcpScrim" id="mcpScrim"></div>
 <aside class="mcpDrawer" id="mcpDrawer"></aside>
+
+<section class="focus-panel" id="focusPanel">
+  <div class="focus-header">
+    <h2 class="focus-title">Your <em>focus</em> filter</h2>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <span class="runtime" style="font-size:10px;"><i class="dot" style="background:var(--accent);"></i><span id="focusSpotifyStatus">Connect Spotify to begin</span></span>
+      <button class="btn" onclick="toggleFocusPanel()">Close</button>
+    </div>
+  </div>
+
+  <div class="profile-grid">
+    <div class="profile-field">
+      <label>BPM range</label>
+      <div class="bpm-row">
+        <input class="bpm-input" type="number" id="bpmMin" value="60" min="40" max="220" />
+        <span class="bpm-sep">—</span>
+        <input class="bpm-input" type="number" id="bpmMax" value="120" min="40" max="220" />
+        <span class="bpm-sep" style="margin-left:8px;">bpm</span>
+      </div>
+    </div>
+    <div class="profile-field">
+      <label>Instrumentalness (min)</label>
+      <div class="range-wrap">
+        <input type="range" id="instrMin" min="0" max="1" step="0.05" value="0.6" oninput="document.getElementById('instrVal').textContent=parseFloat(this.value).toFixed(2)" />
+        <span class="range-val"><span id="instrVal">0.60</span> / 1.0</span>
+      </div>
+    </div>
+    <div class="profile-field">
+      <label>Energy range</label>
+      <div class="range-wrap">
+        <input type="range" id="energyMin" min="0" max="1" step="0.05" value="0" oninput="syncEnergyLabel()" />
+        <input type="range" id="energyMax" min="0" max="1" step="0.05" value="1" oninput="syncEnergyLabel()" style="margin-top:4px;" />
+        <span class="range-val"><span id="energyVal">0.00 – 1.00</span></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="profile-actions">
+    <button class="btn primary" onclick="saveProfile()">Save profile</button>
+    <button class="btn" onclick="resetProfile()">Reset to defaults</button>
+    <button class="btn" id="analyseTopBtn" onclick="analyseTopTracks()" disabled>Analyse my top tracks</button>
+  </div>
+
+  <div class="insight-bar" id="bpmInsight"></div>
+
+  <div class="time-tabs" id="timeTabs" style="display:none;">
+    <button class="time-tab active" data-range="short_term" onclick="setTimeRange('short_term',this)">Last 4 weeks</button>
+    <button class="time-tab" data-range="medium_term" onclick="setTimeRange('medium_term',this)">Last 6 months</button>
+    <button class="time-tab" data-range="long_term" onclick="setTimeRange('long_term',this)">All time</button>
+  </div>
+
+  <div class="focus-stats" id="focusStats" style="display:none;">
+    <div class="focus-stat"><span>Focus tracks</span><strong id="statFocus">—</strong></div>
+    <div class="focus-stat"><span>Total analysed</span><strong id="statTotal">—</strong></div>
+    <div class="focus-stat"><span>Avg BPM (library)</span><strong id="statAvgBpm">—</strong></div>
+    <div class="focus-stat"><span>Best focus score</span><strong id="statTopScore">—</strong></div>
+  </div>
+
+  <div class="focus-track-head" id="focusTrackHead" style="display:none;">
+    <div></div>
+    <div>Track</div>
+    <div style="text-align:center;">BPM</div>
+    <div class="feat-val" style="text-align:center;">Instr.</div>
+    <div class="feat-val" style="text-align:center;">Energy</div>
+    <div class="feat-val" style="text-align:center;">Score</div>
+    <div></div>
+  </div>
+  <div id="focusTracks"></div>
+
+  <div id="rejectedSection" style="display:none; margin-top:16px;">
+    <button class="rejected-toggle" onclick="toggleRejected()">
+      <span id="rejectedArrow">▸</span>
+      <span id="rejectedLabel">Show filtered-out tracks</span>
+    </button>
+    <div class="rejected-list" id="rejectedList"></div>
+  </div>
+
+  <div class="focus-skeleton" id="focusEmpty" style="margin-top:12px;">Connect Spotify and click "Analyse my top tracks" to see which of your tracks are tuned for focus.</div>
+</section>
 
 <div class="themeScrim" id="themeScrim"></div>
 <section class="themeModal" id="themeModal" role="dialog" aria-modal="true" aria-labelledby="themeTitle">

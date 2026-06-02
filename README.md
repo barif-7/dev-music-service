@@ -69,7 +69,8 @@ starts failing.
 - Create a Spotify app and set the redirect URI to your deployed callback URL, for example `https://your-app.vercel.app/api/import/spotify/callback`.
 - The app includes the configured Spotify client ID. Set `SPOTIFY_CLIENT_ID` in the deployment environment only if you need to override it.
 - Optionally set `SPOTIFY_REDIRECT_URI` if automatic callback URL detection does not match the registered Spotify redirect URI exactly.
-- Requested scopes are read-only: `playlist-read-private` and `playlist-read-collaborative`.
+- Requested scopes are read-only: `playlist-read-private`, `playlist-read-collaborative`, and `user-library-read` for liked songs.
+- Reconnect Spotify after adding new scopes so the access token picks them up.
 
 ## Lyrics API
 

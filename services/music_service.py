@@ -159,6 +159,8 @@ class MusicService:
         target_duration: int | None,
         expected_artist: str | None,
         expected_title: str | None,
+        expected_album: str | None = None,
+        expected_year: int | None = None,
     ) -> float:
         # Identity match against title/artist (normalized + fuzzy)
         candidate_title = entry.get("title") or ""
@@ -188,6 +190,25 @@ class MusicService:
             # penalty so candidates with verifiable duration win.
             score -= 5
 
+        candidate_album = MusicService._album_from_entry(entry)
+        if expected_album:
+            if candidate_album and normalize(candidate_album) == normalize(expected_album):
+                score += 10
+            elif candidate_album:
+                score -= 4
+            else:
+                score -= 2
+
+        if expected_year:
+            candidate_year = MusicService._extract_year(entry)
+            if candidate_year:
+                if candidate_year == expected_year:
+                    score += 8
+                elif abs(candidate_year - expected_year) <= 1:
+                    score += 3
+                else:
+                    score -= 4
+
         score += MusicService._channel_quality_bonus(entry)
 
         # Penalise obvious non-canonical variants by title keywords.
@@ -206,6 +227,8 @@ class MusicService:
         target_duration: int | None = None,
         expected_artist: str | None = None,
         expected_title: str | None = None,
+        expected_album: str | None = None,
+        expected_year: int | None = None,
     ) -> list[SongSearchResult]:
         # When the caller knows what they're looking for (duration / title /
         # artist), oversample so we have room to rerank by identity match,
@@ -218,7 +241,13 @@ class MusicService:
             if not entry.get("webpage_url"):
                 continue
             score = MusicService._entry_score(
-                entry, query, target_duration, expected_artist, expected_title
+                entry,
+                query,
+                target_duration,
+                expected_artist,
+                expected_title,
+                expected_album,
+                expected_year,
             )
             # When a duration target is set, hard-drop entries that are wildly
             # off (10x tolerance) so live versions / loops don't survive.

@@ -115,3 +115,7 @@ vercel --prod
 - [Vercel Python Runtime](https://vercel.com/docs/runtimes/python)
 - [Function Configuration](https://vercel.com/docs/functions/serverless-functions/function-config)
 - [Environment Variables](https://vercel.com/docs/projects/environment-variables)
+
+## Focus profile persistence
+
+The focus profile is stored as a JSON file on local disk (at `$DMS_DATA_DIR/focus_profile.json`, defaulting to the current working directory). On Vercel's serverless filesystem, the working directory is read-only and `/tmp` does not persist between invocations. Setting `DMS_DATA_DIR=/tmp` makes the profile work within a single warm instance, but it will be lost when the function cold-starts. A persistent external store (e.g. a database or KV service) would be needed for durable focus profiles on Vercel.

@@ -119,6 +119,42 @@ class TestSearchEndpoint:
         if response.status_code == 200:
             assert "Cache-Control" in response.headers
 
+    def test_search_accepts_album_and_year_hints(self, client: TestClient):
+        """Search should forward album and release year hints to the matcher."""
+        mock_payload = {
+            "title": "Test Song",
+            "webpage_url": "https://youtube.com/watch?v=test",
+            "stream_url": "/stream?url=https%3A%2F%2Fyoutube.com%2Fwatch%3Fv%3Dtest",
+            "duration": 123,
+            "album": "Test Album",
+            "artist": "Test Artist",
+            "thumbnail": "https://example.com/thumb.jpg",
+            "artwork_source": "youtube",
+            "artwork_confidence": "video",
+            "release_year": 2024,
+        }
+
+        with patch("main.MusicService.search") as mock_search:
+            mock_search.return_value = [MagicMock(model_dump=lambda: mock_payload)]
+            response = client.get(
+                "/api/search",
+                params={
+                    "query": "test song",
+                    "limit": 1,
+                    "expected_title": "Test Song",
+                    "expected_artist": "Test Artist",
+                    "expected_album": "Test Album",
+                    "expected_year": 2024,
+                },
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data[0]["title"] == "Test Song"
+        _, kwargs = mock_search.call_args
+        assert kwargs["expected_album"] == "Test Album"
+        assert kwargs["expected_year"] == 2024
+
 
 class TestAutocompleteEndpoint:
     """Tests for /api/autocomplete endpoint."""
@@ -426,6 +462,192 @@ class TestSpotifyImportEndpoints:
         response = client.post("/api/import/spotify/disconnect")
         
         assert response.status_code == 200
+
+    def test_spotify_liked_tracks(self, client: TestClient, mock_spotify_env):
+        """Liked tracks endpoint should return saved tracks when connected."""
+        client.cookies.set("spotify_access_token", "test_access_token")
+
+        mock_payload = {
+            "provider": "spotify",
+            "title": "Liked songs",
+            "total": 1,
+            "limit": 50,
+            "offset": 0,
+            "tracks": [
+                {
+                    "source": {
+                        "provider": "spotify",
+                        "provider_track_id": "track_1",
+                        "provider_playlist_id": "liked",
+                        "title": "Test Song",
+                        "artist_names": ["Test Artist"],
+                        "album": "Test Album",
+                        "duration_ms": 180000,
+                        "isrc": "USRC17607839",
+                        "release_date": "2024-01-01",
+                        "artwork_url": "https://example.com/art.jpg",
+                        "provider_url": "https://open.spotify.com/track/test",
+                    },
+                    "musicbrainz": {
+                        "title": "Test Song",
+                        "artist": "Test Artist",
+                        "album": "Test Album",
+                        "release_year": 2024,
+                        "confidence": 93,
+                        "match_reason": "isrc",
+                    },
+                }
+            ],
+            "matched_count": 1,
+            "low_confidence_count": 0,
+            "unmatched_count": 0,
+        }
+
+        with patch("main.SpotifyImportService.liked_tracks_preview") as mock_liked_tracks:
+            mock_liked_tracks.return_value = MagicMock(model_dump=lambda: mock_payload)
+            response = client.get("/api/import/spotify/liked-tracks")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["provider"] == "spotify"
+        assert data["total"] == 1
+        assert data["tracks"][0]["source"]["title"] == "Test Song"
+        assert data["tracks"][0]["musicbrainz"]["confidence"] == 93
+
+    def test_spotify_liked_tracks_paginates(self, client: TestClient, mock_spotify_env):
+        """Liked tracks endpoint should pass limit and offset through to the service."""
+        client.cookies.set("spotify_access_token", "test_access_token")
+
+        mock_payload = {
+            "provider": "spotify",
+            "title": "Liked songs",
+            "total": 10,
+            "limit": 5,
+            "offset": 5,
+            "tracks": [],
+            "matched_count": 0,
+            "low_confidence_count": 0,
+            "unmatched_count": 0,
+        }
+
+        with patch("main.SpotifyImportService.liked_tracks_preview") as mock_liked_tracks:
+            mock_liked_tracks.return_value = MagicMock(model_dump=lambda: mock_payload)
+            response = client.get("/api/import/spotify/liked-tracks", params={"limit": 5, "offset": 5})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["limit"] == 5
+        assert data["offset"] == 5
+        mock_liked_tracks.assert_called_once()
+        _, kwargs = mock_liked_tracks.call_args
+        assert kwargs["limit"] == 5
+        assert kwargs["offset"] == 5
+
+    def test_spotify_playlist_preview(self, client: TestClient, mock_spotify_env):
+        """Playlist preview should return matched tracks when connected."""
+        client.cookies.set("spotify_access_token", "test_access_token")
+
+        mock_payload = {
+            "provider": "spotify",
+            "playlist": {
+                "provider": "spotify",
+                "id": "playlist_1",
+                "name": "Test Playlist",
+                "track_count": 1,
+                "owner": "Test Owner",
+            },
+            "tracks": [
+                {
+                    "source": {
+                        "provider": "spotify",
+                        "provider_track_id": "track_1",
+                        "provider_playlist_id": "playlist_1",
+                        "title": "Test Song",
+                        "artist_names": ["Test Artist"],
+                        "album": "Test Album",
+                        "duration_ms": 180000,
+                        "isrc": "USRC17607839",
+                        "release_date": "2024-01-01",
+                        "artwork_url": "https://example.com/art.jpg",
+                        "provider_url": "https://open.spotify.com/track/test",
+                    },
+                    "musicbrainz": {
+                        "title": "Test Song",
+                        "artist": "Test Artist",
+                        "album": "Test Album",
+                        "release_year": 2024,
+                        "confidence": 93,
+                        "match_reason": "isrc",
+                    },
+                }
+            ],
+            "matched_count": 1,
+            "low_confidence_count": 0,
+            "unmatched_count": 0,
+        }
+
+        with patch("main.SpotifyImportService.preview_playlist") as mock_preview:
+            mock_preview.return_value = MagicMock(model_dump=lambda: mock_payload)
+            response = client.get("/api/import/spotify/playlists/playlist_1/preview")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["playlist"]["name"] == "Test Playlist"
+        assert data["tracks"][0]["source"]["title"] == "Test Song"
+        assert data["tracks"][0]["musicbrainz"]["confidence"] == 93
+
+    def test_spotify_track_playback(self, client: TestClient, mock_spotify_env):
+        """Resolved Spotify track playback should return a browser playback payload."""
+        client.cookies.set("spotify_access_token", "test_access_token")
+
+        mock_payload = {
+            "mode": "browser",
+            "title": "Test Song",
+            "duration": 180,
+            "webpage_url": "https://youtube.com/watch?v=test",
+            "stream_url": "/stream?url=https%3A%2F%2Fyoutube.com%2Fwatch%3Fv%3Dtest",
+            "album": "Test Album",
+            "artist": "Test Artist",
+            "thumbnail": "https://example.com/art.jpg",
+            "artwork_source": "musicbrainz",
+            "artwork_confidence": "release",
+            "release_year": 2024,
+        }
+
+        item = {
+            "source": {
+                "provider": "spotify",
+                "provider_track_id": "track_1",
+                "provider_playlist_id": "playlist_1",
+                "title": "Test Song",
+                "artist_names": ["Test Artist"],
+                "album": "Test Album",
+                "duration_ms": 180000,
+                "isrc": "USRC17607839",
+                "release_date": "2024-01-01",
+                "artwork_url": "https://example.com/art.jpg",
+                "provider_url": "https://open.spotify.com/track/test",
+            },
+            "musicbrainz": {
+                "title": "Test Song",
+                "artist": "Test Artist",
+                "album": "Test Album",
+                "release_year": 2024,
+                "confidence": 93,
+                "match_reason": "isrc",
+                "artwork_url": "https://example.com/art.jpg",
+            },
+        }
+
+        with patch("main.SpotifyImportService.resolve_track_playback") as mock_resolve:
+            mock_resolve.return_value = MagicMock(model_dump=lambda: mock_payload)
+            response = client.post("/api/import/spotify/playback", json=item)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["mode"] == "browser"
+        assert data["title"] == "Test Song"
+        assert data["stream_url"].startswith("/stream?")
 
 
 class TestOpenAPIDocumentation:

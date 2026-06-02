@@ -111,6 +111,18 @@ class ImportedPlaylistPreview(BaseModel):
     unmatched_count: int
 
 
+class SpotifyLikedTracksPreview(BaseModel):
+    provider: str = "spotify"
+    title: str = "Liked songs"
+    total: int = 0
+    limit: int = 0
+    offset: int = 0
+    tracks: List[ImportedPlaylistTrack] = Field(default_factory=list)
+    matched_count: int = 0
+    low_confidence_count: int = 0
+    unmatched_count: int = 0
+
+
 class LocalPlaybackState(BaseModel):
     mode: str = "local"
     title: str
