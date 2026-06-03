@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncGenerator, Optional
 
+import certifi
 import httpx
 import structlog
 from fastapi import FastAPI, Header, HTTPException, Query, Request
@@ -385,7 +386,7 @@ async def stream_song(
             if range_header:
                 headers_copy["Range"] = range_header
 
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(verify=certifi.where()) as client:
                 response = await open_validated_stream(client, direct_url, headers_copy)
                 try:
                     async for chunk in response.aiter_bytes(chunk_size=8192):

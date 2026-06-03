@@ -5,6 +5,7 @@ import base64
 import hashlib
 import secrets
 
+import certifi
 import httpx
 from fastapi import Request as FastAPIRequest
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -106,7 +107,7 @@ class SpotifyImportService:
     @staticmethod
     async def _form_request(url: str, data: dict[str, str]) -> dict:
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(verify=certifi.where()) as client:
                 response = await client.post(
                     url,
                     data=data,
@@ -181,7 +182,7 @@ class SpotifyImportService:
     @staticmethod
     async def _spotify_get(access_token: str, path: str, params: dict[str, str | int] | None = None) -> dict:
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(verify=certifi.where()) as client:
                 response = await client.get(
                     f"{SpotifyImportService._API_URL}{path}",
                     params=params,
