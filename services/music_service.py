@@ -85,22 +85,11 @@ class MusicService:
     _DURATION_TOLERANCE_SECONDS = 5
     _OFFICIAL_CHANNEL_TOKENS = ("topic", "vevo", "official")
 
-    # Shared YouTube extractor settings.
-    #
-    # - `player_client`: prefer "tv" (signed-in TV client) which doesn't require
-    #   a GVS PO Token and isn't currently subject to YouTube's SABR-only
-    #   streaming experiment (see yt-dlp issue #12482). Fall back to
-    #   `web_safari` and `web` so we still surface formats if `tv` is blocked.
-    # - `remote_components`: opt in to the EJS challenge solver script so deno
-    #   can resolve YouTube's player JS / signature challenges. Without this,
-    #   `n` and signature solving silently fail and many videos return
-    #   incomplete or SABR-only formats.
     _YOUTUBE_EXTRACTOR_ARGS = {
         "youtube": {
-            "player_client": ["tv", "web_safari", "web"],
+            "player_client": ["android", "web"],
         }
     }
-    _YOUTUBE_REMOTE_COMPONENTS = ["ejs:github"]
 
     @staticmethod
     def _search_entries(query: str, limit: int = 5, oversample: int = 1) -> list[dict]:
@@ -119,7 +108,6 @@ class MusicService:
             "quiet": True,
             "noplaylist": True,
             "extractor_args": MusicService._YOUTUBE_EXTRACTOR_ARGS,
-            "remote_components": MusicService._YOUTUBE_REMOTE_COMPONENTS,
         }
 
         try:
@@ -345,7 +333,6 @@ class MusicService:
             "quiet": True,
             "noplaylist": True,
             "extractor_args": MusicService._YOUTUBE_EXTRACTOR_ARGS,
-            "remote_components": MusicService._YOUTUBE_REMOTE_COMPONENTS,
         }
 
         try:
@@ -379,7 +366,6 @@ class MusicService:
             "quiet": True,
             "noplaylist": True,
             "extractor_args": MusicService._YOUTUBE_EXTRACTOR_ARGS,
-            "remote_components": MusicService._YOUTUBE_REMOTE_COMPONENTS,
         }
 
         try:
