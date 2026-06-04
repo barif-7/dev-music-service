@@ -80,13 +80,8 @@ async def open_validated_stream(
 ):
     current_url = validate_stream_url(url)
     for _ in range(max_redirects + 1):
-        response = await client.stream(
-            "GET",
-            current_url,
-            headers=headers,
-            timeout=30.0,
-            follow_redirects=False,
-        ).__aenter__()
+        request = client.build_request("GET", current_url, headers=headers)
+        response = await client.send(request, stream=True, follow_redirects=False)
         if response.is_redirect:
             location = response.headers.get("location")
             await response.aclose()
