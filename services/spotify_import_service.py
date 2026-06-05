@@ -39,6 +39,10 @@ class SpotifyImportService:
     _VERIFIER_COOKIE = "spotify_code_verifier"
     _TOKEN_COOKIE = "spotify_access_token"  # nosec B105 - cookie name, not a secret
 
+    _cc_token: str | None = None
+    _cc_token_expires_at: float = 0.0
+    _cc_lock = asyncio.Lock()
+
     @staticmethod
     def _client_id() -> str:
         client_id = get_settings().spotify_client_id
@@ -52,6 +56,38 @@ class SpotifyImportService:
     @staticmethod
     def is_configured() -> bool:
         return bool(get_settings().spotify_client_id)
+
+    @staticmethod
+    def _client_credentials_configured() -> bool:
+        settings = get_settings()
+        return bool(settings.spotify_client_id and settings.spotify_client_secret)
+
+    @classmethod
+    async def get_client_credentials_token(cls) -> str | None:
+        if not cls._client_credentials_configured():
+            return None
+        import time
+        if cls._cc_token and time.monotonic() < cls._cc_token_expires_at:
+            return cls._cc_token
+        async with cls._cc_lock:
+            if cls._cc_token and time.monotonic() < cls._cc_token_expires_at:
+                return cls._cc_token
+            settings = get_settings()
+            try:
+                payload = await cls._form_request(
+                    f"{cls._ACCOUNTS_URL}/api/token",
+                    {
+                        "grant_type": "client_credentials",
+                        "client_id": settings.spotify_client_id,
+                        "client_secret": settings.spotify_client_secret,
+                    },
+                )
+                cls._cc_token = payload.get("access_token")
+                expires_in = int(payload.get("expires_in") or 3600)
+                cls._cc_token_expires_at = time.monotonic() + expires_in - 60
+                return cls._cc_token
+            except Exception:
+                return None
 
     @staticmethod
     def _cookie_secure() -> bool:

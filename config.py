@@ -24,6 +24,7 @@ class Settings(BaseSettings):
         "dev-music-service/1.0 (lyrics integration; contact: unset)"
     )
     spotify_client_id: str | None = None
+    spotify_client_secret: str | None = None
     spotify_redirect_uri: str | None = None
     vercel: bool = Field(default=False)
     dms_control_auth_token: str | None = None

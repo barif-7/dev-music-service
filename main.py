@@ -238,7 +238,7 @@ def spotify_disconnect():
 @app.get("/api/search")
 @app.get("/search")
 @limiter.limit("60 per minute")
-def search_song(
+async def search_song(
     request: Request,
     query: str = Query(..., min_length=1, max_length=500, description="Resolved song query"),
     limit: int = Query(1, ge=1, le=5, description="Number of YouTube candidates to resolve"),
@@ -258,18 +258,17 @@ def search_song(
             target_duration=target_duration,
             has_expected=bool(expected_title or expected_artist),
         )
-        results = [
-            result.model_dump()
-            for result in MusicService.search(
-                query,
-                limit=limit,
-                target_duration=target_duration,
-                expected_artist=expected_artist,
-                expected_title=expected_title,
-                expected_album=expected_album,
-                expected_year=expected_year,
-            )
-        ]
+        search_results = await run_in_threadpool(
+            MusicService.search,
+            query,
+            limit,
+            target_duration,
+            expected_artist,
+            expected_title,
+            expected_album,
+            expected_year,
+        )
+        results = [result.model_dump() for result in search_results]
         return JSONResponse(content=results, headers={"Cache-Control": "public, max-age=300"})
     except Exception as exc:
         logger.error("search_failed", query_length=len(query), error=str(exc))
@@ -286,6 +285,8 @@ async def autocomplete_song(
 ):
     try:
         spotify_token = request.cookies.get(SpotifyImportService._TOKEN_COOKIE)
+        if not spotify_token:
+            spotify_token = await SpotifyImportService.get_client_credentials_token()
         logger.info(
             "autocomplete_requested",
             query_length=len(query),
