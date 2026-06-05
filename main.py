@@ -72,9 +72,23 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         mode="browser-first",
         spotify_configured=SpotifyImportService.is_configured(),
     )
+    # Warm up persistent HTTP clients (establishes TLS connections)
+    try:
+        MetadataService._get_mb_client()
+        SpotifyImportService._get_http_client()
+        if SpotifyImportService._client_credentials_configured():
+            await SpotifyImportService.get_client_credentials_token()
+    except Exception:
+        pass
     yield
     # Shutdown
     logger.info("app_shutdown")
+    mb = MetadataService._mb_client
+    sp = SpotifyImportService._http_client
+    if mb and not mb.is_closed:
+        await mb.aclose()
+    if sp and not sp.is_closed:
+        await sp.aclose()
 
 
 app = FastAPI(

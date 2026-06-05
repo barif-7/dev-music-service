@@ -42,6 +42,16 @@ class SpotifyImportService:
     _cc_token: str | None = None
     _cc_token_expires_at: float = 0.0
     _cc_lock = asyncio.Lock()
+    _http_client: httpx.AsyncClient | None = None
+
+    @classmethod
+    def _get_http_client(cls) -> httpx.AsyncClient:
+        if cls._http_client is None or cls._http_client.is_closed:
+            cls._http_client = httpx.AsyncClient(
+                verify=certifi.where(),
+                timeout=10.0,
+            )
+        return cls._http_client
 
     @staticmethod
     def _client_id() -> str:
@@ -143,15 +153,15 @@ class SpotifyImportService:
     @staticmethod
     async def _form_request(url: str, data: dict[str, str]) -> dict:
         try:
-            async with httpx.AsyncClient(verify=certifi.where()) as client:
-                response = await client.post(
-                    url,
-                    data=data,
-                    headers={"Accept": "application/json"},
-                    timeout=8.0,
-                )
-                response.raise_for_status()
-                return response.json()
+            client = SpotifyImportService._get_http_client()
+            response = await client.post(
+                url,
+                data=data,
+                headers={"Accept": "application/json"},
+                timeout=8.0,
+            )
+            response.raise_for_status()
+            return response.json()
         except httpx.HTTPStatusError as exc:
             raise SpotifyImportError(
                 f"Spotify token request failed with {exc.response.status_code}: {exc.response.text}"
@@ -218,18 +228,17 @@ class SpotifyImportService:
     @staticmethod
     async def _spotify_get(access_token: str, path: str, params: dict[str, str | int] | None = None) -> dict:
         try:
-            async with httpx.AsyncClient(verify=certifi.where()) as client:
-                response = await client.get(
-                    f"{SpotifyImportService._API_URL}{path}",
-                    params=params,
-                    headers={
-                        "Accept": "application/json",
-                        "Authorization": f"Bearer {access_token}",
-                    },
-                    timeout=10.0,
-                )
-                response.raise_for_status()
-                return response.json()
+            client = SpotifyImportService._get_http_client()
+            response = await client.get(
+                f"{SpotifyImportService._API_URL}{path}",
+                params=params,
+                headers={
+                    "Accept": "application/json",
+                    "Authorization": f"Bearer {access_token}",
+                },
+            )
+            response.raise_for_status()
+            return response.json()
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 403:
                 detail = exc.response.text.lower()

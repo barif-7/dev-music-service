@@ -13,6 +13,7 @@ from urllib.request import Request, urlopen
 from config import get_settings
 from models import LyricsLine, LyricsResponse
 from services.music_service import MusicServiceError
+from services.text_match import combined_score
 
 _TIMESTAMP_RE = re.compile(r"\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\]")
 
@@ -112,6 +113,49 @@ class LyricsService:
             raise LyricsProviderError("Could not reach LRCLIB") from exc
         except json.JSONDecodeError as exc:
             raise LyricsProviderError("LRCLIB returned invalid JSON") from exc
+
+    @staticmethod
+    def _request_json_list(path: str, params: dict[str, Any]) -> list[dict[str, Any]]:
+        query_string = urlencode({key: value for key, value in params.items() if value is not None})
+        request = Request(
+            f"{LyricsService._BASE_URL}{path}?{query_string}",
+            headers={
+                "Accept": "application/json",
+                "User-Agent": LyricsService._user_agent(),
+            },
+        )
+        try:
+            with urlopen(request, timeout=10) as response:  # nosec B310
+                data = json.loads(response.read().decode("utf-8"))
+                return data if isinstance(data, list) else []
+        except (HTTPError, URLError, json.JSONDecodeError):
+            return []
+
+    @staticmethod
+    def _search_fallback(query: _LyricsQuery) -> dict[str, Any]:
+        results = LyricsService._request_json_list(
+            "/search",
+            {"q": f"{query.artist} {query.title}"},
+        )
+        if not results:
+            raise LyricsNotFoundError("Lyrics not found")
+
+        def score(item: dict[str, Any]) -> float:
+            title = item.get("trackName") or ""
+            artist = item.get("artistName") or ""
+            match = combined_score(f"{query.artist} {query.title}", title, artist)
+            has_synced = 5.0 if item.get("syncedLyrics") else 0.0
+            dur_penalty = 0.0
+            if query.duration and item.get("duration"):
+                diff = abs(int(item["duration"]) - query.duration)
+                if diff > 5:
+                    dur_penalty = min(15.0, diff * 0.5)
+            return match + has_synced - dur_penalty
+
+        best = max(results, key=score)
+        if combined_score(f"{query.artist} {query.title}", best.get("trackName") or "", best.get("artistName") or "") < 40:
+            raise LyricsNotFoundError("Lyrics not found")
+        return best
 
     @staticmethod
     def _parse_fraction_to_ms(fraction: str | None) -> int:
@@ -214,13 +258,19 @@ class LyricsService:
         if cached is not None:
             return cached
 
-        payload = LyricsService._request_json(
-            "/get",
-            {
-                "track_name": query.title,
-                "artist_name": query.artist,
-                "album_name": query.album,
-                "duration": query.duration,
-            },
-        )
+        try:
+            payload = LyricsService._request_json(
+                "/get",
+                {
+                    "track_name": query.title,
+                    "artist_name": query.artist,
+                    "album_name": query.album,
+                    "duration": query.duration,
+                },
+            )
+            return LyricsService._cache_set(cache_key, LyricsService._build_response(payload, query))
+        except LyricsNotFoundError:
+            pass
+
+        payload = LyricsService._search_fallback(query)
         return LyricsService._cache_set(cache_key, LyricsService._build_response(payload, query))

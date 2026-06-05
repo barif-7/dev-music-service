@@ -27,6 +27,7 @@ class MetadataService:
     _AUTHOR_INDEX_MAX = 500
     _MUSICBRAINZ_URL = "https://musicbrainz.org/ws/2/recording/"
     _USER_AGENT = "dev-music-service/1.0 (https://github.com/barif-7/dev-music-service)"
+    _mb_client: httpx.AsyncClient | None = None
 
     @staticmethod
     def _normalize(value: str) -> str:
@@ -64,6 +65,11 @@ class MetadataService:
         return value
 
     @staticmethod
+    def _musicbrainz_ready() -> bool:
+        now = time.monotonic()
+        return (now - MetadataService._last_request_at) >= 1.05
+
+    @staticmethod
     async def _throttle_musicbrainz_request() -> None:
         async with MetadataService._request_lock:
             now = time.monotonic()
@@ -72,22 +78,27 @@ class MetadataService:
                 await asyncio.sleep(wait_seconds)
             MetadataService._last_request_at = time.monotonic()
 
+    @classmethod
+    def _get_mb_client(cls) -> httpx.AsyncClient:
+        if cls._mb_client is None or cls._mb_client.is_closed:
+            cls._mb_client = httpx.AsyncClient(
+                verify=certifi.where(),
+                timeout=4.0,
+                headers={
+                    "Accept": "application/json",
+                    "User-Agent": cls._USER_AGENT,
+                },
+            )
+        return cls._mb_client
+
     @staticmethod
     async def _musicbrainz_json(url: str, params: dict[str, str | int]) -> dict:
         await MetadataService._throttle_musicbrainz_request()
         try:
-            async with httpx.AsyncClient(verify=certifi.where()) as client:
-                response = await client.get(
-                    url,
-                    params=params,
-                    headers={
-                        "Accept": "application/json",
-                        "User-Agent": MetadataService._USER_AGENT,
-                    },
-                    timeout=4.0,
-                )
-                response.raise_for_status()
-                return response.json()
+            client = MetadataService._get_mb_client()
+            response = await client.get(url, params=params)
+            response.raise_for_status()
+            return response.json()
         except httpx.HTTPStatusError as exc:
             raise MetadataServiceError(
                 f"MusicBrainz request to {url} failed with {exc.response.status_code}: {exc.response.text}"
@@ -475,30 +486,29 @@ class MetadataService:
             return cached[:limit]
 
         oversample = max(limit, 8)
-        mb_task = MetadataService._autocomplete_recordings(query, oversample)
+
         if spotify_token:
             spotify_task = MetadataService._spotify_candidates(spotify_token, query, oversample)
-            mb_result, spotify_suggestions = await asyncio.gather(
-                mb_task, spotify_task, return_exceptions=True
-            )
-        else:
-            mb_result = await mb_task
-            spotify_suggestions = []
-
-        if isinstance(mb_result, Exception):
-            author_matches = MetadataService._author_index_matches(query, limit)
-            if isinstance(spotify_suggestions, list) and spotify_suggestions:
-                # MusicBrainz failed but Spotify worked — still useful.
-                spotify_suggestions.sort(
-                    key=lambda item: MetadataService._suggestion_rank(item, query),
-                    reverse=True,
+            if MetadataService._musicbrainz_ready():
+                mb_coro = MetadataService._autocomplete_recordings(query, oversample)
+                spotify_suggestions, mb_result = await asyncio.gather(
+                    spotify_task, mb_coro, return_exceptions=True,
                 )
-                return MetadataService._cache_set(cache_key, spotify_suggestions)[:limit]
-            if author_matches:
-                return author_matches
-            raise MetadataServiceError(f"Metadata autocomplete failed for '{query}'") from mb_result
-
-        recordings = mb_result if isinstance(mb_result, list) else []
+            else:
+                spotify_suggestions = await spotify_task
+                mb_result = None
+            if isinstance(spotify_suggestions, Exception):
+                spotify_suggestions = []
+            recordings = mb_result if isinstance(mb_result, list) else []
+        else:
+            mb_result = await MetadataService._autocomplete_recordings(query, oversample)
+            spotify_suggestions = []
+            if isinstance(mb_result, Exception):
+                author_matches = MetadataService._author_index_matches(query, limit)
+                if author_matches:
+                    return author_matches
+                raise MetadataServiceError(f"Metadata autocomplete failed for '{query}'") from mb_result
+            recordings = mb_result if isinstance(mb_result, list) else []
         mb_suggestions: list[AutocompleteSuggestion] = []
         mb_seen: set[tuple[str, str]] = set()
         for recording in recordings:
