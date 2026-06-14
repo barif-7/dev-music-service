@@ -1904,9 +1904,12 @@ function renderFocusData(data) {
   container.innerHTML = '';
 
   // Coverage banner — features come from ReccoBeats, which has no data for some tracks.
+  const srcKey = (data.source || 'reccobeats').toLowerCase();
+  const srcLabel = { reccobeats: 'ReccoBeats', essentia: 'Essentia' }[srcKey] || srcKey;
   const coverage = document.createElement('div');
   coverage.className = 'focus-coverage';
-  coverage.innerHTML = `Audio features for <b>${covered}</b> of <b>${total}</b> tracks · source: ReccoBeats`
+  coverage.innerHTML = `Audio features for <b>${covered}</b> of <b>${total}</b> tracks · `
+    + `<span class="source-tag ${srcKey}">${escapeHtml(srcLabel)}</span>`
     + (noData.length ? ` · <span class="nodata-count">${noData.length} without data</span>` : '');
   container.appendChild(coverage);
 

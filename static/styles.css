@@ -15,6 +15,7 @@
     --warn:#ffb454;
     --bad:#ff5a6a;
     --good:#6ee7a8;
+    --essentia:#c0a9ff;   /* audio-feature source tag: Essentia (hybrid, future) */
     --radius:6px;
     --sans:"Inter Tight", system-ui, sans-serif;
     --mono:"JetBrains Mono", ui-monospace, monospace;
@@ -968,8 +969,16 @@
     color: var(--ink-faint); letter-spacing: 0.1em; text-transform: uppercase;
   }
   .focus-track.nodata { opacity: 0.6; }
-  .nodata-chip {
-    display: inline-block; padding: 2px 7px; border-radius: 999px;
+  /* Audio-feature source tags — lime=ReccoBeats, purple=Essentia (future), muted=no data */
+  .source-tag {
+    display: inline-block; padding: 1px 7px; border-radius: 999px;
+    font-family: var(--mono); font-size: 9px; letter-spacing: 0.05em;
+    text-transform: lowercase; border: 1px solid transparent;
+  }
+  .source-tag.reccobeats { color: var(--accent-ink); background: var(--accent); }
+  .source-tag.essentia { color: var(--accent-ink); background: var(--essentia); }
+  .source-tag.no-data, .nodata-chip {
+    display: inline-block; padding: 1px 7px; border-radius: 999px;
     font-family: var(--mono); font-size: 9px; letter-spacing: 0.05em;
     color: var(--ink-faint); border: 1px solid rgba(255,255,255,.12);
     background: rgba(255,255,255,.03);
