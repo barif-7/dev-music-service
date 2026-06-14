@@ -250,6 +250,9 @@ class TestStreamEndpoint:
         """Stream proxy should allow expected media hosts."""
 
         class FakeStream:
+            status_code = 200
+            headers = {"content-type": "audio/mpeg"}
+
             async def aiter_bytes(self, chunk_size=8192):
                 yield b"audio"
 

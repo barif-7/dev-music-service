@@ -458,8 +458,6 @@ async def stream_song(
     range_header: Optional[str] = Header(None, alias="Range"),
 ):
     try:
-        import asyncio
-
         logger.info("stream_requested", url_length=len(url))
         direct_url, req_headers = await run_in_threadpool(
             MusicService.get_stream_source,
@@ -480,34 +478,57 @@ async def stream_song(
                 },
             )
 
-        # Create async generator to stream audio chunks with range support
+        headers_copy = dict(req_headers)
+        if range_header:
+            headers_copy["Range"] = range_header
+
+        # Open the upstream stream up front so we can mirror its real status code
+        # (200 or 206 Partial Content) and range/length headers — required for the
+        # browser <audio> element to know the duration, seek, and keep playing
+        # past the first buffered chunk. Read timeout is disabled so backpressure
+        # pauses (full audio buffer) don't trip a timeout mid-track.
+        client = httpx.AsyncClient(
+            verify=certifi.where(),
+            timeout=httpx.Timeout(30.0, read=None),
+        )
+        try:
+            upstream = await open_validated_stream(client, direct_url, headers_copy)
+        except Exception:
+            await client.aclose()
+            raise
+
         async def stream_audio() -> AsyncGenerator[bytes, None]:
-            headers_copy = dict(req_headers)
-            if range_header:
-                headers_copy["Range"] = range_header
+            try:
+                async for chunk in upstream.aiter_bytes(chunk_size=65536):
+                    yield chunk
+            finally:
+                await upstream.aclose()
+                await client.aclose()
 
-            async with httpx.AsyncClient(verify=certifi.where(), timeout=30.0) as client:
-                response = await open_validated_stream(client, direct_url, headers_copy)
-                try:
-                    async for chunk in response.aiter_bytes(chunk_size=8192):
-                        yield chunk
-                        await asyncio.sleep(0)  # Allow other tasks to run
-                finally:
-                    await response.aclose()
+        # Mirror upstream status + the headers a media element needs; let
+        # media_type drive Content-Type so it isn't duplicated.
+        media_type = upstream.headers.get("content-type", "audio/mp4")
+        passthrough = {
+            "Cache-Control": "no-store",
+            "Access-Control-Allow-Origin": settings.dev_music_frontend_origin,
+            "Access-Control-Allow-Headers": "Range, Content-Type",
+            "Accept-Ranges": upstream.headers.get("accept-ranges", "bytes"),
+        }
+        for header_name in ("content-length", "content-range"):
+            if header_name in upstream.headers:
+                passthrough[header_name] = upstream.headers[header_name]
 
-        # Get content type from the stream
-        content_type = "audio/mp4"
-
-        logger.info("stream_started", content_type=content_type)
+        logger.info(
+            "stream_started",
+            content_type=media_type,
+            upstream_status=upstream.status_code,
+            partial=upstream.status_code == 206,
+        )
         return StreamingResponse(
             stream_audio(),
-            media_type=content_type,
-            headers={
-                "Cache-Control": "public, max-age=300",
-                "Access-Control-Allow-Origin": settings.dev_music_frontend_origin,
-                "Access-Control-Allow-Headers": "Range, Content-Type",
-                "Accept-Ranges": "bytes",
-            }
+            status_code=upstream.status_code,
+            media_type=media_type,
+            headers=passthrough,
         )
     except Exception as exc:
         logger.error("stream_failed", url_length=len(url), error=str(exc))
