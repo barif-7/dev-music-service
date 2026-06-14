@@ -50,7 +50,7 @@ class AudioFeatures:
     __slots__ = (
         "track_id", "tempo", "energy", "valence",
         "instrumentalness", "acousticness", "speechiness",
-        "liveness", "danceability", "loudness",
+        "liveness", "danceability", "loudness", "source",
     )
 
     def __init__(self, raw: dict) -> None:
@@ -64,6 +64,9 @@ class AudioFeatures:
         self.liveness: float = float(raw.get("liveness") or 0)
         self.danceability: float = float(raw.get("danceability") or 0)
         self.loudness: float = float(raw.get("loudness") or 0)
+        # Which provider produced this record ("reccobeats" today, "essentia"
+        # later). Tagged so a low-quality source can be re-analysed in future.
+        self.source: str = raw.get("source") or "reccobeats"
 
     def matches_profile(self, profile: dict) -> bool:
         if not (profile["bpm_min"] <= self.tempo <= profile["bpm_max"]):
@@ -108,6 +111,7 @@ class AudioFeatures:
             "liveness": round(self.liveness, 3),
             "danceability": round(self.danceability, 3),
             "loudness": round(self.loudness, 1),
+            "source": self.source,
         }
 
 
