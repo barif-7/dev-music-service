@@ -103,14 +103,29 @@ const FRAGS = {
   mercury: document.getElementById('frag-mercury').textContent,
   lattice: document.getElementById('frag-lattice').textContent,
 };
-function makeProg(gl, fragSrc){
+/* GLSL fetched from the Phase · Field API (via the /api/shaders proxy). These
+   are complete, self-contained shaders — precision, uniforms and helpers
+   included — so they are compiled WITHOUT the inline COMMON prelude. */
+const API_FRAGS = {};
+
+/* Resolve a wallpaper id to its fragment source + whether it already carries
+   its own prelude. Returns null until an API shader's GLSL has loaded. */
+function fragSource(fragId){
+  if(fragId in FRAGS)     return { src: FRAGS[fragId],     standalone: false };
+  if(fragId in API_FRAGS) return { src: API_FRAGS[fragId], standalone: true  };
+  return null;
+}
+
+function makeProg(gl, fragId){
+  const resolved = fragSource(fragId);
+  if(!resolved) return null;
   function compile(type, src){
     const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
-    if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error('shader', gl.getShaderInfoLog(s));
+    if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error('shader', fragId, gl.getShaderInfoLog(s));
     return s;
   }
   const v = compile(gl.VERTEX_SHADER, VERT);
-  const f = compile(gl.FRAGMENT_SHADER, COMMON + '\n' + fragSrc);
+  const f = compile(gl.FRAGMENT_SHADER, resolved.standalone ? resolved.src : (COMMON + '\n' + resolved.src));
   const p = gl.createProgram(); gl.attachShader(p,v); gl.attachShader(p,f); gl.linkProgram(p);
   return p;
 }
@@ -179,7 +194,7 @@ class Renderer {
     this.gl = canvas.getContext('webgl', {antialias:false, premultipliedAlpha:false});
     if(!this.gl) return;
     const gl = this.gl;
-    this.prog = makeProg(gl, FRAGS[fragId]);
+    this.prog = makeProg(gl, fragId);
     this.fragId = fragId;
     gl.useProgram(this.prog);
     this.buf = gl.createBuffer();
@@ -198,9 +213,11 @@ class Renderer {
   }
   setFrag(fragId){
     if(this.fragId === fragId) return;
+    const prog = makeProg(this.gl, fragId);
+    if(!prog) return;   // source not loaded yet — caller should await it first
     this.fragId = fragId;
     const gl = this.gl;
-    this.prog = makeProg(gl, FRAGS[fragId]);
+    this.prog = prog;
     gl.useProgram(this.prog);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.buf);
     const loc = gl.getAttribLocation(this.prog, 'a_pos');
@@ -322,7 +339,7 @@ main.addEventListener('pointerdown', e=>{
 window.addEventListener('keydown', e=>{
   if(e.target.tagName==='INPUT') return;
   const n = parseInt(e.key,10);
-  if(!isNaN(n) && n>=1 && n<=5) setActiveShader(n-1);
+  if(!isNaN(n) && n>=1 && n<=Math.min(9, WALLS.length)) setActiveShader(n-1);
   if(e.key===' '){ togglePlay(); e.preventDefault(); }
 });
 document.addEventListener('keydown', e=>{
@@ -342,18 +359,73 @@ document.querySelectorAll('.modeToggle button').forEach(b=>{
 });
 
 /* wallpaper shader switch (visual only) */
-function setActiveShader(i){
+async function setActiveShader(i){
+  const w = WALLS[i];
+  if(!w) return;
   state.activeIdx = i;
   document.querySelectorAll('.wp').forEach((el,j)=>el.classList.toggle('active', j===i));
-  document.getElementById('wpIx').textContent = (i+1)+' / 5';
-  state.bpm = WALLS[i].bpm;
-  const preset = BPM_PRESETS.find(p=>p.id===WALLS[i].preset);
-  [...bpmPresets.children].forEach(c=>c.classList.toggle('on', c.dataset.id===WALLS[i].preset));
+  document.getElementById('wpIx').textContent = (i+1)+' / '+WALLS.length;
+  state.bpm = w.bpm;
+  const preset = BPM_PRESETS.find(p=>p.id===w.preset) || BPM_PRESETS[1];
+  [...bpmPresets.children].forEach(c=>c.classList.toggle('on', c.dataset.id===w.preset));
   document.getElementById('bpmDescIx').textContent = preset.blurb;
   document.getElementById('bpmBand').textContent = preset.label.toUpperCase();
   document.getElementById('bpmNum').textContent = state.bpm;
-  mainR.setFrag(WALLS[i].id);
+  // API shaders load their GLSL lazily; make sure it's compiled before switching.
+  if(w.api && !(w.id in API_FRAGS)){
+    try { await fetchShaderGLSL(w.id); }
+    catch(e){ console.warn('shader unavailable', w.id, e); return; }
+  }
+  mainR.setFrag(w.id);
 }
+
+/* ====== Phase · Field shader catalogue (proxied via /api/shaders) ====== */
+const PRESET_MAP = {
+  Flow:'flow', Rest:'rest', Spark:'spark', Drive:'drive',
+  flow:'flow', rest:'rest', spark:'spark', drive:'drive',
+};
+
+async function fetchShaderGLSL(id){
+  if(id in API_FRAGS) return API_FRAGS[id];
+  const r = await fetch(`/api/shaders/${encodeURIComponent(id)}/source?format=glsl`);
+  if(!r.ok) throw new Error('glsl '+r.status);
+  API_FRAGS[id] = await r.text();
+  return API_FRAGS[id];
+}
+
+async function loadApiShaders(){
+  let data;
+  try {
+    const r = await fetch('/api/shaders');
+    if(!r.ok) throw new Error('shaders '+r.status);
+    data = await r.json();
+  } catch(e){ console.warn('Phase · Field API unavailable — keeping built-in wallpapers', e); return; }
+  const shaders = (data && data.shaders) || [];
+  for(const s of shaders){
+    const presetId = PRESET_MAP[s.preset] || 'flow';
+    const idx = WALLS.length;
+    WALLS.push({ id: s.id, name: s.name, preset: presetId, bpm: s.bpm, api: true });
+    const preset = BPM_PRESETS.find(p=>p.id===presetId) || BPM_PRESETS[1];
+    const row = document.createElement('div');
+    row.className = 'wp';
+    row.innerHTML = `
+      <div class="thumb"><canvas></canvas></div>
+      <div class="info"><div class="name">${s.name}</div><div class="sub">${preset.label} · ${s.bpm} bpm</div></div>
+      <div class="ix">${String(idx+1).padStart(2,'0')}</div>
+    `;
+    picker.appendChild(row);
+    row.addEventListener('click', ()=>setActiveShader(idx));
+    try {
+      await fetchShaderGLSL(s.id);
+      previewRenderers.push(new Renderer(row.querySelector('canvas'), s.id));
+    } catch(e){
+      console.warn('shader preview failed', s.id, e);
+      row.classList.add('wp-unavailable');
+    }
+  }
+  document.getElementById('wpIx').textContent = (state.activeIdx+1)+' / '+WALLS.length;
+}
+loadApiShaders();
 
 /* ====== Real autocomplete ====== */
 const searchInput = document.getElementById('searchInput');

@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     stream_delivery_mode: str = "proxy"
     focus_profile_storage_backend: str = "local-json"
     focus_profile_kv_namespace: str | None = None
+    phase_field_api_base_url: str = "http://localhost:8787"
 
     @field_validator("stream_allowed_hosts", mode="before")
     @classmethod

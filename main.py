@@ -1,5 +1,6 @@
 import os
 import logging
+import re
 import subprocess  # nosec B404
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -14,6 +15,7 @@ from fastapi.responses import (
     HTMLResponse,
     JSONResponse,
     RedirectResponse,
+    Response,
     StreamingResponse,
 )
 from fastapi.staticfiles import StaticFiles
@@ -89,6 +91,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await mb.aclose()
     if sp and not sp.is_closed:
         await sp.aclose()
+    if _phase_field_client and not _phase_field_client.is_closed:
+        await _phase_field_client.aclose()
 
 
 app = FastAPI(
@@ -362,6 +366,87 @@ def get_metadata(
     except Exception as exc:
         logger.error("metadata_failed", url_length=len(url), error=str(exc))
         fail_with_http_error(exc)
+
+
+# ---- Phase · Field shader distribution API proxy ----
+# Fronts the standalone phase-field-api worker so the browser talks to this
+# service same-origin (no CORS / mixed-content) and never sees the upstream URL.
+_phase_field_client: httpx.AsyncClient | None = None
+_SHADER_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
+_SHADER_FORMATS = {"wgsl", "glsl", "msl", "spirv", "metal"}
+
+
+def _get_phase_field_client() -> httpx.AsyncClient:
+    global _phase_field_client
+    if _phase_field_client is None or _phase_field_client.is_closed:
+        _phase_field_client = httpx.AsyncClient(
+            verify=certifi.where(),
+            timeout=10.0,
+            headers={"User-Agent": "dev-music-service/0.4 (phase-field proxy)"},
+        )
+    return _phase_field_client
+
+
+@app.get("/api/shaders")
+@limiter.limit("60 per minute")
+async def list_shaders(
+    request: Request,
+    preset: Optional[str] = Query(default=None, max_length=32),
+    bpm_min: Optional[int] = Query(default=None, ge=0, le=400),
+    bpm_max: Optional[int] = Query(default=None, ge=0, le=400),
+):
+    """Proxy the Phase · Field shader catalogue (metadata + WGSL source)."""
+    base = get_settings().phase_field_api_base_url.rstrip("/")
+    params = {
+        key: value
+        for key, value in (("preset", preset), ("bpm_min", bpm_min), ("bpm_max", bpm_max))
+        if value is not None
+    }
+    try:
+        resp = await _get_phase_field_client().get(f"{base}/v1/shaders", params=params)
+    except httpx.HTTPError as exc:
+        logger.warning("phase_field_unreachable", endpoint="shaders", error=str(exc))
+        raise HTTPException(status_code=503, detail="Phase · Field API unreachable") from exc
+    return JSONResponse(
+        content=resp.json(),
+        status_code=resp.status_code,
+        headers={"Cache-Control": "public, max-age=300"},
+    )
+
+
+@app.get("/api/shaders/{shader_id}/source")
+@limiter.limit("120 per minute")
+async def get_shader_source(
+    request: Request,
+    shader_id: str,
+    format: str = Query(default="glsl"),
+):
+    """Proxy a single shader's compiled source in the requested format."""
+    if not _SHADER_ID_RE.match(shader_id):
+        raise HTTPException(status_code=400, detail="Invalid shader id")
+    fmt = format.strip().lower()
+    if fmt not in _SHADER_FORMATS:
+        raise HTTPException(status_code=400, detail="Unsupported shader format")
+    base = get_settings().phase_field_api_base_url.rstrip("/")
+    try:
+        resp = await _get_phase_field_client().get(
+            f"{base}/v1/shaders/{shader_id}/source", params={"format": fmt}
+        )
+    except httpx.HTTPError as exc:
+        logger.warning(
+            "phase_field_unreachable", endpoint="source", shader_id=shader_id, error=str(exc)
+        )
+        raise HTTPException(status_code=503, detail="Phase · Field API unreachable") from exc
+    headers = {"Cache-Control": "public, max-age=300"}
+    served_format = resp.headers.get("X-Shader-Format")
+    if served_format:
+        headers["X-Shader-Format"] = served_format
+    return Response(
+        content=resp.content,
+        status_code=resp.status_code,
+        media_type=resp.headers.get("content-type", "text/plain"),
+        headers=headers,
+    )
 
 
 @app.get("/api/stream")
