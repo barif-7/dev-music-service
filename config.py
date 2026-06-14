@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Annotated
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -28,7 +29,9 @@ class Settings(BaseSettings):
     spotify_redirect_uri: str | None = None
     vercel: bool = Field(default=False)
     dms_control_auth_token: str | None = None
-    stream_allowed_hosts: tuple[str, ...] = (
+    # NoDecode keeps pydantic-settings from JSON-decoding the env value so the
+    # comma-separated form below is parsed by _parse_stream_allowed_hosts.
+    stream_allowed_hosts: Annotated[tuple[str, ...], NoDecode] = (
         "googlevideo.com",
         "youtube.com",
         "youtu.be",
