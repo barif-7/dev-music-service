@@ -378,6 +378,8 @@ uniform float iWarp;
 uniform float iHue;
 uniform float iGrain;
 uniform float iPlaying;
+uniform float iBpm;   // beats per second (detected tempo of the playing track)
+uniform float iBeat;  // 0..1 sawtooth synced to the beat grid
 float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
 float noise(vec2 p){
   vec2 i=floor(p), f=fract(p);

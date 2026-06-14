@@ -167,7 +167,28 @@ audioEl.addEventListener('ended', () => { state.playing = false; updatePlayBtn()
 /* ====== Web Audio analyser ====== */
 let audioCtx=null, analyser=null, freqData=null;
 let beatHistory=new Float32Array(60), beatIdx=0, lastBeatT=0;
-let sBass=0, sTreble=0, sEnergy=0; // smoothed envelopes (asymmetric attack/release)
+let sBass=0, sMid=0, sTreble=0, sLevel=0; // smoothed FFT bands (k=0.30 EMA, spec)
+
+/* ====== Tempo estimation (drives state.bpm + the shader beat grid) ====== */
+let beatIntervals=[];   // recent inter-onset intervals (s)
+let detectedBpm=0;      // smoothed tempo estimate from the playing audio
+let beatAnchor=0;       // time of the last on-grid beat (phase-locked to onsets)
+let beatPhase=0;        // 0..1 position within the current beat
+let prevBeatPhase=0;    // previous frame's phase (to detect grid crossings)
+
+function resetTempo(){ beatIntervals=[]; detectedBpm=0; beatAnchor=0; beatPhase=0; prevBeatPhase=0; }
+
+// Median inter-onset interval → BPM, octave-folded into a musical range.
+function estimateBpm(intervals){
+  if(intervals.length<3) return 0;
+  const sorted=[...intervals].sort((a,b)=>a-b);
+  const med=sorted[sorted.length>>1];
+  if(!(med>0)) return 0;
+  let bpm=60/med;
+  while(bpm<70)  bpm*=2;
+  while(bpm>170) bpm/=2;
+  return bpm;
+}
 
 function setupAnalyser(){
   if(audioCtx) return;
@@ -205,7 +226,7 @@ class Renderer {
     gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
     this.u = {};
     ['iResolution','iTime','iMouse','iDrag','iClick','iPulse','iBass','iTreble',
-     'iEnergy','iIntensity','iWarp','iHue','iGrain','iPlaying'].forEach(n=>{
+     'iEnergy','iIntensity','iWarp','iHue','iGrain','iPlaying','iBpm','iBeat'].forEach(n=>{
       this.u[n] = gl.getUniformLocation(this.prog, n);
     });
     this.localMouse = {x:0.5,y:0.5};
@@ -226,7 +247,7 @@ class Renderer {
     Object.keys(this.u).forEach(n=>{ this.u[n] = gl.getUniformLocation(this.prog, n); });
   }
   resize(){
-    const dpr = Math.min(window.devicePixelRatio||1, 2);
+    const dpr = Math.min(window.devicePixelRatio||1, 1.75);  // spec maxDpr
     const w = this.canvas.clientWidth * dpr, h = this.canvas.clientHeight * dpr;
     if(this.canvas.width!==w || this.canvas.height!==h){ this.canvas.width=w; this.canvas.height=h; }
   }
@@ -245,11 +266,13 @@ class Renderer {
     gl.uniform1f(this.u.iBass, env.bass);
     gl.uniform1f(this.u.iTreble, env.treble);
     gl.uniform1f(this.u.iEnergy, env.energy);
-    gl.uniform1f(this.u.iIntensity, state.intensity);
-    gl.uniform1f(this.u.iWarp, state.warp);
+    gl.uniform1f(this.u.iIntensity, env.intensity ?? state.intensity);  // audio-driven (spec)
+    gl.uniform1f(this.u.iWarp, env.warp ?? state.warp);                 // audio-driven (spec)
     gl.uniform1f(this.u.iHue, state.hue * Math.PI/180);
     gl.uniform1f(this.u.iGrain, state.grain);
     gl.uniform1f(this.u.iPlaying, state.playing?1:0);
+    gl.uniform1f(this.u.iBpm, (env.bpm||0)/60);   // beats per second
+    gl.uniform1f(this.u.iBeat, env.beat||0);      // 0..1 sawtooth on the beat grid
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     this.localClick = Math.max(0, this.localClick - env.dt*1.4);
   }
@@ -573,6 +596,7 @@ function applyPlaybackState(payload, fallback = {}){
 }
 
 async function loadTrack(s){
+  resetTempo();
   applyPlaybackState({}, s);
   const query = [s.title, s.artist].filter(Boolean).join(' ');
   try {
@@ -1436,7 +1460,8 @@ function setEqLabel(){ document.getElementById('eqMode').textContent=`${eqOpts.s
 
 /* ====== Animation loop ====== */
 let lastT=performance.now();
-let pulse=0, nextBeat=0;
+let pulse=0;
+const bpmNumEl=document.getElementById('bpmNum'), bpmBandEl=document.getElementById('bpmBand');
 function fmt(s){ s=Math.max(0,s|0); const m=(s/60)|0,ss=s%60; return m.toString().padStart(2,'0')+':'+ss.toString().padStart(2,'0'); }
 
 function loop(now){
@@ -1452,49 +1477,70 @@ function loop(now){
   if(state.mode!=='browser' && state.playing) state.elapsed=Math.min(state.duration,state.elapsed+dt);
 
   /* ---- real audio feature extraction ---- */
-  let bass,treble,energy;
+  let bass,treble,mid,level,energy,intensity,warp;
   if(analyser && freqData && state.playing){
     if(audioCtx.state==='suspended') audioCtx.resume().catch(()=>{});
     analyser.getByteFrequencyData(freqData);
     const binCount=freqData.length;
-    const binHz=(audioCtx.sampleRate/2)/binCount;
-    const bEnd =Math.floor(250/binHz);
-    const tStart=Math.floor(3500/binHz), tEnd=Math.floor(12000/binHz);
-    let bSum=0,bN=0, tSum=0,tN=0, eSum=0;
-    for(let i=1;i<binCount;i++){
-      const v=freqData[i]/255;
-      if(i<bEnd){bSum+=v;bN++;}
-      if(i>=tStart&&i<tEnd){tSum+=v;tN++;}
-      eSum+=v*v;
-    }
-    const rawBass  =bN>0?Math.min(1,(bSum/bN)*2.8):0;
-    const rawTreble=tN>0?Math.min(1,(tSum/tN)*4.2):0;
-    const rawEnergy=Math.min(1,Math.sqrt(eSum/binCount)*4.8);
-    /* asymmetric envelope — moderate attack so spikes don't overdrive shaders */
-    sBass  +=( rawBass   - sBass  )*(rawBass   > sBass  ? 0.45 : 0.18);
-    sTreble+=( rawTreble - sTreble)*(rawTreble > sTreble? 0.45 : 0.18);
-    sEnergy+=( rawEnergy - sEnergy)*(rawEnergy > sEnergy? 0.45 : 0.20);
-    /* gentle compression: pow(x, 1.3) tames mid-range without flattening peaks */
-    bass  = Math.pow(sBass,   1.3);
-    treble= Math.pow(sTreble, 1.3);
-    energy= Math.pow(sEnergy, 1.3);
-    /* onset / beat detection: bass spike above running average */
+    /* Spec FFT bands (fftSize 2048 → ~21.5 Hz/bin): bass 1–8, mid 8–60,
+       treble 60–300, level 1–160. */
+    const band=(lo,hi)=>{ let s=0,n=0; const end=Math.min(hi,binCount); for(let i=lo;i<end;i++){ s+=freqData[i]/255; n++; } return n?s/n:0; };
+    const rawBass  =Math.min(1, band(1,8)    * 1.6);
+    const rawMid   =Math.min(1, band(8,60)   * 2.2);
+    const rawTreble=Math.min(1, band(60,300) * 3.0);
+    const rawLevel =Math.min(1, band(1,160)  * 2.2);
+    const k=0.30;                            // spec: k=0.30 EMA on all bands
+    sBass  +=(rawBass  -sBass  )*k;
+    sMid   +=(rawMid   -sMid   )*k;
+    sTreble+=(rawTreble-sTreble)*k;
+    sLevel +=(rawLevel -sLevel )*k;
+    bass=sBass; mid=sMid; treble=sTreble; level=sLevel;
+    energy=0.28 + 0.72*level;                // spec: iEnergy = 0.28 + 0.72·level
+    intensity=0.40 + 0.60*mid;               // spec: iIntensity = 0.40 + 0.60·mid
+    warp=0.25 + 0.55*treble;                 // spec: iWarp = 0.25 + 0.55·treble
+    /* onset / beat detection (spec): bass > bassAvg·1.32 + 0.10, min 160ms */
     beatHistory[beatIdx%beatHistory.length]=rawBass;
     beatIdx++;
     let avg=0; for(let i=0;i<beatHistory.length;i++) avg+=beatHistory[i]; avg/=beatHistory.length;
-    if(rawBass>avg*1.4 && rawBass>0.08 && t-lastBeatT>0.18){ pulse=1.0; lastBeatT=t; }
-  } else {
-    /* no analyser — BPM-locked metronome fallback; decay smooth envelopes */
-    sBass*=0.92; sTreble*=0.92; sEnergy*=0.92;
-    if(state.playing){
-      const bi=60/state.bpm;
-      if(t>=nextBeat){ pulse=1.0; nextBeat=t+bi; }
+    if(rawBass > avg*1.32 + 0.10 && t-lastBeatT>0.16){
+      const ibi=t-lastBeatT;               // inter-onset interval
+      if(ibi>0.25 && ibi<2.0){             // plausible 30..240 bpm before folding
+        beatIntervals.push(ibi);
+        if(beatIntervals.length>8) beatIntervals.shift();
+        const est=estimateBpm(beatIntervals);
+        if(est) detectedBpm = detectedBpm ? detectedBpm+(est-detectedBpm)*0.25 : est;
+      }
+      beatAnchor=t;                         // phase-lock the grid + reset pulse phase to 0
+      lastBeatT=t;
     }
-    bass  =state.playing?0.15:0.04;
-    treble=state.playing?0.10:0.03;
-    energy=state.playing?0.13:0.04;
+  } else {
+    sBass*=0.92; sMid*=0.92; sTreble*=0.92; sLevel*=0.92;
+    bass=sBass; mid=sMid; treble=sTreble; level=sLevel;
+    /* spec: iEnergy = audio level, else 0.55 + 0.35·sin(t·0.2) while playing */
+    energy = state.playing ? (0.55 + 0.35*Math.sin(t*0.2)) : 0.28;
+    intensity=0.65; warp=0.40;               // spec idle defaults (no audio)
   }
-  pulse=Math.max(0,pulse-dt*3.0);
+
+  /* ---- tempo grid: phase-locked beat clock; iPulse = (1 - phase)² (spec) ---- */
+  const liveBpm = detectedBpm || state.bpm;
+  if(state.playing && liveBpm>0){
+    const bps=liveBpm/60;
+    let phase=((t-beatAnchor)*bps)%1; if(phase<0) phase+=1;
+    beatPhase=phase;
+    pulse=(1-phase)*(1-phase);              // quadratic decay within the beat
+  } else {
+    beatPhase=0;
+    pulse=0;
+  }
+
+  /* surface the detected tempo to the BPM card while a track plays */
+  if(state.playing && detectedBpm>0){
+    const shown=Math.round(detectedBpm);
+    state.bpm=shown;
+    bpmNumEl.textContent=shown;
+    const band=BPM_PRESETS.find(p=>shown>=p.range[0]&&shown<=p.range[1]);
+    if(band) bpmBandEl.textContent=band.label.toUpperCase();
+  }
 
   const heart=document.getElementById('bpmHeart');
   heart.style.transform=`scale(${1+pulse*0.6})`; heart.style.opacity=String(0.6+0.4*pulse);
@@ -1507,7 +1553,7 @@ function loop(now){
 
   updateLyricsOverlay(state.elapsed*1000);
 
-  const env={t,dt,pulse,bass,treble,energy};
+  const env={t,dt,pulse,bass,treble,energy,intensity,warp,bpm:liveBpm,beat:beatPhase};
   updateEqLevels(t,env);
 
   /* smooth hue transition toward album-art target */
