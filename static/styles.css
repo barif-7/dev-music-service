@@ -953,6 +953,27 @@
     font-family: var(--mono); font-size: 11px; color: var(--ink-faint);
     letter-spacing: 0.08em; text-transform: uppercase;
   }
+  /* ReccoBeats coverage banner + no-data rows */
+  .focus-coverage {
+    padding: 7px 10px; margin-bottom: 8px;
+    font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint);
+    letter-spacing: 0.06em; text-transform: uppercase;
+    border: 1px solid rgba(255,255,255,.08); border-radius: 6px;
+    background: rgba(255,255,255,.02);
+  }
+  .focus-coverage b { color: var(--ink); }
+  .focus-coverage .nodata-count { color: var(--accent); }
+  .nodata-head {
+    margin: 12px 0 4px; font-family: var(--mono); font-size: 10px;
+    color: var(--ink-faint); letter-spacing: 0.1em; text-transform: uppercase;
+  }
+  .focus-track.nodata { opacity: 0.6; }
+  .nodata-chip {
+    display: inline-block; padding: 2px 7px; border-radius: 999px;
+    font-family: var(--mono); font-size: 9px; letter-spacing: 0.05em;
+    color: var(--ink-faint); border: 1px solid rgba(255,255,255,.12);
+    background: rgba(255,255,255,.03);
+  }
   @media (max-width: 960px) {
     .profile-grid { grid-template-columns: 1fr; }
     .focus-stats { grid-template-columns: repeat(2, 1fr); }

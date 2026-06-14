@@ -1884,8 +1884,11 @@ function setTimeRange(range, btn) {
 
 function renderFocusData(data) {
   document.getElementById('focusStats').style.display = '';
-  document.getElementById('statFocus').textContent = data.audio_features_available === false ? '—' : data.focus_tracks_count;
-  document.getElementById('statTotal').textContent = data.total_top_tracks;
+  const covered = data.features_covered ?? 0;
+  const total = data.features_total ?? data.total_top_tracks ?? 0;
+  const noData = data.no_data_tracks || [];
+  document.getElementById('statFocus').textContent = data.focus_tracks_count;
+  document.getElementById('statTotal').textContent = `${covered} / ${total}`;
   document.getElementById('statAvgBpm').textContent = data.bpm_insight ? data.bpm_insight.mean : '—';
   const topScore = data.focus_tracks[0] ? data.focus_tracks[0].focus_score : 0;
   document.getElementById('statTopScore').textContent = topScore ? topScore.toFixed(0) : '—';
@@ -1900,33 +1903,21 @@ function renderFocusData(data) {
   const container = document.getElementById('focusTracks');
   container.innerHTML = '';
 
-  if (data.audio_features_available === false) {
-    document.getElementById('focusTrackHead').style.display = 'none';
-    const warning = document.createElement('div');
-    warning.className = 'focus-skeleton';
-    warning.textContent = data.warning || 'Spotify audio features are unavailable for this app.';
-    container.appendChild(warning);
+  // Coverage banner — features come from ReccoBeats, which has no data for some tracks.
+  const coverage = document.createElement('div');
+  coverage.className = 'focus-coverage';
+  coverage.innerHTML = `Audio features for <b>${covered}</b> of <b>${total}</b> tracks · source: ReccoBeats`
+    + (noData.length ? ` · <span class="nodata-count">${noData.length} without data</span>` : '');
+  container.appendChild(coverage);
 
-    (data.top_tracks || []).slice(0, 20).forEach(track => {
-      const row = document.createElement('div');
-      row.className = 'focus-track';
-      row.innerHTML = `
-        ${focusArtMarkup({ title: track.title, artist: track.artist, thumbnail: track.thumbnail }, 36)}
-        <div><div class="t">${escapeHtml(track.title)}</div><div class="a">${escapeHtml(track.artist)}${track.album ? ' · ' + escapeHtml(track.album) : ''}</div></div>
-        <div class="bpm-pill" style="color:var(--ink-faint);">—</div>
-        <div class="feat-val">—</div>
-        <div class="feat-val">—</div>
-        <div class="feat-val">No features</div>
-        <button class="btn" style="font-size:10px;padding:4px 8px;" onclick="playFocusTrack(event, ${JSON.stringify(escapeAttr(track.title))}, ${JSON.stringify(escapeAttr(track.artist))})">Play</button>
-      `;
-      container.appendChild(row);
-    });
-    return;
-  }
-
-  document.getElementById('focusTrackHead').style.display = '';
+  document.getElementById('focusTrackHead').style.display = data.focus_tracks.length ? '' : 'none';
   if (!data.focus_tracks.length) {
-    container.innerHTML = '<div class="focus-skeleton">No tracks matched your current focus profile. Try widening the BPM range or lowering the instrumentalness threshold.</div>';
+    const empty = document.createElement('div');
+    empty.className = 'focus-skeleton';
+    empty.textContent = covered
+      ? 'No tracks with audio data matched your focus profile. Try widening the BPM range or lowering the instrumentalness threshold.'
+      : 'ReccoBeats had no audio data for these tracks. Try a different time range.';
+    container.appendChild(empty);
   } else {
     data.focus_tracks.forEach(track => {
       const row = document.createElement('div');
@@ -1942,6 +1933,28 @@ function renderFocusData(data) {
           <div style="margin-bottom:3px;">${track.focus_score.toFixed(0)}</div>
           <div class="focus-bar-wrap"><div class="focus-bar-fill" style="width:${scoreWidth}%"></div></div>
         </div>
+        <button class="btn" style="font-size:10px;padding:4px 8px;" onclick="playFocusTrack(event, ${JSON.stringify(escapeAttr(track.title))}, ${JSON.stringify(escapeAttr(track.artist))})">Play</button>
+      `;
+      container.appendChild(row);
+    });
+  }
+
+  // Tracks ReccoBeats has no data for — surfaced honestly, never as 0-score rows.
+  if (noData.length) {
+    const head = document.createElement('div');
+    head.className = 'nodata-head';
+    head.textContent = `No audio data (${data.no_data_count ?? noData.length})`;
+    container.appendChild(head);
+    noData.forEach(track => {
+      const row = document.createElement('div');
+      row.className = 'focus-track nodata';
+      row.innerHTML = `
+        ${focusArtMarkup({ title: track.title, artist: track.artist, thumbnail: track.thumbnail }, 36)}
+        <div><div class="t">${escapeHtml(track.title)}</div><div class="a">${escapeHtml(track.artist)}${track.album ? ' · ' + escapeHtml(track.album) : ''}</div></div>
+        <div class="bpm-pill" style="color:var(--ink-faint);">—</div>
+        <div class="feat-val">—</div>
+        <div class="feat-val">—</div>
+        <div class="feat-val"><span class="nodata-chip">no audio data</span></div>
         <button class="btn" style="font-size:10px;padding:4px 8px;" onclick="playFocusTrack(event, ${JSON.stringify(escapeAttr(track.title))}, ${JSON.stringify(escapeAttr(track.artist))})">Play</button>
       `;
       container.appendChild(row);
