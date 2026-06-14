@@ -34,6 +34,7 @@ from security import (
     validate_stream_url,
 )
 from services.focus_service import FocusProfile, FocusService
+from services.reccobeats_service import get_audio_feature_provider
 from services.local_playback_service import LocalPlaybackService
 from services.metadata_service import MetadataService, MetadataServiceError
 from services.lyrics_service import LyricsNotFoundError, LyricsRequestError, LyricsService
@@ -78,6 +79,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     try:
         MetadataService._get_mb_client()
         SpotifyImportService._get_http_client()
+        get_audio_feature_provider().client()
         if SpotifyImportService._client_credentials_configured():
             await SpotifyImportService.get_client_credentials_token()
     except Exception:
@@ -93,6 +95,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await sp.aclose()
     if _phase_field_client and not _phase_field_client.is_closed:
         await _phase_field_client.aclose()
+    await get_audio_feature_provider().aclose()
 
 
 app = FastAPI(
@@ -664,9 +667,9 @@ async def focus_track_features(track_id: str, request: Request):
     """
     validate_control_auth(request)
     try:
-        token = SpotifyImportService._access_token(request)
+        SpotifyImportService._access_token(request)  # require an authed session
         profile = FocusProfile.load()
-        af = await FocusService.get_track_features(token, track_id)
+        af = await FocusService.get_track_features(track_id)
         if af is None:
             raise HTTPException(status_code=404, detail="Audio features not available for this track")
         return {**af.to_dict(), "focus_score": af.focus_score(profile), "matches_profile": af.matches_profile(profile)}
