@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     focus_profile_storage_backend: str = "local-json"
     focus_profile_kv_namespace: str | None = None
     phase_field_api_base_url: str = "http://localhost:8787"
+    reccobeats_api_base_url: str = "https://api.reccobeats.com/v1"
 
     @field_validator("stream_allowed_hosts", mode="before")
     @classmethod
