@@ -51,6 +51,9 @@ class AudioFeatures:
         "track_id", "tempo", "energy", "valence",
         "instrumentalness", "acousticness", "speechiness",
         "liveness", "danceability", "loudness",
+        # musical-identity / structural fields — used as visual priors by the
+        # frontend TrackVisualProfile (key/mode → colour, time_signature → grid).
+        "key", "mode", "time_signature", "duration_ms",
     )
 
     def __init__(self, raw: dict) -> None:
@@ -64,6 +67,13 @@ class AudioFeatures:
         self.liveness: float = float(raw.get("liveness") or 0)
         self.danceability: float = float(raw.get("danceability") or 0)
         self.loudness: float = float(raw.get("loudness") or 0)
+        # Optional fields: Spotify provides these in audio-features, but they may be
+        # absent from other providers — default to "unknown" sentinels (-1) so the
+        # frontend stays neutral rather than guessing.
+        self.key: int = int(raw["key"]) if raw.get("key") is not None else -1
+        self.mode: int = int(raw["mode"]) if raw.get("mode") is not None else -1
+        self.time_signature: int = int(raw.get("time_signature") or 4)
+        self.duration_ms: int = int(raw.get("duration_ms") or 0)
 
     def matches_profile(self, profile: dict) -> bool:
         if not (profile["bpm_min"] <= self.tempo <= profile["bpm_max"]):
@@ -108,6 +118,10 @@ class AudioFeatures:
             "liveness": round(self.liveness, 3),
             "danceability": round(self.danceability, 3),
             "loudness": round(self.loudness, 1),
+            "key": self.key,
+            "mode": self.mode,
+            "time_signature": self.time_signature,
+            "duration_ms": self.duration_ms,
         }
 
 

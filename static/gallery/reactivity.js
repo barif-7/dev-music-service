@@ -4,6 +4,7 @@
 const reactivityPlugin = {
   default:  'preset',          // 'preset' follows each wallpaper's focus preset
   fallback: 'flow',            // used when a wallpaper has no / unknown preset
+  enabled: true,               // master on/off switch for sound reactivity
   profiles: {
     rest:  { react: 0.55 },    // wind-down · subtle
     flow:  { react: 0.85 },    // deep focus · moderate
@@ -17,6 +18,7 @@ const reactivityPlugin = {
   bpmSpan: 0.20,               // ± BPM influence on top of the chosen profile
   /* Resolve a wallpaper id → its reactivity scale (profile · BPM trim, clamped). */
   scaleFor(id){
+    if(!this.enabled) return 0;
     const w = (typeof ALTS !== 'undefined') ? ALTS.find(x => x.id === id) : null;
     let name = this.overrides[id] || this.default;
     if((this.profiles[name] || {}).follow) name = (w && w.preset && w.preset.toLowerCase()) || this.fallback;
@@ -27,31 +29,55 @@ const reactivityPlugin = {
   },
 };
 
-/* ReccoBeats per-track character — carried over from the player engine. Field's
-   wallpaper "tracks" carry no Spotify audio features, so this stays NEUTRAL unless
-   trackFeatures is populated; the mappings are kept so the infra is reusable. */
-const RECCO = {
-  vocalFromSpeech:       0.80,
-  vocalFromInstrumental: 0.40,
-  hueFromValence:        0.50,
-  warpFromDance:         0.20,
-  grainFromAcoustic:     0.30,
-  intensityFromLiveness: 0.25,
-  energyFromLoudness:    0.20,
+/* =========================================================================
+   TrackVisualProfile — the track-level "visual prior".
+   Built ONCE per track from ReccoBeats-style audio features (tempo, energy,
+   danceability, valence, acousticness, instrumentalness, speechiness, liveness,
+   loudness, key, mode, time_signature). It describes the WHOLE track and is used
+   by ShaderMapper only to bias/calibrate the live FFT — never to replace it.
+
+   Stays fully NEUTRAL (has=false) when no features are available, so shaders keep
+   working from live audio alone. All numeric fields are normalized for the mapper:
+   0..1 except where noted.
+   ========================================================================= */
+const NEUTRAL_PROFILE = {
+  has:      false,   // true once real ReccoBeats features are loaded
+  tempo:    0,       // BPM (0 = unknown → mapper falls back to live/nominal)
+  energy:   0,       // 0..1 overall intensity of the track
+  dance:    0,       // 0..1 danceability → beat confidence / pulse sharpness
+  valence:  0.5,     // 0..1 mood (0 dark .. 1 happy); 0.5 = neutral
+  acoustic: 0,       // 0..1 acousticness → softer edges, organic grain
+  instrum:  0,       // 0..1 instrumentalness → abstract motion vs vocal center
+  speech:   0,       // 0..1 speechiness → tame pulsing, lean on midrange
+  live:     0,       // 0..1 liveness → ambient bloom / space
+  loud:     0.5,     // 0..1 normalized loudness (−60..0 dB → 0..1)
+  key:      -1,      // 0..11 pitch class (-1 unknown) → subtle hue identity
+  mode:     -1,      // 0 minor / 1 major (-1 unknown) → brightness/mood
+  timeSig:  4,       // beats per bar → rhythmic subdivision
 };
-const NEUTRAL_MOD = {vocalGain:1, hueBias:0, warpBias:0, grainBias:0, intensityBias:0, energyBias:0};
-let trackFeatures = null;
-let trackMod = NEUTRAL_MOD;
-function recomputeTrackMod(){
+let trackFeatures = null;                  // raw JSON from /api/focus/track/{id}
+let TrackVisualProfile = { ...NEUTRAL_PROFILE };
+
+/* Build the profile from a raw ReccoBeats/Spotify audio-features object.
+   Tolerant: any missing field falls back to its neutral value. */
+function buildTrackVisualProfile(){
   const f = trackFeatures;
-  if(!f){ trackMod = NEUTRAL_MOD; return; }
+  if(!f){ TrackVisualProfile = { ...NEUTRAL_PROFILE }; return TrackVisualProfile; }
   const loudNorm = Math.max(0, Math.min(1, ((f.loudness ?? -60) + 60) / 60));
-  trackMod = {
-    vocalGain:     1 + RECCO.vocalFromSpeech*(f.speechiness||0) + RECCO.vocalFromInstrumental*(1-(f.instrumentalness??1)),
-    hueBias:       ((f.valence??0.5)-0.5) * RECCO.hueFromValence,
-    warpBias:      RECCO.warpFromDance     * (f.danceability||0),
-    grainBias:     RECCO.grainFromAcoustic * (f.acousticness||0),
-    intensityBias: RECCO.intensityFromLiveness * (f.liveness||0),
-    energyBias:    RECCO.energyFromLoudness    * loudNorm,
+  TrackVisualProfile = {
+    has:      true,
+    tempo:    f.tempo ?? 0,
+    energy:   f.energy ?? 0,
+    dance:    f.danceability ?? 0,
+    valence:  f.valence ?? 0.5,
+    acoustic: f.acousticness ?? 0,
+    instrum:  f.instrumentalness ?? 0,
+    speech:   f.speechiness ?? 0,
+    live:     f.liveness ?? 0,
+    loud:     loudNorm,
+    key:      Number.isFinite(f.key)  ? f.key  : -1,
+    mode:     Number.isFinite(f.mode) ? f.mode : -1,
+    timeSig:  f.time_signature || 4,
   };
+  return TrackVisualProfile;
 }

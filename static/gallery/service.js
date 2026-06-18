@@ -10,22 +10,57 @@ const player = {
   duration: 0,
   lyrics: [],          // [{ms, text}]
   webpageUrl: null,
+  progress: 0,         // 0..1 playback position (set each frame by app.js)
+  accent: [1, 1, 1],   // dominant album-art colour, fed to shaders as iAccent
 };
 
-/* per-track ReccoBeats features → reactivity (no-op without a Spotify id) */
+/* pull a representative colour out of the cover art (best-effort; falls back to
+   neutral if the image is cross-origin and the canvas is tainted). */
+function extractAccent(url){
+  player.accent = [1, 1, 1];
+  if(!url) return;
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = ()=>{
+    try{
+      const s = 14, c = document.createElement('canvas'); c.width=s; c.height=s;
+      const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0, s, s);
+      const d = ctx.getImageData(0, 0, s, s).data;
+      let r=0,g=0,b=0,wsum=0;
+      for(let i=0;i<d.length;i+=4){
+        const rr=d[i],gg=d[i+1],bb=d[i+2];
+        const mx=Math.max(rr,gg,bb), mn=Math.min(rr,gg,bb);
+        const w = 0.25 + (mx-mn)/255;            // favour saturated pixels
+        r+=rr*w; g+=gg*w; b+=bb*w; wsum+=w;
+      }
+      if(wsum>0){
+        const a=[r/wsum/255, g/wsum/255, b/wsum/255];
+        const m=Math.max(a[0],a[1],a[2])||1;        // normalize to a hue tint (max=1)
+        player.accent = [a[0]/m, a[1]/m, a[2]/m];
+      }
+    }catch(e){ /* tainted (CORS) → keep neutral */ }
+  };
+  img.onerror = ()=>{};
+  img.src = url;
+}
+
+/* per-track ReccoBeats features → TrackVisualProfile (the track-level visual
+   prior). Optional layer: no Spotify id, a failed fetch, or missing fields all
+   leave the profile NEUTRAL so the shaders keep running on live FFT alone. */
 async function fetchTrackFeatures(spotifyId){
-  trackFeatures = null; recomputeTrackMod();
+  trackFeatures = null; buildTrackVisualProfile();          // reset to neutral
   if(!spotifyId) return;
   try{
     const r = await fetch(`/api/focus/track/${encodeURIComponent(spotifyId)}`);
-    if(!r.ok) return;
-    trackFeatures = await r.json(); recomputeTrackMod();
-  }catch(e){ /* neutral */ }
+    if(!r.ok) return;                                        // 404/403 → stay neutral
+    trackFeatures = await r.json(); buildTrackVisualProfile();
+  }catch(e){ /* network/parse error → stay neutral */ }
 }
 
 /* resolve a track to a playable source, stream it, and react to it */
 async function loadTrack(s){
   player.current = s; player.lyrics = [];
+  extractAccent(s.thumbnail);
   fetchTrackFeatures(s.spotifyId);
   if(typeof renderNowPlaying === 'function') renderNowPlaying(s, 'resolving…');
   const query = [s.title, s.artist].filter(Boolean).join(' ');

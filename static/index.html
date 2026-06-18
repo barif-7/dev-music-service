@@ -52,6 +52,23 @@
     pointer-events:none;opacity:0;transition:opacity .8s var(--ease)}
   #eqCanvas.live{opacity:.55}
 
+  /* spectrum edit controls popover */
+  #eqControls{top:74px;right:28px;z-index:22;width:268px;padding:14px;border-radius:14px;
+    background:rgba(8,8,11,.86);border:1px solid var(--hair);
+    backdrop-filter:blur(26px) saturate(.8);-webkit-backdrop-filter:blur(26px) saturate(.8);
+    box-shadow:0 24px 60px rgba(0,0,0,.5);
+    opacity:0;transform:translateY(-8px);pointer-events:none;transition:opacity .24s var(--ease),transform .24s var(--ease)}
+  #eqControls.show{opacity:1;transform:none;pointer-events:auto}
+  .eqRow{display:flex;align-items:center;gap:8px;margin-bottom:9px}
+  .eqRow:last-child{margin-bottom:0}
+  .eqLbl{width:42px;flex:none;font-family:var(--mono);font-size:9.5px;color:var(--faint);letter-spacing:.05em;text-transform:uppercase}
+  .eqChips{display:flex;gap:4px;flex-wrap:wrap;flex:1}
+  .eqChip{display:inline-flex;align-items:center;gap:5px;padding:4px 8px;border-radius:7px;
+    border:1px solid var(--hair);font-size:11px;color:var(--dim);transition:.18s;cursor:pointer}
+  .eqChip:hover{color:var(--ink)}
+  .eqChip.on{color:var(--ink);background:rgba(244,244,242,.09);border-color:transparent}
+  .eqChip i{width:9px;height:9px;border-radius:50%;display:block}
+
   /* vignette to seat the chrome */
   #stage::after{
     content:'';position:fixed;inset:0;pointer-events:none;z-index:5;
@@ -346,7 +363,15 @@
   #focusPanel.show{opacity:1;pointer-events:auto}
   .fc-drawer{gap:0}
   .fc-react{padding:6px 0 14px;border-bottom:1px solid var(--hair);margin-bottom:14px}
+  .fc-react-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
   .fc-react-lbl{font-family:var(--mono);font-size:10px;color:var(--faint);letter-spacing:.05em;text-transform:uppercase;display:block;margin-bottom:8px}
+  .fc-react-head .fc-react-lbl{margin-bottom:0}
+  .fc-toggle{flex:none;height:26px;padding:0 11px;border-radius:999px;border:1px solid var(--hair);
+    font-family:var(--mono);font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--dim);
+    transition:.2s}
+  .fc-toggle.on{color:#06120c;background:#8affc4;border-color:transparent}
+  .fc-toggle:not(.on){background:rgba(244,244,242,.04)}
+  .fc-toggle:hover{color:var(--ink)}
   .fc-chips{display:flex;gap:6px}
   .fc-chips button{flex:1;height:30px;border-radius:8px;border:1px solid var(--hair);font-size:11.5px;color:var(--dim);transition:.2s}
   .fc-chips button.on{color:var(--ink);background:rgba(244,244,242,.09);border-color:transparent}
@@ -455,6 +480,40 @@
   <!-- ambient FFT spectrum (bottom edge, flanks the player) -->
   <canvas id="eqCanvas" aria-hidden="true"></canvas>
 
+  <!-- spectrum edit controls (popover) -->
+  <div class="chrome" id="eqControls">
+    <div class="eqRow"><span class="eqLbl">View</span>
+      <div class="eqChips" data-key="style">
+        <button class="eqChip on" data-v="bars">Bars</button>
+        <button class="eqChip" data-v="mirror">Mirror</button>
+        <button class="eqChip" data-v="wave">Wave</button>
+        <button class="eqChip" data-v="dots">Dots</button>
+        <button class="eqChip" data-v="ribbon">Ribbon</button>
+      </div></div>
+    <div class="eqRow"><span class="eqLbl">Bands</span>
+      <div class="eqChips" data-key="bands">
+        <button class="eqChip" data-v="16">16</button>
+        <button class="eqChip on" data-v="48">48</button>
+        <button class="eqChip" data-v="72">72</button>
+        <button class="eqChip" data-v="96">96</button>
+      </div></div>
+    <div class="eqRow"><span class="eqLbl">Color</span>
+      <div class="eqChips" data-key="palette">
+        <button class="eqChip on" data-v="lime"><i style="background:#d7ff3a"></i>Lime</button>
+        <button class="eqChip" data-v="ice"><i style="background:#7ad9ff"></i>Ice</button>
+        <button class="eqChip" data-v="magma"><i style="background:#ff6a3d"></i>Magma</button>
+        <button class="eqChip" data-v="mono"><i style="background:#f4f4f5"></i>Mono</button>
+      </div></div>
+    <div class="eqRow"><span class="eqLbl">Scale</span>
+      <div class="eqChips" data-key="scale">
+        <button class="eqChip on" data-v="linear">Linear</button>
+        <button class="eqChip" data-v="log">Log</button>
+      </div>
+      <div class="eqChips" data-key="peaks">
+        <button class="eqChip on" data-v="toggle">Peaks</button>
+      </div></div>
+  </div>
+
   <!-- edge nav -->
   <div class="zone" id="zoneL" aria-label="Previous"></div>
   <div class="zone" id="zoneR" aria-label="Next"></div>
@@ -480,6 +539,9 @@
     </button>
     <button class="tool" id="btnFocus" aria-label="Focus mode" title="Focus  F">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/></svg>
+    </button>
+    <button class="tool" id="btnEq" aria-label="Spectrum" title="Spectrum">
+      <svg viewBox="0 0 24 24"><path d="M4 14v4M9 8v10M14 5v13M19 11v7"/></svg>
     </button>
     <div class="sep"></div>
     <div id="audio">
@@ -555,7 +617,7 @@
     <div id="gridHead">
       <div>
         <div class="gh-title">Field</div>
-        <div class="gh-sub">10 living wallpapers · audio-reactive</div>
+        <div class="gh-sub">15 living wallpapers · audio-reactive</div>
       </div>
       <div class="gh-actions">
         <button class="tool over-grid" id="btnClose" aria-label="Close" title="Close  Esc">
@@ -579,7 +641,7 @@
         <span class="s-tabhint">tab ⇥</span>
       </div>
       <div class="search-sub">
-        <span id="searchCount">10 wallpapers</span>
+        <span id="searchCount">15 wallpapers</span>
         <span class="search-keys">
           <span><b>↑↓</b> move</span><span><b>↵</b> open</span><span><b>esc</b> close</span>
         </span>
@@ -625,7 +687,10 @@
         </button>
       </div>
       <div class="fc-react">
-        <span class="fc-react-lbl">Shader reactivity</span>
+        <div class="fc-react-head">
+          <span class="fc-react-lbl">Shader reactivity</span>
+          <button id="reactToggle" class="fc-toggle on" type="button" aria-pressed="true">On</button>
+        </div>
         <div class="fc-chips" id="reactPicker">
           <button data-p="preset" class="on">Auto</button>
           <button data-p="rest">Rest</button>
@@ -675,10 +740,12 @@
 <script src="/static/gallery/shaders.js"></script>
 <script src="/static/gallery/data.js"></script>
 <script src="/static/gallery/reactivity.js"></script>
+<script src="/static/gallery/mapper.js"></script>
 <script src="/static/gallery/engine.js"></script>
 <script src="/static/gallery/audio.js"></script>
 <script src="/static/gallery/service.js"></script>
 <script src="/static/gallery/app.js"></script>
+<script src="/static/gallery/eq.js"></script>
 <script src="/static/gallery/spotify.js"></script>
 <script src="/static/gallery/focus.js"></script>
 <script src="/static/gallery/search.js"></script>

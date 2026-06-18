@@ -110,4 +110,44 @@ const ALTS = [
     },
     lyric:'the road kept its zero just ahead, mile after mile'
   },
+  {
+    id:'pulse', name:'Pulse', n:'11',
+    preset:'Flow', bpm:72, pairFrom:'original',
+    desc:'The original orb: concentric rings bloom from the beat while the cursor warps the field. Bass swells the core, treble shimmers the halo.',
+    palette:['#0d0f1e','#2e1438','#ff6a4d','#ffd9a8','#13111f'],
+    track:{ title:'First Light', artist:'A世 Solenne', album:'Origin Set', year:2023, src:'mb', conf:'cover-art-archive' },
+    lyric:'every pulse a ring the dark agreed to keep'
+  },
+  {
+    id:'tide', name:'Tide', n:'12',
+    preset:'Rest', bpm:64, pairFrom:'original',
+    desc:'Layered teal waves rolling on a low swell; bass lifts the crests, treble glints the spray. The calmest of the founding set.',
+    palette:['#050a0c','#0d5060','#8cf2dd','#f2da8c','#0a1418'],
+    track:{ title:'Slack Water', artist:'Maren Quay', album:'Origin Set', year:2023, src:'mb', conf:'release-group' },
+    lyric:'the tide kept time the way the moon taught it'
+  },
+  {
+    id:'cells', name:'Cells', n:'13',
+    preset:'Flow', bpm:96, pairFrom:'original',
+    desc:'A living voronoi of warm amber cells that drift and flare on the beat; the cursor pulls the lattice toward your pointer.',
+    palette:['#160d08','#ff8c2e','#ffe680','#ffb84d','#1a120a'],
+    track:{ title:'Honeycomb Hours', artist:'Del Rooke', album:'Origin Set', year:2024, src:'yt', conf:'video-thumbnail' },
+    lyric:'the floor divided into rooms of light'
+  },
+  {
+    id:'mercury', name:'Mercury', n:'14',
+    preset:'Spark', bpm:108, pairFrom:'original',
+    desc:'Chrome metaballs merging and splitting in a cool blue field, specular highlights warming on treble. Liquid metal on a beat.',
+    palette:['#0a0b10','#5a6f9e','#eaf0ff','#7fb0ff','#15171f'],
+    track:{ title:'Quicksilver', artist:'Ione Vask', album:'Origin Set', year:2024, src:'mb', conf:'cover-art-archive' },
+    lyric:'two drops met and forgot they were ever apart'
+  },
+  {
+    id:'lattice', name:'Lattice', n:'15',
+    preset:'Drive', bpm:128, pairFrom:'original',
+    desc:'A magenta triangular grid that fattens and sparks on every beat, nodes flaring hot. The fastest, most electric original.',
+    palette:['#0a0712','#5a2e8c','#ff5ad6','#ffb0f0','#120a1a'],
+    track:{ title:'Node Voltage', artist:'Kessler Pry', album:'Origin Set', year:2025, src:'pl', conf:'generated' },
+    lyric:'the grid agreed to light on the downbeat, every time'
+  },
 ];
