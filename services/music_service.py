@@ -120,6 +120,21 @@ class MusicService:
 
         entries = [entry for entry in (info.get("entries") or []) if entry]
         logger.debug("youtube_search_completed", query=cache_key, results=len(entries))
+        # The search extraction already resolved each candidate's direct audio URL
+        # and request headers. Prime the stream-source cache so the follow-up
+        # /stream request is a cache hit instead of a second full extraction —
+        # this is the bulk of the click-to-play latency. Only freshly-extracted
+        # entries land here (cache hits above return early), so the URLs are fresh.
+        for entry in entries:
+            wp = entry.get("webpage_url")
+            direct = entry.get("url")
+            if wp and direct:
+                MusicService._cache_set(
+                    MusicService._stream_cache,
+                    wp,
+                    (direct, dict(entry.get("http_headers") or {})),
+                    MusicService._STREAM_TTL_SECONDS,
+                )
         return MusicService._cache_set(
             MusicService._search_cache,
             cache_key,
