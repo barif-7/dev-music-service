@@ -38,6 +38,70 @@ const spotifyAccount = document.getElementById('spotifyAccount');
 const spotifyScope = document.getElementById('spotifyScope');
 const spotifyConnText = document.getElementById('spotifyConnText');
 const spotifyConnDot = document.getElementById('spotifyConnDot');
+const spotifySaveBtn = document.getElementById('nbLike');
+let pendingSpotifySave = false;
+
+function syncSpotifySaveButton(track = player?.current){
+  if(!spotifySaveBtn) return;
+  spotifySaveBtn.disabled = !track?.title;
+  spotifySaveBtn.classList.remove('saving');
+  spotifySaveBtn.classList.toggle('saved', !!track?.savedToSpotify);
+  const label = track?.savedToSpotify
+    ? 'Saved to Spotify Liked Songs'
+    : 'Save to Spotify Liked Songs';
+  spotifySaveBtn.setAttribute('aria-label', label);
+  spotifySaveBtn.title = label;
+}
+
+async function saveCurrentTrackToSpotify(){
+  const track = player?.current;
+  if(!track?.title || !spotifySaveBtn || spotifySaveBtn.classList.contains('saving')) return;
+  if(!spotify.connected){
+    pendingSpotifySave = true;
+    openSpotifyAuth();
+    return;
+  }
+
+  spotifySaveBtn.classList.add('saving');
+  spotifySaveBtn.disabled = true;
+  try {
+    const r = await fetch('/api/import/spotify/liked-tracks', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        spotify_id: track.spotifyId || track.spotify_id || track.provider_track_id || null,
+        title: track.title,
+        artist: track.artist || null,
+        album: track.album || null,
+      }),
+    });
+    if(!r.ok) throw new Error(await r.text());
+    const payload = await r.json();
+    player.current = {
+      ...track,
+      spotifyId: payload.spotify_id || track.spotifyId,
+      savedToSpotify: true,
+    };
+    spotifySaveBtn.classList.remove('saving');
+    spotifySaveBtn.classList.add('saved');
+    spotifySaveBtn.setAttribute('aria-label', 'Saved to Spotify Liked Songs');
+    spotifySaveBtn.title = 'Saved to Spotify Liked Songs';
+    if(spotify.view === 'liked') spotify.likedTracks = [];
+  } catch(e) {
+    spotifySaveBtn.classList.remove('saving');
+    const msg = String(e?.message || e || '');
+    if(msg.toLowerCase().includes('scope') || msg.toLowerCase().includes('reconnect')){
+      pendingSpotifySave = true;
+      spotify.connected = false;
+      openSpotifyAuth();
+    } else {
+      spotifySaveBtn.title = 'Could not save — click to retry';
+      console.warn('spotify save', e);
+    }
+  } finally {
+    spotifySaveBtn.disabled = !player?.current?.title;
+  }
+}
 
 function setSpotifyStatus(label, detail){
   if(spotifyIx) spotifyIx.textContent = label;
@@ -411,6 +475,7 @@ async function playSpotifyExportedTrack(item){
       artwork_source: fallback.artwork_source,
       release_year: fallback.release_year,
       spotifyId: track.provider_track_id,   // drives the per-track feature fetch
+      savedToSpotify: track.provider_playlist_id === 'liked',
     });
   } catch(e) {
     console.warn('spotify playback', e);
@@ -578,6 +643,7 @@ async function previewSpotifyPlaylist(row, playlist, { append = false } = {}){
 function wireSpotifyImport(){
   if(!spotifyList) return;
   spotifyConnectLink?.addEventListener('click', e=>{ e.preventDefault(); openSpotifyAuth(); });
+  spotifySaveBtn?.addEventListener('click', saveCurrentTrackToSpotify);
   spotifyConnectBtn?.addEventListener('click', ()=>{
     if(spotify.connected) (spotify.view === 'liked' ? fetchSpotifyLikedTracks({ reset:true }) : fetchSpotifyPlaylists({ reset:true }));
     else openSpotifyAuth();
@@ -610,6 +676,11 @@ function wireSpotifyImport(){
   window.addEventListener('message', e=>{
     if(e.origin !== window.location.origin) return;
     if(e.data && e.data.type === 'spotify-connected') {
+      spotify.connected = true;
+      if(pendingSpotifySave){
+        pendingSpotifySave = false;
+        saveCurrentTrackToSpotify();
+      }
       (spotify.view === 'liked' ? fetchSpotifyLikedTracks({ reset:true }) : fetchSpotifyPlaylists({ reset:true }));
     }
   });

@@ -546,6 +546,41 @@ class TestSpotifyImportEndpoints:
         assert kwargs["limit"] == 5
         assert kwargs["offset"] == 5
 
+    def test_spotify_save_liked_track(self, client: TestClient, mock_spotify_env):
+        """Saving a track should pass its Spotify identity and metadata to the service."""
+        client.cookies.set("spotify_access_token", "test_access_token")
+
+        with patch("main.SpotifyImportService.save_track") as mock_save:
+            mock_save.return_value = "track_1"
+            response = client.post(
+                "/api/import/spotify/liked-tracks",
+                json={
+                    "spotify_id": "4iV5W9uYEdYUVa79Axb7Rh",
+                    "title": "Test Song",
+                    "artist": "Test Artist",
+                    "album": "Test Album",
+                },
+            )
+
+        assert response.status_code == 200
+        assert response.json() == {"saved": True, "spotify_id": "track_1"}
+        mock_save.assert_awaited_once()
+        _, kwargs = mock_save.call_args
+        assert kwargs == {
+            "title": "Test Song",
+            "artist": "Test Artist",
+            "album": "Test Album",
+            "spotify_id": "4iV5W9uYEdYUVa79Axb7Rh",
+        }
+
+    def test_spotify_save_liked_track_requires_title(self, client: TestClient, mock_spotify_env):
+        response = client.post(
+            "/api/import/spotify/liked-tracks",
+            json={"spotify_id": "4iV5W9uYEdYUVa79Axb7Rh"},
+        )
+
+        assert response.status_code == 422
+
     def test_spotify_playlists_paginates(self, client: TestClient, mock_spotify_env):
         """Playlist endpoint should pass limit and offset through to the service."""
         client.cookies.set("spotify_access_token", "test_access_token")

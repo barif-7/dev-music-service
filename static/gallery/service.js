@@ -59,9 +59,11 @@ async function fetchTrackFeatures(spotifyId){
 
 /* resolve a track to a playable source, stream it, and react to it */
 async function loadTrack(s){
+  const spotifyId = s.spotifyId || s.spotify_id || s.provider_track_id || null;
+  s = { ...s, spotifyId };
   player.current = s; player.lyrics = [];
   extractAccent(s.thumbnail);
-  fetchTrackFeatures(s.spotifyId);
+  fetchTrackFeatures(spotifyId);
   if(typeof renderNowPlaying === 'function') renderNowPlaying(s, 'resolving…');
   const query = [s.title, s.artist].filter(Boolean).join(' ');
   try{
@@ -76,7 +78,7 @@ async function loadTrack(s){
     const results = await r.json();
     if(!results || !results.length) return fail(s, 'no source');
     const result = results[0];
-    const merged = { ...s, ...result,
+    const merged = { ...s, ...result, spotifyId,
       title:  result.title  || s.title,
       artist: result.artist || s.artist,
       album:  result.album  || s.album };

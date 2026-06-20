@@ -15,6 +15,7 @@ class AutocompleteSuggestion(BaseModel):
     duration: int = Field(default=0, description="Track duration in seconds")
     confidence: int = Field(default=0, description="Metadata match confidence from 0 to 100")
     source: str = "musicbrainz"
+    spotify_id: Optional[str] = None
     recording_mbid: Optional[str] = None
     release_mbid: Optional[str] = None
 
@@ -121,6 +122,18 @@ class SpotifyLikedTracksPreview(BaseModel):
     matched_count: int = 0
     low_confidence_count: int = 0
     unmatched_count: int = 0
+
+
+class SpotifySaveTrackRequest(BaseModel):
+    spotify_id: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        max_length=100,
+        pattern=r"^[A-Za-z0-9]+$",
+    )
+    title: str = Field(min_length=1, max_length=300)
+    artist: Optional[str] = Field(default=None, max_length=300)
+    album: Optional[str] = Field(default=None, max_length=300)
 
 
 class LocalPlaybackState(BaseModel):

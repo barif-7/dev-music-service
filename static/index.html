@@ -456,6 +456,13 @@
   .nb-btn svg{width:18px;height:18px;stroke:currentColor;stroke-width:1.6;fill:currentColor;
     stroke-linecap:round;stroke-linejoin:round}
   .nb-btn.nb-play{color:var(--ink)}
+  .nb-btn.nb-like{color:var(--dim)}
+  .nb-btn.nb-like svg{fill:none}
+  .nb-btn.nb-like.saved{color:#1ed760;background:rgba(30,215,96,.12)}
+  .nb-btn.nb-like.saved svg{fill:currentColor}
+  .nb-btn.nb-like.saving{animation:savePulse .8s ease-in-out infinite alternate}
+  .nb-btn:disabled{opacity:.3;cursor:default;pointer-events:none}
+  @keyframes savePulse{to{opacity:.45}}
   .nb-btn:hover{color:var(--ink);background:rgba(244,244,242,.08)}
   .nb-btn:active{transform:scale(.92)}
   .nb-scrub{flex:1;min-width:60px;height:4px;border-radius:3px;background:rgba(244,244,242,.12);
@@ -587,6 +594,9 @@
     </button>
     <button class="nb-btn" id="nbNext" aria-label="Next wallpaper">
       <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M16 5h2v14h-2zM4 5l11 7-11 7z"/></svg>
+    </button>
+    <button class="nb-btn nb-like" id="nbLike" aria-label="Save to Spotify Liked Songs" title="Save to Spotify Liked Songs" disabled>
+      <svg viewBox="0 0 24 24" fill="none"><path d="M12 20.5S4 16 4 9.5A4.5 4.5 0 0 1 12 6.7a4.5 4.5 0 0 1 8 2.8c0 6.5-8 11-8 11z"/></svg>
     </button>
     <div class="nb-scrub" id="nbScrub"><div class="nb-fill" id="nbFill"></div></div>
     <div class="nb-time" id="nbTime">0:00</div>

@@ -92,6 +92,7 @@ function paintNowbar(track, status){
   const art = $('#nbArt'), img = $('#nbImg');
   if(track.thumbnail){ img.src = track.thumbnail; art.classList.add('has'); }
   else { art.classList.remove('has'); img.removeAttribute('src'); }
+  if(typeof syncSpotifySaveButton === 'function') syncSpotifySaveButton(track);
 }
 function fmtTime(s){ s = Math.max(0, s|0); return `${(s/60)|0}:${String(s%60).padStart(2,'0')}`; }
 function updateNowbar(){

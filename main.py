@@ -26,7 +26,7 @@ from slowapi.util import get_remote_address
 from starlette.concurrency import run_in_threadpool
 
 from config import get_settings
-from models import ImportedPlaylistTrack
+from models import ImportedPlaylistTrack, SpotifySaveTrackRequest
 from security import (
     open_validated_stream,
     redact_sensitive_data,
@@ -234,6 +234,24 @@ async def spotify_liked_tracks(
         return payload.model_dump()
     except Exception as exc:
         logger.error("spotify_liked_tracks_failed", error=str(exc))
+        fail_with_http_error(exc)
+
+
+@app.post("/api/import/spotify/liked-tracks")
+@limiter.limit("30 per minute")
+async def spotify_save_liked_track(request: Request, body: SpotifySaveTrackRequest):
+    try:
+        track_id = await SpotifyImportService.save_track(
+            request,
+            title=body.title,
+            artist=body.artist,
+            album=body.album,
+            spotify_id=body.spotify_id,
+        )
+        logger.info("spotify_track_saved", spotify_track_id=track_id)
+        return {"saved": True, "spotify_id": track_id}
+    except Exception as exc:
+        logger.error("spotify_track_save_failed", error=str(exc))
         fail_with_http_error(exc)
 
 

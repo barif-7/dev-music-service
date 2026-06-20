@@ -8,7 +8,7 @@ from services.lyrics_service import LyricsService
 from services.musicbrainz_matcher import MusicBrainzMatcher
 from services.music_service import MusicService, MusicServiceError, SearchServiceError, StreamResolutionError
 from services.metadata_service import MetadataService, MetadataServiceError
-from services.spotify_import_service import SpotifyImportError
+from services.spotify_import_service import SpotifyImportError, SpotifyImportService
 
 
 class TestMusicServiceSearch:
@@ -241,6 +241,20 @@ class TestMetadataService:
         # Python uses banker's rounding (round half to even)
         assert MetadataService._duration_seconds(180500) == 180  # Rounds to even
         assert MetadataService._duration_seconds(181500) == 182  # Rounds to even
+
+    def test_spotify_suggestion_keeps_track_id(self):
+        suggestion = MetadataService._suggestion_from_spotify_track(
+            {
+                "id": "spotify-track-1",
+                "name": "Fixture Song",
+                "artists": [{"name": "Fixture Artist"}],
+                "album": {"name": "Fixture Album", "images": []},
+            },
+            "fixture song",
+        )
+
+        assert suggestion is not None
+        assert suggestion.spotify_id == "spotify-track-1"
         assert MetadataService._duration_seconds(None) == 0
 
     def test_release_year(self):
@@ -272,6 +286,63 @@ class TestServiceErrorHandling:
         """MetadataServiceError should have descriptive message."""
         error = MetadataServiceError("Metadata lookup failed")
         assert str(error) == "Metadata lookup failed"
+
+
+class TestSpotifyLibrary:
+    @pytest.mark.asyncio
+    async def test_save_track_uses_current_library_endpoint(self, monkeypatch):
+        calls = []
+
+        monkeypatch.setattr(SpotifyImportService, "_access_token", lambda request: "token")
+
+        async def fake_put(access_token, path, params=None):
+            calls.append((access_token, path, params))
+
+        monkeypatch.setattr(SpotifyImportService, "_spotify_put", fake_put)
+
+        track_id = await SpotifyImportService.save_track(
+            object(),
+            title="Fixture Song",
+            artist="Fixture Artist",
+            spotify_id="4iV5W9uYEdYUVa79Axb7Rh",
+        )
+
+        assert track_id == "4iV5W9uYEdYUVa79Axb7Rh"
+        assert calls == [
+            (
+                "token",
+                "/me/library",
+                {"uris": "spotify:track:4iV5W9uYEdYUVa79Axb7Rh"},
+            )
+        ]
+
+    @pytest.mark.asyncio
+    async def test_save_track_resolves_spotify_id_when_missing(self, monkeypatch):
+        calls = []
+
+        monkeypatch.setattr(SpotifyImportService, "_access_token", lambda request: "token")
+
+        async def fake_search(access_token, query, limit=5):
+            assert access_token == "token"
+            assert query == "Fixture Song Fixture Artist Fixture Album"
+            assert limit == 1
+            return [{"id": "resolved-track"}]
+
+        async def fake_put(access_token, path, params=None):
+            calls.append((access_token, path, params))
+
+        monkeypatch.setattr(SpotifyImportService, "search_tracks", fake_search)
+        monkeypatch.setattr(SpotifyImportService, "_spotify_put", fake_put)
+
+        track_id = await SpotifyImportService.save_track(
+            object(),
+            title="Fixture Song",
+            artist="Fixture Artist",
+            album="Fixture Album",
+        )
+
+        assert track_id == "resolved-track"
+        assert calls[0][2] == {"uris": "spotify:track:resolved-track"}
 
 
 class TestMusicBrainzMatcher:
