@@ -60,6 +60,13 @@ const SRC = { mb:'MusicBrainz', yt:'YouTube', pl:'playlist' };
 const escHtml = s => (s==null?'':String(s)).replace(/[&<>]/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
 function renderInfo(w){
   const t = w.track;
+  if(!t){                                   // baked shaders with no demo pairing (track:null)
+    infoEl.innerHTML =
+      `<div class="i-track">${escHtml(w.name)}</div>`+
+      `<div class="i-meta">${escHtml(w.desc||'')}</div>`+
+      `<div class="i-src">${escHtml(w.pairFrom)} · ${escHtml(w.preset)} · ${w.bpm} BPM</div>`;
+    return;
+  }
   infoEl.innerHTML =
     `<div class="i-track">${t.title}</div>`+
     `<div class="i-meta">${t.artist} · ${t.album} · ${t.year}</div>`+

@@ -150,4 +150,74 @@ const ALTS = [
     track:{ title:'Node Voltage', artist:'Kessler Pry', album:'Origin Set', year:2025, src:'pl', conf:'generated' },
     lyric:'the grid agreed to light on the downbeat, every time'
   },
+  {
+    id:'aurora', name:'Aurora', n:'16',
+    preset:'Flow', bpm:70, pairFrom:'Phase \u00b7 Field',
+    desc:'Waving sky curtains in green and violet drift over a faint starfield, brightening on beat. The cursor leans the bands sideways. Pulse’s rings, opened up into weather over the pole.',
+    palette:['#03060f','#0a1f2a','#3ef0a0','#9d5cff','#06121c'],
+    track:null, lyric:null
+  },
+  {
+    id:'silk', name:'Silk', n:'17',
+    preset:'Rest', bpm:62, pairFrom:'Phase \u00b7 Field',
+    desc:'Folded satin catching a slow light — cool indigo ridges roll across the frame with a soft sheen. The cursor warms a bloom into the cloth. Quieter and more tactile than Tide.',
+    palette:['#0a0b14','#1b1f33','#7e86c4','#cfd2ec','#13141f'],
+    track:null, lyric:null
+  },
+  {
+    id:'contour', name:'Contour', n:'18',
+    preset:'Flow', bpm:90, pairFrom:'Phase \u00b7 Field',
+    desc:'A topographic map that never stops being surveyed — isolines crawl across a drifting height field, going gold where your cursor passes. A cartographer’s answer to Cells.',
+    palette:['#08100e','#13201c','#52c9a6','#e6c074','#0c1512'],
+    track:null, lyric:null
+  },
+  {
+    id:'solar', name:'Solar', n:'19',
+    preset:'Spark', bpm:106, pairFrom:'Phase \u00b7 Field',
+    desc:'A churning plasma surface — granulation and flares turning over a hot core, whitening on beat. The cursor drags the photosphere; clicks throw a coronal ripple. Mercury’s heat, not its chrome.',
+    palette:['#0a0301','#3a0d04','#ff6a1e','#ffd27a','#160603'],
+    track:null, lyric:null
+  },
+  {
+    id:'circuit', name:'Circuit', n:'20',
+    preset:'Drive', bpm:126, pairFrom:'Phase \u00b7 Field',
+    desc:'A backplane of glowing traces with data packets running the rows and columns, solder nodes flaring on beat. The cursor offsets the whole board. Lattice, routed and powered on.',
+    palette:['#020605','#06140f','#2bd99a','#7afff0','#04100b'],
+    track:null, lyric:null
+  },
+  {
+    id:'cmyk', name:'CMYK', n:'21',
+    preset:'Flow', bpm:92, pairFrom:'Phase \u00b7 Field',
+    desc:'Halftone, decomposed into process plates and screened additively in a rich green register — emerald, lime and teal dots glow over a deep forest gradient, black knocking them back. Cursor and beat ink up the press.',
+    palette:['#04100a','#24f088','#9dff33','#16c79e','#06160d'],
+    track:null, lyric:null
+  },
+  {
+    id:'riso', name:'Riso', n:'22',
+    preset:'Flow', bpm:90, pairFrom:'Phase \u00b7 Field',
+    desc:'A two-drum risograph pull on black stock in a rich red register — a scarlet-to-orange screen over a crimson-to-rose one, deliberately out of register so the luminous dots fringe and overlap. The cursor nudges the misregistration.',
+    palette:['#100303','#ff2e29','#ff7520','#cf0a2c','#160405'],
+    track:null, lyric:null
+  },
+  {
+    id:'newsprint', name:'Newsprint', n:'23',
+    preset:'Flow', bpm:88, pairFrom:'Phase \u00b7 Field',
+    desc:'A coarse photo screen inverted onto dark stock in a rich blue register — big dots glow from deep blue up to bright cyan across the frame, tone built from dot size alone. The cursor lifts the local exposure; the press thumps on beat.',
+    palette:['#03060f','#2a6cff','#5cd6ff','#0c1f4a','#08122a'],
+    track:null, lyric:null
+  },
+  {
+    id:'benday', name:'Ben-Day', n:'24',
+    preset:'Flow', bpm:94, pairFrom:'Phase \u00b7 Field',
+    desc:'Pop-art panel logic — flat fields of red and yellow, Ben-Day dots filling the mid-tones, heavy black contours between zones. The cursor shoves the colour regions around. Halftone, shouting.',
+    palette:['#f5f0e0','#e22d2d','#ffcf2e','#0a0810','#f0c0b0'],
+    track:null, lyric:null
+  },
+  {
+    id:'linescreen', name:'Line Screen', n:'25',
+    preset:'Flow', bpm:90, pairFrom:'Phase \u00b7 Field',
+    desc:'The engraver’s halftone — parallel lines that swell and thin with tone, bending like a banknote portrait. The cursor warps the burin path; beats deepen the cut. Dots traded for line weight.',
+    palette:['#edeae0','#11141f','#3a4a6a','#9aa6c0','#0a0c12'],
+    track:null, lyric:null
+  },
 ];

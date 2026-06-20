@@ -637,4 +637,461 @@ void main(){
   col *= mix(0.82, 1.0, iPlaying);
   gl_FragColor = vec4(col, 1.0);
 }`,
+  aurora: `
+void main(){
+  vec2 uv = gl_FragCoord.xy / iResolution.xy;
+  vec2 p = uv*2.0-1.0; p.x *= iResolution.x/iResolution.y;
+  vec2 m = (iMouse-0.5)*vec2(iResolution.x/iResolution.y, 1.0);
+  float t = iTime*0.12;
+  vec3 col = vec3(0.02, 0.03, 0.07);
+  float star = pow(hash(floor(gl_FragCoord.xy*0.5)), 64.0);
+  col += vec3(0.7,0.8,1.0) * star * 0.7 * smoothstep(-0.4, 1.0, p.y);
+  float total = 0.0;
+  for(int i=0;i<3;i++){
+    float fi = float(i);
+    float wob = fbm(vec2(p.x*1.1 + fi*3.1, t*0.9 + fi*1.7));
+    float cx  = (wob-0.5)*1.6 + sin(t*0.5 + fi*2.1)*0.35 + m.x*0.30*iWarp;
+    float wdt = 0.16 + 0.09*sin(t*0.7 + fi);
+    float band = exp(-pow((p.x - cx)/wdt, 2.0));
+    float drape = 0.55 + 0.45*fbm(vec2(p.x*3.0, p.y*1.6 - t*1.6 + fi*2.0));
+    float vfade = smoothstep(-1.05, 0.85, p.y) * drape;
+    total += band * vfade;
+  }
+  vec3 green  = vec3(0.24, 0.95, 0.56);
+  vec3 teal   = vec3(0.18, 0.72, 0.88);
+  vec3 violet = vec3(0.62, 0.36, 0.96);
+  col += green  * total * (0.55 + 0.45*iIntensity);
+  col += violet * total*total * 0.55 * (0.4 + 0.6*iEnergy + 0.35*iLive);  // live recordings widen the violet curtains
+  col += teal   * total * 0.30;
+  col += green  * total * (0.45*iPulse + 0.40*pow(1.0-iBeat, 3.0));        // curtains brighten on the detected beat
+  col += green  * 0.12 * exp(-length(p-m)*1.8) * (0.3 + 0.7*iClick);
+  col *= 0.85 + 0.15 * smoothstep(1.6, 0.2, length(p));
+  col += iGrain * 0.05 * grain(gl_FragCoord.xy, iTime);
+  gl_FragColor = vec4(col, 1.0);
+}
+`,
+  silk: `
+void main(){
+  vec2 uv = gl_FragCoord.xy / iResolution.xy;
+  vec2 p = uv*2.0-1.0; p.x *= iResolution.x/iResolution.y;
+  vec2 m = (iMouse-0.5)*vec2(iResolution.x/iResolution.y, 1.0);
+  float t = iTime*0.06;
+  vec2 q = p*1.2;
+  q += (m-p)*0.05*iWarp;
+  float fold  = fbm(vec2(q.x*1.4 + t, q.y*1.1));
+  float drape = fbm(q*0.8 - vec2(0.0, t*0.6) + 3.0);
+  float ridge = sin((q.y*2.6 + fold*5.0 + drape*2.0 + t)*3.14159);
+  float sheen = pow(0.5 + 0.5*ridge, 3.5);
+  vec3 deep  = vec3(0.07, 0.08, 0.15);
+  vec3 satin = vec3(0.31, 0.34, 0.56);
+  vec3 hi    = vec3(0.82, 0.84, 0.96);
+  vec3 col = mix(deep, satin, smoothstep(0.1, 0.9, fold*0.6 + drape*0.6));
+  col = mix(col, hi, sheen*(0.40 + 0.45*iIntensity)*(1.0 - 0.25*iAcoustic));  // acoustic tracks soften the satin sheen
+  col += hi * 0.22 * exp(-pow(length(p-m)/0.55, 2.0)) * (0.25 + 0.75*iClick);
+  col *= 0.94 + 0.06*iPulse;
+  col *= 0.86 + 0.14 * smoothstep(1.6, 0.3, length(p));
+  col += iGrain * 0.03 * grain(gl_FragCoord.xy, iTime);
+  gl_FragColor = vec4(col, 1.0);
+}
+`,
+  contour: `
+void main(){
+  vec2 uv = gl_FragCoord.xy / iResolution.xy;
+  vec2 p = uv*2.0-1.0; p.x *= iResolution.x/iResolution.y;
+  vec2 m = (iMouse-0.5)*vec2(iResolution.x/iResolution.y, 1.0);
+  float t = iTime*0.07;
+  vec2 q = p*1.5 + vec2(t*0.25, 0.0);
+  q += (m-p)*0.06*iWarp;
+  float h  = fbm(q + fbm(q*1.6 + t*0.4)*0.6);
+  float pd = length(p-m);
+  float e    = h*13.0 - t*(1.2 + 0.35*iBpm);   // isolines crawl in step with the track tempo
+  float line = abs(fract(e) - 0.5);
+  float iso  = smoothstep(0.10, 0.02, line);
+  vec3 low  = vec3(0.05, 0.10, 0.09);
+  vec3 mid  = vec3(0.09, 0.17, 0.15);
+  vec3 land = mix(low, mid, smoothstep(0.2, 0.9, h));
+  vec3 lineC = vec3(0.32, 0.85, 0.66);
+  vec3 hot   = vec3(0.95, 0.78, 0.42);
+  vec3 col = land;
+  col = mix(col, lineC, iso*(0.5 + 0.4*iIntensity));
+  col = mix(col, hot,   iso * exp(-pd*1.6) * (0.4 + 0.6*iEnergy));
+  col += lineC * iso * 0.4 * iPulse;
+  float ring = exp(-pow((pd - (1.0-iClick)*0.7)*9.0, 2.0)) * iClick;
+  col += hot * ring * 0.5;
+  col *= 0.9 + 0.1 * smoothstep(1.5, 0.3, length(p));
+  col += iGrain * 0.04 * grain(gl_FragCoord.xy, iTime);
+  gl_FragColor = vec4(col, 1.0);
+}
+`,
+  solar: `
+void main(){
+  vec2 uv = gl_FragCoord.xy / iResolution.xy;
+  vec2 p = uv*2.0-1.0; p.x *= iResolution.x/iResolution.y;
+  vec2 m = (iMouse-0.5)*vec2(iResolution.x/iResolution.y, 1.0);
+  float t = iTime*0.28;
+  vec2 d = p - m*0.4;
+  float r   = length(d);
+  float ang = atan(d.y, d.x);
+  float turb = fbm(vec2(ang*1.6 + sin(t*0.3)*0.5, r*3.2 - t*1.6));
+  float surf = fbm(d*3.2 + turb*1.4 + vec2(t*0.5, -t*0.4));
+  float plasma = surf*0.7 + turb*0.5;
+  float core  = smoothstep(0.95, 0.0, r);
+  float flare = plasma * exp(-r*1.25);
+  vec3 col = vec3(0.04, 0.01, 0.0);
+  vec3 deepRed = vec3(0.55, 0.10, 0.02);
+  vec3 orange  = vec3(1.00, 0.48, 0.10);
+  vec3 white   = vec3(1.00, 0.93, 0.74);
+  col = mix(col, deepRed, smoothstep(0.0, 0.55, flare + core*0.5));
+  col = mix(col, orange,  smoothstep(0.30, 0.85, flare + core*0.6) * (0.6 + 0.4*iIntensity));
+  col += white * smoothstep(0.62, 1.0, core + flare*0.5) * (0.5 + 0.5*iEnergy + 0.4*iTrackEnergy);  // energetic tracks flare hotter
+  col += white * core * (0.5*iPulse + 0.40*pow(1.0-iBeat, 3.0));   // the photosphere whitens on the beat
+  float ripple = exp(-pow((r - (1.0-iClick)*0.85)*8.0, 2.0)) * iClick;
+  col += white * ripple * 0.7;
+  col *= 0.82 + 0.18 * smoothstep(1.6, 0.2, length(p));
+  col += iGrain * 0.04 * grain(gl_FragCoord.xy, iTime);
+  gl_FragColor = vec4(col, 1.0);
+}
+`,
+  circuit: `
+float circuitLine(float d, float width){
+  return 1.0-smoothstep(width*0.22, width, abs(d));
+}
+float circuitPacket(float lane, float along, float phase, float seed){
+  float barIndex = floor((iTime*iBpm-iBeat)*0.25);
+  float direction = step(0.5, hash(vec2(seed,barIndex)))*2.0-1.0;
+  float head = fract(phase*direction + seed);
+  float body = abs(fract(along-head+0.5)-0.5);
+  return circuitLine(lane, 0.052) * (1.0-smoothstep(0.015,0.16,body));
+}
+void main(){
+  vec2 uv = gl_FragCoord.xy / iResolution.xy;
+  vec2 p = uv*2.0-1.0; p.x *= iResolution.x/iResolution.y;
+  vec2 m = (iMouse-0.5)*vec2(iResolution.x/iResolution.y, 1.0);
+
+  /* The board runs from the musical clock, not wall-clock animation:
+     iBeat is one beat, subPhase is a sixteenth, and barBeat resets every four. */
+  float beatKick = pow(1.0-iBeat, 4.0);
+  float subPhase = fract(iBeat*4.0);
+  float subKick = pow(1.0-subPhase, 8.0);
+  float beatIndex = floor(iTime*iBpm-iBeat+0.001);
+  float barBeat = mod(beatIndex, 4.0);
+  float downbeat = beatKick * (1.0-step(0.5, barBeat));
+  float musicalDrive = max(iPulse, beatKick);
+
+  /* Cursor bends traces toward a live routing hub. Close traces bow harder while
+     distant buses stay architectural, so interaction never dissolves the board. */
+  vec2 toHub = m-p;
+  float hubInfluence = exp(-dot(toHub,toHub)*2.4);
+  vec2 routed = p + toHub*hubInfluence*(0.10 + 0.24*iWarp);
+  float boardScale = 7.5 + 2.5*iDance;
+  vec2 g = routed*boardScale;
+  vec2 cell = floor(g);
+  vec2 local = fract(g)-0.5;
+
+  /* A new route family is elected every beat. The old geometry remains faintly
+     visible, while active buses switch orientation and intensity on the clock. */
+  float routeSeed = hash(cell + vec2(beatIndex, -beatIndex)*0.17);
+  float horizontal = step(0.42, routeSeed);
+  float vertical = 1.0-step(0.68, routeSeed);
+  float hTrace = circuitLine(local.y, 0.055) * horizontal;
+  float vTrace = circuitLine(local.x, 0.055) * vertical;
+  float trace = max(hTrace, vTrace);
+  float ghostGrid = max(circuitLine(local.x, 0.018), circuitLine(local.y, 0.018));
+
+  /* Sixteenth-note data packets run along the elected routes. Bass makes them
+     broader; treble creates a second, faster clock lane like high-speed serial. */
+  float packetPhase = subPhase;
+  float packetH = circuitPacket(local.y, g.x, packetPhase, hash(vec2(cell.y, beatIndex)));
+  float packetV = circuitPacket(local.x, g.y, packetPhase, hash(vec2(cell.x, -beatIndex)));
+  float packet = max(packetH*horizontal, packetV*vertical);
+  float fastPacket = max(
+    circuitPacket(local.y, g.x, fract(iBeat*8.0), hash(cell+7.3))*horizontal,
+    circuitPacket(local.x, g.y, fract(iBeat*8.0), hash(cell-4.1))*vertical
+  ) * iTreble;
+
+  /* Solder nodes behave like a sequencer: one quarter of the board is armed per
+     beat, then the downbeat ignites the central clock and sends a reset wave out. */
+  float nodeShape = 1.0-smoothstep(0.045,0.145,length(local));
+  float nodeGroup = floor(hash(cell+3.7)*4.0);
+  float armed = 1.0-step(0.5, abs(nodeGroup-barBeat));
+  float node = nodeShape * (0.12 + 0.88*armed*musicalDrive);
+
+  float radius = length(p);
+  float cpu = 1.0-smoothstep(0.27,0.34,max(abs(p.x),abs(p.y)));
+  float cpuEdge = circuitLine(max(abs(p.x),abs(p.y))-0.305, 0.022);
+  float cpuClock = 0.5+0.5*sin((p.x-p.y)*42.0 - iBeat*6.2831853);
+  float resetRing = exp(-pow((radius-iBeat*1.45)*13.0,2.0))*downbeat;
+
+  /* Click discharges the cursor hub into the board. It travels as a Manhattan
+     wave, lighting right-angle routes instead of a generic circular ripple. */
+  vec2 hubDelta = abs(p-m);
+  float manhattan = hubDelta.x+hubDelta.y;
+  float overloadFront = (1.0-iClick)*2.2;
+  float overload = exp(-pow((manhattan-overloadFront)*10.0,2.0))*iClick;
+  float hub = exp(-dot(toHub,toHub)*22.0);
+
+  vec3 bg       = vec3(0.006,0.018,0.016);
+  vec3 board    = vec3(0.015,0.075,0.058);
+  vec3 copper   = vec3(0.08,0.38,0.27);
+  vec3 signal   = vec3(0.10,1.00,0.58);
+  vec3 clockCol = vec3(0.35,1.00,0.92);
+  vec3 overloadCol = vec3(1.00,0.52,0.16);
+
+  vec3 col = mix(bg, board, 0.42+0.30*fbm(p*2.3));
+  col += copper * ghostGrid * (0.18+0.20*iIntensity);
+  col += copper * trace * (0.34+0.42*iEnergy);
+  col += signal * packet * (0.70+0.75*iBass+0.45*subKick);
+  col += clockCol * fastPacket * (0.45+0.70*iIntensity);
+  col += clockCol * node;
+  col += signal * cpu * (0.05+0.16*cpuClock+0.30*iMid);
+  col += clockCol * cpuEdge * (0.35+0.90*downbeat);
+  col += clockCol * resetRing * (0.55+0.65*iEnergy);
+  col += signal * hub * (0.35+0.65*iWarp);
+  col += overloadCol * overload * (0.65+0.75*iClick);
+
+  /* The whole backplane inhales on beats while the downbeat briefly turns the
+     active signal almost white—an electrical, not merely luminous, crescendo. */
+  col *= 0.88 + 0.12*musicalDrive;
+  col += vec3(0.72,1.00,0.88) * trace * downbeat * 0.42;
+  col = hueShift(col, iHue*0.22);
+  col *= 0.72 + 0.28*(1.0-smoothstep(0.18,1.65,radius));
+  col += iGrain * 0.035 * grain(gl_FragCoord.xy, iTime);
+  gl_FragColor = vec4(col, 1.0);
+}
+`,
+  cmyk: `
+float cmykPlate(vec2 pp, vec2 brainP, float ang, float phase, float tone, float freq){
+  mat2 R = mat2(cos(ang),-sin(ang),sin(ang),cos(ang));
+  vec2 q = R*pp*freq, brainQ = R*brainP*freq;
+  vec2 cell = fract(q)-0.5, cid = floor(q);
+  vec2 fromBrain = (cid+0.5)-brainQ;
+  float dist = length(fromBrain)/freq;
+  vec2 radial = normalize(fromBrain+vec2(0.0001));
+  vec2 tangent = vec2(-radial.y,radial.x);
+  float signal = max(iPulse,pow(1.0-iBeat,3.0));
+  float travel = smoothstep(0.13,0.95,dist)*(0.018+0.050*signal+0.018*iEnergy);
+  float wave = iBeat*6.2831853-dist*8.0+phase+hash(cid)*0.5
+             +sin(iTime*(0.35+iBpm*0.30)+hash(cid)*6.2831853)*0.18;
+  vec2 motion = radial*sin(wave)*travel+tangent*cos(wave)*travel*0.42;
+  float brain = exp(-pow(dist/0.46,2.0));
+  float radius = (0.12+0.26*brain)*(0.72+0.28*tone);
+  return 1.0-smoothstep(radius-0.075,radius,length(cell-motion));
+}
+void main(){
+  vec2 uv = gl_FragCoord.xy / iResolution.xy;
+  vec2 p = uv*2.0-1.0; p.x *= iResolution.x/iResolution.y;
+  vec2 m = (iMouse-0.5)*vec2(iResolution.x/iResolution.y, 1.0);
+  float pd = length(p-m), signal = max(iPulse,pow(1.0-iBeat,3.0));
+  float freq = 18.0+6.0*iWarp;
+  float tone = 0.64+0.22*iIntensity;
+  float loosen = (0.006+0.018*iDance)*(1.0-signal);
+  float dC = cmykPlate(p+vec2( loosen,0.0),m,0.2618,0.0,tone,freq);
+  float dM = cmykPlate(p+vec2(-loosen,loosen),m,1.3090,1.57,tone,freq);
+  float dY = cmykPlate(p+vec2(0.0,-loosen),m,0.0,3.14,tone,freq);
+  float dK = cmykPlate(p,m,0.7854,4.71,tone*0.72,freq);
+  float brain = exp(-pow(pd/0.46,2.0));
+  float rosette = dC*dM+dM*dY+dY*dC;
+  vec3 paper = mix(vec3(0.025,0.035,0.055),vec3(0.045,0.065,0.085),uv.y);
+  vec3 col = paper;
+  col += vec3(0.02,0.86,1.00)*dC*(0.42+0.36*iBass);
+  col += vec3(1.00,0.05,0.58)*dM*(0.42+0.36*iVocal);
+  col += vec3(1.00,0.86,0.05)*dY*(0.42+0.36*iTreble);
+  col = mix(col,vec3(0.012,0.014,0.020),dK*0.52);
+  col += vec3(0.92,1.00,0.95)*rosette*(0.12+0.30*brain+0.25*signal);
+  float ring = exp(-pow((pd-(1.0-iClick)*0.8)*9.0,2.0))*iClick;
+  col += vec3(0.65,0.98,1.00)*ring*0.7;
+  col = hueShift(col,iHue*0.16);
+  col += iGrain*0.035*grain(gl_FragCoord.xy,iTime);
+  gl_FragColor = vec4(col, 1.0);
+}
+`,
+  riso: `
+float risoScreen(vec2 pp, vec2 brainP, float ang, float phase, float freq){
+  mat2 R = mat2(cos(ang),-sin(ang),sin(ang),cos(ang));
+  vec2 q=R*pp*freq, bq=R*brainP*freq;
+  vec2 cell=fract(q)-0.5, from=(floor(q)+0.5)-bq;
+  float dist=length(from)/freq, signal=max(iPulse,pow(1.0-iBeat,3.0));
+  vec2 radial=normalize(from+vec2(0.0001)), tangent=vec2(-radial.y,radial.x);
+  float wave=iBeat*6.2831853-dist*7.0+phase+hash(floor(q))*0.7
+            +sin(iTime*(0.32+iBpm*0.28)+hash(floor(q))*6.2831853)*0.20;
+  float travel=smoothstep(0.14,0.90,dist)*(0.022+0.060*signal);
+  vec2 motion=radial*sin(wave)*travel+tangent*cos(wave)*travel*0.55;
+  float brain=exp(-pow(dist/0.48,2.0));
+  float radius=(0.13+0.27*brain)*(0.76+0.24*iIntensity);
+  return 1.0-smoothstep(radius-0.10,radius,length(cell-motion));
+}
+void main(){
+  vec2 uv = gl_FragCoord.xy / iResolution.xy;
+  vec2 p = uv*2.0-1.0; p.x *= iResolution.x/iResolution.y;
+  vec2 m = (iMouse-0.5)*vec2(iResolution.x/iResolution.y, 1.0);
+  float signal=max(iPulse,pow(1.0-iBeat,3.0)), pd=length(p-m);
+  float freq=19.0+6.0*iWarp;
+  float slip=(0.012+0.025*iDance)*(1.0-signal);
+  float d1=risoScreen(p+vec2(slip,0.35*slip),m,0.2618,0.0,freq);
+  float d2=risoScreen(p-vec2(slip,0.35*slip),m,1.3090,3.14159,freq);
+  float overprint = d1*d2;
+  vec3 bg = mix(vec3(0.11,0.03,0.03), vec3(0.06,0.01,0.02), uv.x);
+  bg = mix(bg, vec3(0.03,0.01,0.01), smoothstep(0.25, 1.5, length(p)));
+  vec3 inkA = mix(vec3(1.00,0.18,0.16), vec3(1.00,0.46,0.12), uv.y);
+  vec3 inkB = mix(vec3(0.82,0.05,0.20), vec3(1.00,0.30,0.42), uv.x);
+  vec3 col = bg;
+  col += inkA*d1*(0.70+0.28*iEnergy);
+  col += inkB*d2*(0.70+0.28*iVocal);
+  col += vec3(1.00,0.66,0.18)*overprint*(0.18+0.40*signal);
+  float ring=exp(-pow((pd-(1.0-iClick)*0.8)*9.0,2.0))*iClick;
+  col += vec3(1.00,0.84,0.48)*ring*0.72;
+  col = hueShift(col,iHue*0.12);
+  col += (hash(gl_FragCoord.xy*0.8+iTime)-0.5)*(0.05+0.05*iGrain);
+  gl_FragColor = vec4(col, 1.0);
+}
+`,
+  newsprint: `
+float jarvis(vec2 q){
+  /* arc-reactor target field — smooth wells the dot-mass migrates into, so it is the
+     DENSITY of dots (not their size) that draws jarvis: core, coil ring, two rings, ticks.
+     widths are kept gentle so the gather flow never folds the lattice. */
+  float rr = length(q);
+  float aa = atan(q.y, q.x);
+  float F = 0.0;
+  F += exp(-rr*rr*7.0) * 1.15;                                                          // core
+  F += exp(-pow((rr-0.42)/0.12,2.0)) * (0.55 + 0.45*smoothstep(-0.12,0.12,sin(aa*9.0))); // coil ring (9 blocks)
+  F += exp(-pow((rr-0.58)/0.085,2.0)) * 0.85;                                            // inner ring
+  F += exp(-pow((rr-0.72)/0.080,2.0)) * 0.70;                                            // outer ring
+  F += exp(-pow((rr-0.82)/0.090,2.0)) * smoothstep(0.45,1.0,abs(sin(aa*18.0))) * 0.75;   // tick band (36)
+  return F;
+}
+vec2 jarvisGrad(vec2 q){
+  float e = 0.02;
+  return vec2(jarvis(q+vec2(e,0.0)) - jarvis(q-vec2(e,0.0)),
+              jarvis(q+vec2(0.0,e)) - jarvis(q-vec2(0.0,e))) / (2.0*e);
+}
+void main(){
+  vec2 uv = gl_FragCoord.xy / iResolution.xy;
+  vec2 p = uv*2.0-1.0; p.x *= iResolution.x/iResolution.y;
+  vec2 m = (iMouse-0.5)*vec2(iResolution.x/iResolution.y, 1.0);
+  float signal = max(iPulse, pow(1.0-iBeat,3.0));
+
+  /* dot-mass migration: every dot drifts up the field gradient, so the dots pile
+     onto jarvis's structures and thin out between them — the DENSITY draws the
+     design. strength is QUADRATIC in the music (drive*drive), so the dots accelerate
+     into formation as it gets louder and roam freely besides. gather gain is sized
+     against the well widths so the lattice Jacobian stays positive (no folding). */
+  float drive  = clamp(0.18 + 1.0*iEnergy + 0.7*iPulse, 0.0, 1.7);
+  float gather = drive*drive * 0.0022;
+  vec2  flow   = jarvisGrad(p) * gather;
+  flow += 0.020 * vec2(sin(iTime*0.9 + p.y*3.7), cos(iTime*0.8 + p.x*3.3)) * drive;   // free wander
+  flow  = clamp(flow, -0.15, 0.15);                          // safety net against folding
+  vec2  ps = p - flow;                                       // warped sample position
+
+  /* uniform-ink halftone: dot SIZE is constant, so the picture is pure dot DENSITY */
+  float freq = 22.0 + iWarp*6.0;
+  float c=cos(0.7854), s=sin(0.7854);
+  vec2 cell = fract(mat2(c,-s,s,c)*ps*freq) - 0.5;
+  float r = sqrt(0.5)*0.62;
+  float dots = smoothstep(r, r-0.12, length(cell));
+
+  float F = jarvis(ps);
+  vec3 abyss = vec3(0.002,0.010,0.020);
+  vec3 cyan  = vec3(0.04,0.76,1.00);
+  vec3 hot   = vec3(0.86,0.99,1.00);
+  vec3 dotCol = mix(cyan, hot, smoothstep(0.60,0.0,length(ps)));
+  vec3 col = abyss + vec3(0.004,0.025,0.045)*fbm(p*2.0);
+  col += dotCol * dots * (0.45 + 0.70*F + 0.50*signal*F);
+  col += hot * dots * smoothstep(0.18,0.0,length(p)) * (0.30 + 0.70*signal);  // core flares on the beat
+  float command = exp(-pow((length(p)-(1.0-iClick)*0.85)*10.0,2.0))*iClick;
+  col += vec3(1.00,0.48,0.12)*command*0.70;
+  col = hueShift(col, iHue*0.12);
+  col *= 0.72 + 0.28*(1.0-smoothstep(0.25,1.70,length(p)));
+  col += iGrain*0.025*grain(gl_FragCoord.xy, iTime);
+  gl_FragColor = vec4(col, 1.0);
+}
+`,
+  benday: `
+float scr(vec2 pp, float ang, float tone, float freq, float flow){
+  mat2 R = mat2(cos(ang),-sin(ang),sin(ang),cos(ang));
+  vec2 q = R*pp*freq;
+  vec2 base = floor(q);
+  float r = sqrt(clamp(tone,0.0,1.0))*0.58;
+  float beatT = iBeat*6.2831853;
+  /* dots ringing the central dump get more orbital freedom; the dense core stays
+     anchored (same core profile as the mass dump). */
+  float coreS = exp(-dot(pp,pp)*2.2);
+  float freedom = flow * mix(0.30, 1.8, 1.0 - coreS);
+  float cover = 0.0;
+  for(int j=-1;j<=1;j++){
+    for(int i=-1;i<=1;i++){
+      vec2 cid = base + vec2(float(i), float(j));
+      float ph = hash(cid)*6.2831853;
+      float amp = freedom * (0.12 + 0.18*iPulse + 0.12*iEnergy);
+      vec2 drift = vec2(sin(iTime*(0.6+iBpm*0.8)+ph), cos(iTime*(0.5+iBpm*0.7)+ph*1.3))*amp;
+      drift += vec2(cos(beatT+ph), sin(beatT-ph)) * freedom*0.12 * pow(1.0-iBeat,3.0);
+      float d = length(q - (cid + 0.5 + drift));
+      cover = max(cover, smoothstep(r, r-0.10, d));
+    }
+  }
+  return cover;
+}
+void main(){
+  vec2 uv = gl_FragCoord.xy / iResolution.xy;
+  vec2 p = uv*2.0-1.0; p.x *= iResolution.x/iResolution.y;
+  vec2 m = (iMouse-0.5)*vec2(iResolution.x/iResolution.y, 1.0);
+  float t = iTime*0.06;
+  float pd = length(p-m);
+  float region = fbm(p*1.2 + t) + (0.14 + 0.18*iDance)*exp(-pd*1.6);   // danceable tracks shove the colour regions harder
+  float freq = 20.0 + iWarp*6.0;
+  /* dot-mass conservation: the field keeps an even spread of ink, and any surplus
+     pulled from it is dumped into a dense core at the centre — so mass gathers to
+     the middle on beats and re-spreads evenly between them. core gain ~ balances
+     the mass removed across the field, so total ink stays roughly fixed. */
+  float r = length(p);
+  float gather = clamp(0.30 + 0.55*iPulse + 0.45*pow(1.0-iBeat,3.0), 0.0, 1.0);
+  float core = exp(-r*r*2.2);
+  float densMul = clamp((1.0 - 0.7*gather) + 3.0*gather*core, 0.04, 2.5);
+  float flow = 0.60 + 0.30*iDance;   // pop-art panels stay flatter / more orderly
+  float dots = scr(p, 0.7854, (0.55 + 0.08*iPulse)*densMul, freq, flow);
+  vec3 paper  = vec3(0.96, 0.93, 0.83);
+  vec3 red    = vec3(0.88, 0.17, 0.18);
+  vec3 yellow = vec3(1.00, 0.81, 0.16);
+  vec3 ink    = vec3(0.06, 0.05, 0.08);
+  vec3 col = paper;
+  if(region < 0.42){ col = yellow; }
+  else if(region < 0.60){ col = mix(yellow, red, dots); }
+  else if(region < 0.74){ col = red; }
+  else { col = mix(paper, red, dots); }
+  float ol = 0.0;
+  ol = max(ol, smoothstep(0.018, 0.0, abs(region-0.42)));
+  ol = max(ol, smoothstep(0.018, 0.0, abs(region-0.60)));
+  ol = max(ol, smoothstep(0.016, 0.0, abs(region-0.74)));
+  col = mix(col, ink, ol);
+  col += iGrain * 0.02 * grain(gl_FragCoord.xy, iTime);
+  col *= 0.95 + 0.05*smoothstep(1.7, 0.3, length(p));
+  gl_FragColor = vec4(col, 1.0);
+}
+`,
+  linescreen: `
+void main(){
+  vec2 uv = gl_FragCoord.xy / iResolution.xy;
+  vec2 p = uv*2.0-1.0; p.x *= iResolution.x/iResolution.y;
+  vec2 m = (iMouse-0.5)*vec2(iResolution.x/iResolution.y, 1.0);
+  float t = iTime*0.08;
+  float pd = length(p-m);
+  vec2 q = p;
+  q += (m-p)*0.05*iWarp;
+  float warp = fbm(q*1.1 + t)*0.6 + fbm(q*2.3 - t*0.5)*0.3;
+  float tone = 0.5 + 0.4*fbm(q*0.9 - t*0.4) - 0.18*length(p);
+  tone += exp(-pd*1.6)*(0.18*iPulse + 0.16*pow(1.0-iBeat, 3.0));   // beats deepen the engraved cut
+  tone *= (0.65 + 0.45*iIntensity);
+  tone = clamp(tone, 0.0, 1.0);
+  float freq = 58.0 + iWarp*22.0 + iInstrum*18.0;   // instrumental tracks engrave a finer screen
+  float v = 0.5 + 0.5*sin((p.y + warp*0.7)*freq);
+  float ink = smoothstep(tone+0.05, tone-0.05, v);
+  vec3 paper = vec3(0.93, 0.91, 0.85);
+  vec3 line  = vec3(0.09, 0.11, 0.18);
+  vec3 col = mix(paper, line, ink);
+  col = mix(col, col*vec3(0.92,0.96,1.05), 0.4*iEnergy);
+  col += iGrain * 0.025 * grain(gl_FragCoord.xy, iTime);
+  col *= 0.94 + 0.06*smoothstep(1.7, 0.3, length(p));
+  gl_FragColor = vec4(col, 1.0);
+}
+`,
 };
