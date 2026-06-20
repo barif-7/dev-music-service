@@ -72,6 +72,13 @@ starts failing.
 - Requested scopes include `playlist-read-private`, `playlist-read-collaborative`, `user-library-read`, and `user-library-modify` so users can browse and save Liked Songs.
 - Reconnect Spotify after adding new scopes so the access token picks them up.
 
+## Playback rules
+
+Browser playback is composed in `static/gallery/service.js` with `AudioPlayer`,
+`PlayerControls`, and a `PlaybackRuleSet`. The current configuration enables
+`LoopTrackRule` through `playbackSettings.loopCurrentTrack`; change the setting
+or add another rule without modifying the player or its DOM controls.
+
 ## Lyrics API
 
 Primary endpoint:

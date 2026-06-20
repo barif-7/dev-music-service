@@ -77,43 +77,31 @@ function renderNowPlaying(track, status){
     `<div class="i-meta">${meta || '—'}</div>`+
     `<div class="i-src">${escHtml(status || 'streaming')} · reacting live</div>`;
   infoEl.classList.add('show'); state.infoOpen = true;
-  paintNowbar(track, status);
+  playerControls.renderTrack(track, status);
   wake();
 }
 
 /* ---- now-playing player bar ---- */
-const PLAY_ICON  = '<path d="M8 5v14l11-7z"/>';
-const PAUSE_ICON = '<path d="M6 4h4v16H6zM14 4h4v16h-4z"/>';
-function paintNowbar(track, status){
-  const bar = $('#nowbar'); if(!bar) return;
-  bar.dataset.empty = '0';
-  $('#nbTitle').textContent = track.title || 'Untitled';
-  $('#nbSub').textContent = [track.artist, track.album].filter(Boolean).join(' · ') || status || '';
-  const art = $('#nbArt'), img = $('#nbImg');
-  if(track.thumbnail){ img.src = track.thumbnail; art.classList.add('has'); }
-  else { art.classList.remove('has'); img.removeAttribute('src'); }
-  if(typeof syncSpotifySaveButton === 'function') syncSpotifySaveButton(track);
-}
-function fmtTime(s){ s = Math.max(0, s|0); return `${(s/60)|0}:${String(s%60).padStart(2,'0')}`; }
-function updateNowbar(){
-  const icon = $('#nbPlayIcon');
-  if(icon) icon.innerHTML = (streamEl.src && !streamEl.paused && !streamEl.ended) ? PAUSE_ICON : PLAY_ICON;
-  const d = streamEl.duration || 0, t = streamEl.currentTime || 0;
-  player.progress = d ? t/d : 0;        // 0..1 song position → iProgress
-  const fill = $('#nbFill'); if(fill) fill.style.width = d ? (t/d*100).toFixed(1)+'%' : '0%';
-  const time = $('#nbTime'); if(time) time.textContent = fmtTime(t);
-}
-$('#nbPlay').addEventListener('click', ()=>{
-  if(!streamEl.src) return;
-  if(streamEl.paused) streamEl.play().catch(()=>{}); else streamEl.pause();
-});
-$('#nbPrev').addEventListener('click', ()=> Wallpaper.go(state.index-1));
-$('#nbNext').addEventListener('click', ()=> Wallpaper.go(state.index+1));
-$('#nbScrub').addEventListener('click', (e)=>{
-  if(!streamEl.duration) return;
-  const r = $('#nbScrub').getBoundingClientRect();
-  streamEl.currentTime = Math.max(0, Math.min(1, (e.clientX - r.left)/r.width)) * streamEl.duration;
-});
+const playerControls = new PlayerControls({
+  player,
+  bar:$('#nowbar'),
+  playButton:$('#nbPlay'),
+  playIcon:$('#nbPlayIcon'),
+  previousButton:$('#nbPrev'),
+  nextButton:$('#nbNext'),
+  scrubber:$('#nbScrub'),
+  fill:$('#nbFill'),
+  time:$('#nbTime'),
+  title:$('#nbTitle'),
+  subtitle:$('#nbSub'),
+  artwork:$('#nbArt'),
+  artworkImage:$('#nbImg'),
+  onPrevious:()=>Wallpaper.go(state.index-1),
+  onNext:()=>Wallpaper.go(state.index+1),
+  onTrackRendered:track=>{
+    if(typeof syncSpotifySaveButton === 'function') syncSpotifySaveButton(track);
+  },
+}).bind();
 
 /* ---- ambient FFT spectrum (rendered by the EQ module; controls in eq.js) ---- */
 const eqCanvas = $('#eqCanvas');
@@ -429,18 +417,20 @@ function reflectButtons(){
 $('#aMic').addEventListener('click', (e)=>{ e.stopPropagation(); AUDIO.useMic(); });
 $('#aFile').addEventListener('click', (e)=>{ e.stopPropagation(); $('#fileInput').click(); });
 $('#aStop').addEventListener('click', (e)=>{ e.stopPropagation(); AUDIO.stop(); });
-$('#fileInput').addEventListener('change', (e)=>{ if(e.target.files[0]) AUDIO.useFile(e.target.files[0]); });
+$('#fileInput').addEventListener('change', (e)=>{
+  if(e.target.files[0]) AUDIO.useFile(e.target.files[0], playbackRules);
+});
 
 /* ---- render loop ---- */
 function frame(now){
   AUDIO.update(now/1000);
-  updateNowbar();
+  playerControls.update();
   if(typeof EQ==='object'){ EQ.update(); EQ.draw(eqCanvas); }
   // ambient centered lyric — persists over the shader while a track streams in
   // the immersive view; hidden in grid/search/spotify or when not streaming.
   if(nowPlaying && AUDIO.mode==='stream' && state.mode==='immersive'
      && !state.searchOpen && typeof currentLyric==='function'){
-    setCenterLyric(currentLyric((streamEl.currentTime||0)*1000));
+    setCenterLyric(currentLyric(player.currentTime*1000));
     // glow breathes with the audio across the active lyric line's time range
     if(lyricLast){
       const g = Math.min(1, AUDIO.vocal*0.65 + AUDIO.level*0.45 + AUDIO.pulse*0.25);

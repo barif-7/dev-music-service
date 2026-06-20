@@ -1,18 +1,16 @@
 /* Phase · Field — service layer: real track resolution, streaming playback,
    lyrics, autocomplete. The streamed track feeds the audio engine (AUDIO) so the
    current wallpaper reacts to whatever is playing. Caption/lyric updates go through
-   the globals renderNowPlaying() / player.lyrics consumed by app.js. */
+   the globals renderNowPlaying() / player consumed by app.js. */
 
 const streamEl = document.getElementById('streamEl');
-
-const player = {
-  current: null,       // last resolved track shown in the caption
-  duration: 0,
-  lyrics: [],          // [{ms, text}]
-  webpageUrl: null,
-  progress: 0,         // 0..1 playback position (set each frame by app.js)
-  accent: [1, 1, 1],   // dominant album-art colour, fed to shaders as iAccent
+const playbackSettings = {
+  loopCurrentTrack:true,
 };
+const playbackRules = new PlaybackRuleSet([
+  new LoopTrackRule({ enabled:()=>playbackSettings.loopCurrentTrack }),
+]);
+const player = new AudioPlayer(streamEl, { rules:playbackRules });
 
 /* pull a representative colour out of the cover art (best-effort; falls back to
    neutral if the image is cross-origin and the canvas is tainted). */
@@ -61,7 +59,8 @@ async function fetchTrackFeatures(spotifyId){
 async function loadTrack(s){
   const spotifyId = s.spotifyId || s.spotify_id || s.provider_track_id || null;
   s = { ...s, spotifyId };
-  player.current = s; player.lyrics = [];
+  player.setTrack(s);
+  player.setLyrics();
   extractAccent(s.thumbnail);
   fetchTrackFeatures(spotifyId);
   if(typeof renderNowPlaying === 'function') renderNowPlaying(s, 'resolving…');
@@ -82,20 +81,22 @@ async function loadTrack(s){
       title:  result.title  || s.title,
       artist: result.artist || s.artist,
       album:  result.album  || s.album };
-    player.current = merged;
-    player.duration = result.duration || s.duration || 0;
-    player.webpageUrl = result.webpage_url;
+    player.setTrack(merged);
+    const duration = result.duration || s.duration || 0;
     if(typeof renderNowPlaying === 'function') renderNowPlaying(merged, 'streaming');
-    streamEl.src = `/api/stream?url=${encodeURIComponent(result.webpage_url)}`;
-    AUDIO.useStream(streamEl);
-    streamEl.play().catch(()=>{});
-    loadLyrics({ title:merged.title, artist:merged.artist, album:merged.album, duration:player.duration });
+    player.loadSource(`/api/stream?url=${encodeURIComponent(result.webpage_url)}`, {
+      webpageUrl:result.webpage_url,
+      duration,
+    });
+    AUDIO.useStream(player.media);
+    player.play().catch(()=>{});
+    loadLyrics({ title:merged.title, artist:merged.artist, album:merged.album, duration });
   }catch(e){ console.warn('loadTrack', e); fail(s, 'error'); }
 }
 function fail(s, msg){ if(typeof renderNowPlaying === 'function') renderNowPlaying(s, msg); }
 
 async function loadLyrics(meta){
-  player.lyrics = [];
+  player.setLyrics();
   try{
     const params = new URLSearchParams({ title:meta.title||'', artist:meta.artist||'' });
     if(meta.album)    params.set('album', meta.album);
@@ -112,7 +113,7 @@ async function loadLyrics(meta){
     } else if(data.plain_lyrics){
       lines = data.plain_lyrics.split('\n').filter(l=>l.trim()).map((l,i)=>({ ms:i*4000, text:l }));
     }
-    player.lyrics = lines;
+    player.setLyrics(lines);
   }catch(e){ /* no lyrics */ }
 }
 

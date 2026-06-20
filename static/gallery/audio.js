@@ -61,7 +61,7 @@ const AUDIO = {
   _disconnect(){
     if(this.src){ try{ this.src.disconnect(); }catch(e){} this.src = null; }
     if(this.stream){ this.stream.getTracks().forEach(t=>t.stop()); this.stream = null; }
-    if(this.el){ this.el.pause(); this.el = null; }
+    if(this.el){ this.el.pause(); this.el = null; this.filePlayer = null; }
     // a media element can only be wrapped in a MediaElementSource once, so the
     // stream source is created lazily and kept — just disconnect + pause it.
     if(this._streamSrc){ try{ this._streamSrc.disconnect(); }catch(e){} }
@@ -92,17 +92,17 @@ const AUDIO = {
     this._bandMax.fill(0.04);
     setStatus('mic live', true); reflectButtons();
   },
-  useFile(file){
+  useFile(file, rules = []){
     this._ensureCtx();
     this._disconnect();
     const url = URL.createObjectURL(file);
     this.el = new Audio(url);
     this.el.crossOrigin = 'anonymous';
-    this.el.loop = true;
+    this.filePlayer = new AudioPlayer(this.el, { rules });
     this.src = this.ctx.createMediaElementSource(this.el);
     this.src.connect(this.analyser);
     this.src.connect(this.ctx.destination);       // hear it
-    this.el.play();
+    this.filePlayer.play().catch(()=>{});
     this.active = true; this.mode = 'file';
     this._bandMax.fill(0.04);
     setStatus(file.name.replace(/\.[^.]+$/,''), true); reflectButtons();

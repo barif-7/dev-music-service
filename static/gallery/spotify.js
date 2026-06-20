@@ -77,11 +77,10 @@ async function saveCurrentTrackToSpotify(){
     });
     if(!r.ok) throw new Error(await r.text());
     const payload = await r.json();
-    player.current = {
-      ...track,
+    player.updateCurrent({
       spotifyId: payload.spotify_id || track.spotifyId,
       savedToSpotify: true,
-    };
+    });
     spotifySaveBtn.classList.remove('saving');
     spotifySaveBtn.classList.add('saved');
     spotifySaveBtn.setAttribute('aria-label', 'Saved to Spotify Liked Songs');
