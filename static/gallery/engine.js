@@ -105,7 +105,7 @@ class Tile {
     /* Combine the live AudioAnalyzer frame with the track-level prior into the
        shader uniform set. Live FFT dominates; the profile only biases it. */
     const m = ShaderMapper.map(AUDIO, TrackVisualProfile, {
-      tSec, nominalBpm: this.bpm, reactScale: this.reactScale,
+      tSec, nominalBpm: this.bpm, reactScale: this.reactScale, fragId: this.fragId,
     });
 
     /* ---- cursor: real pointer, or the synthetic "idle wave" orbit ----

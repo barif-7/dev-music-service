@@ -120,6 +120,14 @@ const ShaderMapper = (function(){
          treble (+ a little high-mid) → fine detail / hi-hats. */
       u.bass   = A.bass;
       u.treble = clamp01((1 - T.trebleHighMidMix)*A.treble + T.trebleHighMidMix*A.highMid);
+
+      /* calm the originals' direct band/beat reads so they don't out-punch the
+         designed shaders (live only — their idle motion is left at full). */
+      if(BUILTIN_REACTIVE.has(ctx.fragId)){
+        u.bass   *= T.builtinBandCalm;
+        u.treble *= T.builtinBandCalm;
+        u.pulse  *= T.builtinPulseCalm;
+      }
     } else {
       /* ---- synthetic idle wave (no live audio) ----
          Matches the original preview look when no profile is present; when a
