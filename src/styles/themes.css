@@ -1,0 +1,135 @@
+/* Phase Wallpaper Theme System */
+:root {
+  --font-sans: "Inter Tight", system-ui, sans-serif;
+  --font-serif: "Fraunces", serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-display: "Space Grotesk", var(--font-sans);
+
+  /* Base */
+  --bg: #0a0a0f;
+  --bg-elev: #121317;
+  --bg-elev-2: #181a22;
+  --border: #23252e;
+  --border-strong: #2f323d;
+  --ink: #eaeaea;
+  --ink-dim: #a1a4ad;
+  --ink-faint: #6b6e78;
+  --radius: 8px;
+  --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* FLOW BAND */
+.theme-drift {
+  --accent: #7aa091; --accent-2: #f48d68; --accent-glow: #7aa09188;
+  --bg: #10141a; --bg-elev: #1a2227; --ink: #e8f0eb; --ink-dim: #b8c4be;
+}
+
+.theme-ember {
+  --accent: #f4661f; --accent-2: #ffd474;
+  --bg: #0d0708; --bg-elev: #1a0d0a; --ink: #ffe8d9; --ink-dim: #c89a7a;
+}
+
+.theme-halftone {
+  --accent: #f06a4e; --accent-2: #ffc88c;
+  --bg: #0c0c10; --bg-elev: #171518; --ink: #f5e8e0; --ink-dim: #c8b0a0;
+}
+
+.theme-weave {
+  --accent: #8cc6f2; --accent-2: #ffd98c;
+  --bg: #0a0c0f; --bg-elev: #13171c; --ink: #e8f0ff; --ink-dim: #b0c0e0;
+}
+
+.theme-aurora {
+  --accent: #3ef0a0; --accent-2: #9d5cff;
+  --bg: #03060f; --bg-elev: #06121c; --ink: #d0ffe8; --ink-dim: #a0c8b0;
+}
+
+.theme-contour {
+  --accent: #52c9a6; --accent-2: #e6c074;
+  --bg: #08100e; --bg-elev: #0c1512; --ink: #d8ffe8; --ink-dim: #a8c8b8;
+}
+
+/* REST BAND */
+.theme-vellum, .theme-marble {
+  --accent: #9d6a3e; --accent-2: #c19a6a;
+  --bg: #1d1a16; --bg-elev: #2b2720; --ink: #f0e9d9; --ink-dim: #c8b89a;
+}
+
+.theme-silk {
+  --accent: #7e86c4; --accent-2: #cfd2ec;
+  --bg: #0a0b14; --bg-elev: #13141f; --ink: #e8e8f5; --ink-dim: #b0b0d0;
+}
+
+/* SPARK BAND */
+.theme-caustics {
+  --accent: #3aa3e3; --accent-2: #cbefff;
+  --bg: #040c1a; --bg-elev: #08182a; --ink: #e0f0ff; --ink-dim: #a0c8e0;
+}
+
+.theme-prism {
+  --accent: #5ad0ff; --accent-2: #ff6ad0; --accent-3: #fff2c8;
+  --bg: #050308; --bg-elev: #2a1340; --ink: #f0e8ff; --ink-dim: #c0b0e0;
+}
+
+.theme-solar {
+  --accent: #ff6a1e; --accent-2: #ffd27a;
+  --bg: #0a0301; --bg-elev: #160603; --ink: #ffe8d0; --ink-dim: #e0a080;
+}
+
+/* DRIVE BAND */
+.theme-stria {
+  --accent: #4dff8d; --accent-2: #5cd9ff; --accent-3: #ff52d6;
+  --bg: #04060a; --bg-elev: #0b1c12; --ink: #e0ffe8; --ink-dim: #a0e0c0;
+}
+
+.theme-tunnel {
+  --accent: #4dffb3; --accent-2: #6699ff; --accent-3: #ff59cc;
+  --bg: #04050a; --bg-elev: #0c2018; --ink: #d8ffe8; --ink-dim: #a0d8c0;
+}
+
+.theme-circuit {
+  --accent: #2bd99a; --accent-2: #7afff0;
+  --bg: #020605; --bg-elev: #04100b; --ink: #d0ffe8; --ink-dim: #90d0b0;
+}
+
+/* HALFTONE STUDY */
+.theme-cmyk {
+  --accent: #9dff33; --accent-2: #24f088;
+  --bg: #04100a; --bg-elev: #06160d; --ink: #d0ffe0; --ink-dim: #90d0a0;
+}
+
+.theme-riso {
+  --accent: #ff7520; --accent-2: #ff2e29;
+  --bg: #100303; --bg-elev: #160405; --ink: #ffe8e0; --ink-dim: #e0a0a0;
+}
+
+.theme-newsprint {
+  --accent: #5cd6ff; --accent-2: #2a6cff;
+  --bg: #03060f; --bg-elev: #08122a; --ink: #e0f0ff; --ink-dim: #a0c0e0;
+}
+
+.theme-benday {
+  --accent: #ffcf2e; --accent-2: #e22d2d;
+  --bg: #f5f0e0; --ink: #0a0810; --ink-dim: #3a2a2a;
+}
+
+.theme-linescreen {
+  --accent: #3a4a6a; --accent-2: #9aa6c0;
+  --bg: #11141f; --bg-elev: #0a0c12; --ink: #e8e8f0; --ink-dim: #b0b8d0;
+}
+
+/* Example component styles */
+.theme-card {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.accent-btn {
+  background: var(--accent);
+  color: #0a0a0f;
+  font-weight: 600;
+}
+.accent-btn:hover {
+  box-shadow: 0 0 20px var(--accent-glow);
+}
