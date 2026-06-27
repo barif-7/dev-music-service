@@ -26,7 +26,7 @@ from slowapi.util import get_remote_address
 from starlette.concurrency import run_in_threadpool
 
 from config import get_settings
-from models import ImportedPlaylistTrack, SpotifySaveTrackRequest
+from models import ImportedPlaylistTrack, LocalizeWindowRequest, SpotifySaveTrackRequest
 from security import (
     open_validated_stream,
     redact_sensitive_data,
@@ -36,9 +36,11 @@ from security import (
 from services.focus_service import FocusProfile, FocusService
 from services.local_playback_service import LocalPlaybackService
 from services.metadata_service import MetadataService, MetadataServiceError
+from services.live_transcription_service import LiveTranscriptionService
 from services.lyrics_service import LyricsNotFoundError, LyricsRequestError, LyricsService
 from services.music_service import MusicService, MusicServiceError
 from services.spotify_import_service import SpotifyImportError, SpotifyImportService
+from services.video_service import VideoService, VideoServiceError
 
 # Configure structured logging
 structlog.configure(
@@ -117,7 +119,10 @@ def fail_with_http_error(exc: Exception) -> None:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if isinstance(exc, LyricsNotFoundError):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    if isinstance(exc, (MusicServiceError, MetadataServiceError, SpotifyImportError)):
+    if isinstance(
+        exc,
+        (MusicServiceError, MetadataServiceError, SpotifyImportError, VideoServiceError),
+    ):
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -234,6 +239,20 @@ async def spotify_liked_tracks(
         return payload.model_dump()
     except Exception as exc:
         logger.error("spotify_liked_tracks_failed", error=str(exc))
+        fail_with_http_error(exc)
+
+
+@app.get("/api/import/spotify/liked-tracks/contains")
+@limiter.limit("60 per minute")
+async def spotify_liked_track_contains(
+    request: Request,
+    spotify_id: str = Query(..., min_length=1, max_length=64, description="Spotify track id to check"),
+):
+    try:
+        saved = await SpotifyImportService.is_track_saved(request, spotify_id)
+        return {"saved": saved}
+    except Exception as exc:
+        logger.error("spotify_track_contains_failed", error=str(exc))
         fail_with_http_error(exc)
 
 
@@ -355,18 +374,81 @@ def get_lyrics(
     duration: Optional[int] = Query(
         default=None, ge=0, description="Track duration in seconds for improved matching"
     ),
+    locale: Optional[str] = Query(
+        default=None,
+        max_length=35,
+        description="Target locale (e.g. 'es-MX', 'fr-CA', 'ar') to localize lyric lines into",
+    ),
 ):
     try:
-        logger.info("lyrics_requested", title=title, artist=artist, has_album=bool(album))
-        payload = LyricsService.get_lyrics(
+        logger.info(
+            "lyrics_requested", title=title, artist=artist, has_album=bool(album), locale=locale
+        )
+        payload = LyricsService.get_localized_lyrics(
             title=title,
             artist=artist,
             album=album,
             duration=duration,
+            locale=locale,
         ).model_dump()
         return JSONResponse(content=payload, headers={"Cache-Control": "public, max-age=3600"})
     except Exception as exc:
         logger.error("lyrics_failed", title=title, artist=artist, error=str(exc))
+        fail_with_http_error(exc)
+
+
+@app.post("/api/lyrics/localize-window")
+@app.post("/lyrics/localize-window")
+@limiter.limit("120 per minute")
+def localize_lyrics_window(request: Request, body: LocalizeWindowRequest):
+    """Localize a just-in-time window of lyric lines around the playhead.
+
+    Returns ``{"localized": {index: text}}`` for the requested indices, served
+    from cache where possible. Used by the frontend to translate upcoming lines
+    as a track plays rather than the whole song up front.
+    """
+    try:
+        mapping = LyricsService.localize_window(
+            title=body.title,
+            artist=body.artist,
+            album=body.album,
+            duration=body.duration,
+            locale=body.locale,
+            items=[(line.index, line.text) for line in body.lines],
+        )
+        payload = {"localized": {str(index): text for index, text in mapping.items()}}
+        return JSONResponse(content=payload)
+    except Exception as exc:
+        logger.error("lyrics_localize_window_failed", title=body.title, error=str(exc))
+        fail_with_http_error(exc)
+
+
+@app.get("/api/lyrics/transcribe")
+@app.get("/lyrics/transcribe")
+@limiter.limit("30 per minute")
+def transcribe_lyrics(
+    request: Request,
+    title: str = Query(..., min_length=1, max_length=500, description="Track title"),
+    artist: str = Query(..., min_length=1, max_length=500, description="Track artist"),
+    url: str = Query(..., min_length=1, max_length=2000, description="Track webpage URL"),
+):
+    """Transcribe a track's audio when no LRC lyrics exist (best-effort fallback).
+
+    First call starts a background transcription job and returns ``pending``;
+    poll until ``status`` is ``ready`` (with timed ``lines``) or ``error``.
+    """
+    try:
+        webpage_url = validate_stream_url(url)
+        logger.info("lyrics_transcribe_requested", title=title, artist=artist)
+        job = LiveTranscriptionService.get_or_start(title=title, artist=artist, webpage_url=webpage_url)
+        payload = {
+            "status": job["status"],
+            "error": job["error"],
+            "lines": [line.model_dump() for line in job["lines"]],
+        }
+        return JSONResponse(content=payload)
+    except Exception as exc:
+        logger.error("lyrics_transcribe_failed", title=title, error=str(exc))
         fail_with_http_error(exc)
 
 
@@ -383,6 +465,39 @@ def get_metadata(
         return JSONResponse(content=payload, headers={"Cache-Control": "public, max-age=300"})
     except Exception as exc:
         logger.error("metadata_failed", url_length=len(url), error=str(exc))
+        fail_with_http_error(exc)
+
+
+@app.get("/api/video/search")
+@limiter.limit("30 per minute")
+async def search_video(
+    request: Request,
+    title: str = Query(..., min_length=1, max_length=500),
+    artist: Optional[str] = Query(default=None, max_length=300),
+    kind: str = Query(default="music_video", pattern="^(music_video|shorts|live)$"),
+    limit: int = Query(default=1, ge=1, le=5),
+):
+    try:
+        logger.info(
+            "video_search_requested",
+            title=title,
+            artist=artist,
+            kind=kind,
+            limit=limit,
+        )
+        results = await run_in_threadpool(
+            VideoService.search,
+            title,
+            artist,
+            kind,
+            limit,
+        )
+        return JSONResponse(
+            content=[result.model_dump() for result in results],
+            headers={"Cache-Control": "public, max-age=300"},
+        )
+    except Exception as exc:
+        logger.error("video_search_failed", title=title, kind=kind, error=str(exc))
         fail_with_http_error(exc)
 
 
@@ -550,6 +665,85 @@ async def stream_song(
         )
     except Exception as exc:
         logger.error("stream_failed", url_length=len(url), error=str(exc))
+        fail_with_http_error(exc)
+
+
+@app.get("/api/video/stream")
+@limiter.limit("30 per minute")
+async def stream_video(
+    request: Request,
+    url: str = Query(..., min_length=1, max_length=2000, description="Video webpage URL"),
+    range_header: Optional[str] = Header(None, alias="Range"),
+):
+    try:
+        logger.info("video_stream_requested", url_length=len(url))
+        webpage_url = validate_stream_url(url)
+        direct_url, req_headers = await run_in_threadpool(
+            VideoService.get_video_stream_source,
+            webpage_url,
+        )
+        direct_url = validate_stream_url(direct_url)
+        settings = get_settings()
+
+        if settings.stream_delivery_mode == "redirect":
+            logger.info("video_stream_redirect_started")
+            return RedirectResponse(
+                direct_url,
+                status_code=302,
+                headers={
+                    "Cache-Control": "no-store",
+                    "Access-Control-Allow-Origin": settings.dev_music_frontend_origin,
+                    "Access-Control-Allow-Headers": "Range, Content-Type",
+                },
+            )
+
+        headers_copy = dict(req_headers)
+        if range_header:
+            headers_copy["Range"] = range_header
+
+        client = httpx.AsyncClient(
+            verify=certifi.where(),
+            timeout=httpx.Timeout(30.0, read=None),
+        )
+        try:
+            upstream = await open_validated_stream(client, direct_url, headers_copy)
+        except Exception:
+            await client.aclose()
+            raise
+
+        async def stream_video_bytes() -> AsyncGenerator[bytes, None]:
+            try:
+                async for chunk in upstream.aiter_bytes(chunk_size=65536):
+                    yield chunk
+            finally:
+                await upstream.aclose()
+                await client.aclose()
+
+        media_type = upstream.headers.get("content-type", "video/mp4")
+        passthrough = {
+            "Cache-Control": "no-store",
+            "Access-Control-Allow-Origin": settings.dev_music_frontend_origin,
+            "Access-Control-Allow-Headers": "Range, Content-Type",
+            "Accept-Ranges": upstream.headers.get("accept-ranges", "bytes"),
+        }
+        for header_name in ("content-length", "content-range"):
+            if header_name in upstream.headers:
+                passthrough[header_name] = upstream.headers[header_name]
+
+        logger.info(
+            "video_stream_started",
+            content_type=media_type,
+            upstream_status=upstream.status_code,
+            partial=upstream.status_code == 206,
+        )
+        return StreamingResponse(
+            stream_video_bytes(),
+            status_code=upstream.status_code,
+            media_type=media_type,
+            headers=passthrough,
+        )
+    except Exception as exc:
+        logger.error("video_stream_failed", url_length=len(url), error=str(exc))
         fail_with_http_error(exc)
 
 

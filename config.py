@@ -43,6 +43,21 @@ class Settings(BaseSettings):
     focus_profile_storage_backend: str = "local-json"
     focus_profile_kv_namespace: str | None = None
     phase_field_api_base_url: str = "http://localhost:8787"
+    # CaptionLocalizer integration — used to localize synced lyric lines on demand.
+    caption_localizer_url: str = "http://127.0.0.1:8000"
+    lyrics_source_locale: str = "auto"
+    # Live localization tuning. The first window of lines is translated inline so
+    # the caption appears quickly; the rest are filled in the background and
+    # served just-in-time as the playhead advances.
+    lyrics_localize_window: int = 6
+    lyrics_localize_background_fill: bool = True
+    # Live transcription fallback (CaptionLocalizer transcribe_video / local
+    # faster-whisper) used only when LRCLIB has no lyrics for a track.
+    lyrics_transcription_enabled: bool = True
+    lyrics_transcription_language: str = "auto"
+    # Shared with the local CaptionLocalizer process — the resolved audio file is
+    # written here and its path is handed to transcribe_video on the same host.
+    lyrics_transcription_temp_dir: str = "/tmp/dev-music-transcribe"
 
     @field_validator("stream_allowed_hosts", mode="before")
     @classmethod

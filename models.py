@@ -33,6 +33,18 @@ class SongSearchResult(BaseModel):
     release_year: Optional[int] = None
 
 
+class VideoSearchResult(BaseModel):
+    title: str
+    webpage_url: str
+    video_stream_url: str
+    duration: int = Field(default=0, description="Video duration in seconds")
+    thumbnail: Optional[str] = None
+    channel: Optional[str] = None
+    kind: str = "music_video"
+    width: Optional[int] = None
+    height: Optional[int] = None
+
+
 class TrackMetadata(BaseModel):
     title: str
     webpage_url: str
@@ -156,6 +168,28 @@ class LyricsLine(BaseModel):
     text: str
     start_time_ms: Optional[int] = Field(default=None, description="Line start time in milliseconds")
     end_time_ms: Optional[int] = Field(default=None, description="Line end time in milliseconds")
+    localized_text: Optional[str] = Field(
+        default=None, description="Line translated into the requested target locale"
+    )
+
+
+class LocalizeWindowLine(BaseModel):
+    index: int = Field(ge=0, description="Stable line index within the track's lyric lines")
+    text: str = Field(min_length=1, max_length=1000)
+
+
+class LocalizeWindowRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=500)
+    artist: str = Field(min_length=1, max_length=500)
+    album: Optional[str] = Field(default=None, max_length=500)
+    duration: Optional[int] = Field(default=None, ge=0)
+    locale: str = Field(min_length=1, max_length=35)
+    lines: List[LocalizeWindowLine] = Field(
+        default_factory=list,
+        max_length=200,
+        description="Lines (index + source text) to localize just-in-time. Carrying "
+        "text lets transcribed tracks be localized too, not just LRCLIB ones.",
+    )
 
 
 class LyricsResponse(BaseModel):
@@ -169,3 +203,6 @@ class LyricsResponse(BaseModel):
     plain_lyrics: Optional[str] = None
     synced_lyrics: Optional[str] = None
     lines: List[LyricsLine] = Field(default_factory=list)
+    target_locale: Optional[str] = Field(
+        default=None, description="Target locale the lines were localized into, if any"
+    )

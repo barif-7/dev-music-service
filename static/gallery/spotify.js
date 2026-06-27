@@ -43,11 +43,21 @@ let pendingSpotifySave = false;
 
 function syncSpotifySaveButton(track = player?.current){
   if(!spotifySaveBtn) return;
-  spotifySaveBtn.disabled = !track?.title;
+  const hasTrack = !!track?.title;
+  const saved = !!track?.savedToSpotify;
   spotifySaveBtn.classList.remove('saving');
-  spotifySaveBtn.classList.toggle('saved', !!track?.savedToSpotify);
-  const label = track?.savedToSpotify
-    ? 'Saved to Spotify Liked Songs'
+  spotifySaveBtn.classList.toggle('saved', saved);
+  /* Already in Liked Songs → keep the button in its active (filled, "enabled")
+     state but lock out interaction: not the dimmed native-disabled look, just
+     non-clickable and out of the tab order. Otherwise it's a live control,
+     truly disabled only when there's no track to save. */
+  spotifySaveBtn.classList.toggle('locked', saved);
+  spotifySaveBtn.disabled = !hasTrack;
+  const inert = saved || !hasTrack;
+  spotifySaveBtn.setAttribute('aria-disabled', String(inert));
+  spotifySaveBtn.tabIndex = inert ? -1 : 0;
+  const label = saved
+    ? 'In your Spotify Liked Songs'
     : 'Save to Spotify Liked Songs';
   spotifySaveBtn.setAttribute('aria-label', label);
   spotifySaveBtn.title = label;
@@ -56,6 +66,7 @@ function syncSpotifySaveButton(track = player?.current){
 async function saveCurrentTrackToSpotify(){
   const track = player?.current;
   if(!track?.title || !spotifySaveBtn || spotifySaveBtn.classList.contains('saving')) return;
+  if(track.savedToSpotify) return;   // already in Liked Songs — button is locked, ignore
   if(!spotify.connected){
     pendingSpotifySave = true;
     openSpotifyAuth();
@@ -81,25 +92,48 @@ async function saveCurrentTrackToSpotify(){
       spotifyId: payload.spotify_id || track.spotifyId,
       savedToSpotify: true,
     });
-    spotifySaveBtn.classList.remove('saving');
-    spotifySaveBtn.classList.add('saved');
-    spotifySaveBtn.setAttribute('aria-label', 'Saved to Spotify Liked Songs');
-    spotifySaveBtn.title = 'Saved to Spotify Liked Songs';
     if(spotify.view === 'liked') spotify.likedTracks = [];
   } catch(e) {
-    spotifySaveBtn.classList.remove('saving');
     const msg = String(e?.message || e || '');
     if(msg.toLowerCase().includes('scope') || msg.toLowerCase().includes('reconnect')){
       pendingSpotifySave = true;
       spotify.connected = false;
       openSpotifyAuth();
     } else {
-      spotifySaveBtn.title = 'Could not save — click to retry';
       console.warn('spotify save', e);
     }
   } finally {
-    spotifySaveBtn.disabled = !player?.current?.title;
+    spotifySaveBtn.classList.remove('saving');
+    if(player?.current?.savedToSpotify){
+      syncSpotifySaveButton(player.current);                // saved → active + locked
+    } else {
+      // re-enable for a retry and keep the failure hint visible
+      spotifySaveBtn.disabled = !player?.current?.title;
+      spotifySaveBtn.setAttribute('aria-disabled', String(!player?.current?.title));
+      spotifySaveBtn.tabIndex = player?.current?.title ? 0 : -1;
+      spotifySaveBtn.title = 'Could not save — click to retry';
+    }
   }
+}
+
+/* When a track loads with a known Spotify id, ask Spotify whether it is already
+   in the user's Liked Songs so the button reflects reality (active + locked),
+   not just saves made in this session. No id / not connected → leave as-is;
+   tracks resolved without a Spotify id (e.g. raw YouTube) can't be checked. */
+async function refreshSpotifySavedState(track = player?.current){
+  const id = track?.spotifyId || track?.spotify_id || track?.provider_track_id;
+  if(!spotify.connected || !id || track.savedToSpotify) return;
+  try {
+    const r = await fetch(`/api/import/spotify/liked-tracks/contains?spotify_id=${encodeURIComponent(id)}`, { cache:'no-store' });
+    if(!r.ok) return;
+    const { saved } = await r.json();
+    const cur = player?.current;
+    const curId = cur && (cur.spotifyId || cur.spotify_id || cur.provider_track_id);
+    if(saved && curId === id){          // ignore stale result if the track changed mid-flight
+      player.updateCurrent({ savedToSpotify:true });
+      syncSpotifySaveButton(player.current);
+    }
+  } catch(e) { /* best-effort detection */ }
 }
 
 function setSpotifyStatus(label, detail){
@@ -679,12 +713,15 @@ function wireSpotifyImport(){
       if(pendingSpotifySave){
         pendingSpotifySave = false;
         saveCurrentTrackToSpotify();
+      } else {
+        refreshSpotifySavedState();   // a track may already be playing — reflect its liked state
       }
       (spotify.view === 'liked' ? fetchSpotifyLikedTracks({ reset:true }) : fetchSpotifyPlaylists({ reset:true }));
     }
   });
   refreshSpotifyStatus().then(connected=>{
     if(!connected) return;
+    refreshSpotifySavedState();   // sync the like button with any already-playing track
     if(spotify.view === 'liked') fetchSpotifyLikedTracks({ reset:true });
     else fetchSpotifyPlaylists({ reset:true });
   });

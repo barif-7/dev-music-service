@@ -12,6 +12,7 @@ from urllib.request import Request, urlopen
 
 from config import get_settings
 from models import LyricsLine, LyricsResponse
+from services.lyrics_localization_service import LyricsLocalizationService
 from services.music_service import MusicServiceError
 from services.text_match import combined_score
 
@@ -45,6 +46,12 @@ class _LyricsQuery:
 class LyricsService:
     _cache_lock = threading.Lock()
     _lyrics_cache: dict[tuple[str, str, str | None, int | None], tuple[LyricsResponse, float]] = {}
+    # Line-level localized cache: (base_key, locale) -> {line_index: localized_text}.
+    # Filled incrementally by the inline first window, the background fill thread,
+    # and just-in-time window requests, so re-requests are served from memory.
+    _localized_cache: dict[tuple, dict[int, str]] = {}
+    _localized_expiry: dict[tuple, float] = {}
+    _localized_inflight: set[tuple] = set()
     _LYRICS_TTL_SECONDS = 3600
     _BASE_URL = "https://lrclib.net/api"
 
@@ -274,3 +281,157 @@ class LyricsService:
 
         payload = LyricsService._search_fallback(query)
         return LyricsService._cache_set(cache_key, LyricsService._build_response(payload, query))
+
+    # ── Live (windowed) localization ────────────────────────────────────────
+
+    @staticmethod
+    def _base_key(
+        title: str, artist: str, album: str | None, duration: int | None
+    ) -> tuple[str, str, str | None, int | None]:
+        return LyricsService._cache_key(
+            _LyricsQuery(
+                title=LyricsService._normalize_text(title),
+                artist=LyricsService._normalize_text(artist),
+                album=LyricsService._normalize_text(album) if album else None,
+                duration=duration,
+            )
+        )
+
+    @staticmethod
+    def _localized_map(loc_key: tuple) -> dict[int, str]:
+        """Return the cached {index: localized_text} map for a (track, locale),
+        evicting it once stale. Always returns a fresh dict copy."""
+        now = time.monotonic()
+        with LyricsService._cache_lock:
+            expires_at = LyricsService._localized_expiry.get(loc_key, 0.0)
+            if expires_at <= now:
+                LyricsService._localized_cache.pop(loc_key, None)
+                LyricsService._localized_expiry.pop(loc_key, None)
+                return {}
+            return dict(LyricsService._localized_cache.get(loc_key, {}))
+
+    @staticmethod
+    def _store_localized(loc_key: tuple, mapping: dict[int, str]) -> None:
+        if not mapping:
+            return
+        with LyricsService._cache_lock:
+            current = LyricsService._localized_cache.setdefault(loc_key, {})
+            current.update(mapping)
+            LyricsService._localized_expiry[loc_key] = (
+                time.monotonic() + LyricsService._LYRICS_TTL_SECONDS
+            )
+
+    @staticmethod
+    def _apply_localized(response: LyricsResponse, mapping: dict[int, str], locale: str) -> LyricsResponse:
+        lines = [
+            line.model_copy(update={"localized_text": mapping.get(index) or line.localized_text})
+            for index, line in enumerate(response.lines)
+        ]
+        return response.model_copy(update={"lines": lines, "target_locale": locale})
+
+    @staticmethod
+    def _background_fill(
+        loc_key: tuple, lines: list[LyricsLine], locale: str, already: set[int]
+    ) -> None:
+        """Translate every still-untranslated line into the cache, in chunks, so
+        later just-in-time windows are cache hits. Runs on a daemon thread."""
+        try:
+            chunk = max(1, get_settings().lyrics_localize_window)
+            pending = [i for i in range(len(lines)) if i not in already]
+            for start in range(0, len(pending), chunk):
+                indices = pending[start : start + chunk]
+                mapping = LyricsLocalizationService.localize_subset(lines, indices, locale)
+                LyricsService._store_localized(loc_key, mapping)
+        finally:
+            with LyricsService._cache_lock:
+                LyricsService._localized_inflight.discard(loc_key)
+
+    @staticmethod
+    def _start_background_fill(loc_key: tuple, lines: list[LyricsLine], locale: str, already: set[int]) -> None:
+        if not get_settings().lyrics_localize_background_fill:
+            return
+        if len(already) >= len(lines):
+            return
+        with LyricsService._cache_lock:
+            if loc_key in LyricsService._localized_inflight:
+                return
+            LyricsService._localized_inflight.add(loc_key)
+        thread = threading.Thread(
+            target=LyricsService._background_fill,
+            args=(loc_key, lines, locale, set(already)),
+            daemon=True,
+        )
+        thread.start()
+
+    @staticmethod
+    def localize_window(
+        title: str,
+        artist: str,
+        album: str | None,
+        duration: int | None,
+        locale: str,
+        items: list[tuple[int, str]],
+    ) -> dict[int, str]:
+        """Return localized text for the requested ``(index, text)`` lines only.
+
+        Serves cached translations immediately and translates any missing lines
+        just-in-time, storing them for reuse under the same (track, locale) key
+        the eager path uses. Carrying the source text means this works for both
+        LRC and transcribed lyrics. This is the per-playhead window path the
+        frontend calls as the song advances.
+        """
+        if not locale or not items:
+            return {}
+
+        loc_key = (LyricsService._base_key(title, artist, album, duration), locale)
+        cached = LyricsService._localized_map(loc_key)
+
+        result: dict[int, str] = {}
+        missing: list[tuple[int, str]] = []
+        seen: set[int] = set()
+        for index, text in items:
+            if index in seen:
+                continue
+            seen.add(index)
+            if index in cached:
+                result[index] = cached[index]
+            else:
+                missing.append((index, text))
+
+        if missing:
+            fresh = LyricsLocalizationService.localize_items(missing, locale)
+            LyricsService._store_localized(loc_key, fresh)
+            result.update(fresh)
+        return result
+
+    @staticmethod
+    def get_localized_lyrics(
+        title: str,
+        artist: str,
+        album: str | None = None,
+        duration: int | None = None,
+        locale: str | None = None,
+    ) -> LyricsResponse:
+        """Fetch lyrics and, when a locale is given, attach localized lines.
+
+        Only the first window of lines is translated inline so the response
+        returns quickly; the remainder is filled in the background and served
+        just-in-time via :meth:`localize_window`. Already-cached translations are
+        applied immediately.
+        """
+        response = LyricsService.get_lyrics(title, artist, album, duration)
+        if not locale or not response.lines:
+            return response
+
+        loc_key = (LyricsService._base_key(title, artist, album, duration), locale)
+        cached = LyricsService._localized_map(loc_key)
+
+        window = max(0, get_settings().lyrics_localize_window)
+        first = [i for i in range(min(window, len(response.lines))) if i not in cached]
+        if first:
+            fresh = LyricsLocalizationService.localize_subset(response.lines, first, locale)
+            LyricsService._store_localized(loc_key, fresh)
+            cached.update(fresh)
+
+        LyricsService._start_background_fill(loc_key, response.lines, locale, set(cached))
+        return LyricsService._apply_localized(response, cached, locale)

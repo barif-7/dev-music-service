@@ -506,6 +506,23 @@ class SpotifyImportService:
         return track_id
 
     @staticmethod
+    async def is_track_saved(request: FastAPIRequest, spotify_id: str) -> bool:
+        """Whether a track already lives in the user's Liked Songs. Lets the UI
+        lock the like button on tracks that are already saved (not just ones saved
+        this session). Unknown/blank ids resolve to False rather than erroring."""
+        if not spotify_id:
+            return False
+        payload = await SpotifyImportService._spotify_get(
+            SpotifyImportService._access_token(request),
+            "/me/tracks/contains",
+            {"ids": spotify_id},
+        )
+        # /me/tracks/contains answers with a bare JSON array, e.g. [true]
+        if isinstance(payload, list):
+            return bool(payload[0]) if payload else False
+        return False
+
+    @staticmethod
     async def _search_playback_candidate(
         query: str,
         duration: int,

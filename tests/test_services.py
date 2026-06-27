@@ -1,7 +1,16 @@
 """Unit and integration tests for service layer."""
 import pytest
 
-from models import AutocompleteSuggestion, ImportedTrack, SongSearchResult
+from urllib.error import URLError
+
+from models import (
+    AutocompleteSuggestion,
+    ImportedTrack,
+    LyricsLine,
+    SongSearchResult,
+    VideoSearchResult,
+)
+from services.lyrics_localization_service import LyricsLocalizationService
 from services.focus_service import AudioFeatures, DEFAULT_PROFILE, FocusProfile, FocusService
 from services.focus_storage import KvFocusProfileStorageStub, LocalJsonFocusProfileStorage
 from services.lyrics_service import LyricsService
@@ -9,6 +18,7 @@ from services.musicbrainz_matcher import MusicBrainzMatcher
 from services.music_service import MusicService, MusicServiceError, SearchServiceError, StreamResolutionError
 from services.metadata_service import MetadataService, MetadataServiceError
 from services.spotify_import_service import SpotifyImportError, SpotifyImportService
+from services.video_service import VideoService, VideoStreamResolutionError
 
 
 class TestMusicServiceSearch:
@@ -179,6 +189,93 @@ class TestMusicServiceHelpers:
         assert MusicService._album_from_entry(entry) is None
 
 
+class TestVideoService:
+    def test_build_query_for_supported_kinds(self):
+        assert (
+            VideoService._build_query("Blinding Lights", "The Weeknd", "music_video")
+            == "The Weeknd Blinding Lights official music video"
+        )
+        assert (
+            VideoService._build_query("Blinding Lights", "The Weeknd", "shorts")
+            == "The Weeknd Blinding Lights shorts"
+        )
+        assert (
+            VideoService._build_query("Blinding Lights", "The Weeknd", "live")
+            == "The Weeknd Blinding Lights live performance"
+        )
+
+    def test_score_prefers_official_video_and_short_duration(self):
+        official = {
+            "title": "Song (Official Music Video)",
+            "channel": "Artist VEVO",
+            "duration": 240,
+        }
+        lyric = {
+            "title": "Song lyric video slowed",
+            "channel": "Fan channel",
+            "duration": 240,
+        }
+        short = {"title": "Song #Shorts", "duration": 45}
+        long_video = {"title": "Song", "duration": 240}
+
+        assert VideoService._score_video(official, "music_video") > VideoService._score_video(
+            lyric,
+            "music_video",
+        )
+        assert VideoService._score_video(short, "shorts") > VideoService._score_video(
+            long_video,
+            "shorts",
+        )
+
+    def test_search_returns_ranked_video_results(self, monkeypatch):
+        VideoService._video_search_cache.clear()
+        VideoService._video_stream_cache.clear()
+
+        class FakeYoutubeDL:
+            def __init__(self, opts):
+                self.opts = opts
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def extract_info(self, query, download=False):
+                return {
+                    "entries": [
+                        {
+                            "title": "Fan lyric video",
+                            "webpage_url": "https://youtube.com/watch?v=fan",
+                            "duration": 200,
+                        },
+                        {
+                            "title": "Artist - Song (Official Music Video)",
+                            "webpage_url": "https://youtube.com/watch?v=official",
+                            "url": "https://rr1---sn.googlevideo.com/videoplayback",
+                            "http_headers": {"User-Agent": "fixture"},
+                            "channel": "Artist VEVO",
+                            "duration": 210,
+                            "width": 854,
+                            "height": 480,
+                        },
+                    ]
+                }
+
+        monkeypatch.setattr("services.video_service.yt_dlp.YoutubeDL", FakeYoutubeDL)
+        results = VideoService.search("Song", "Artist", limit=1)
+
+        assert len(results) == 1
+        assert isinstance(results[0], VideoSearchResult)
+        assert results[0].webpage_url.endswith("official")
+        assert results[0].video_stream_url.startswith("/api/video/stream?")
+        assert results[0].height == 480
+
+    def test_get_video_stream_source_rejects_invalid_url(self):
+        with pytest.raises(VideoStreamResolutionError):
+            VideoService.get_video_stream_source("not-a-url")
+
+
 class TestMetadataService:
     """Tests for MetadataService."""
 
@@ -344,6 +441,38 @@ class TestSpotifyLibrary:
         assert track_id == "resolved-track"
         assert calls[0][2] == {"uris": "spotify:track:resolved-track"}
 
+    @pytest.mark.asyncio
+    async def test_is_track_saved_reads_contains_endpoint(self, monkeypatch):
+        calls = []
+
+        monkeypatch.setattr(SpotifyImportService, "_access_token", lambda request: "token")
+
+        async def fake_get(access_token, path, params=None):
+            calls.append((access_token, path, params))
+            return [True]
+
+        monkeypatch.setattr(SpotifyImportService, "_spotify_get", fake_get)
+
+        saved = await SpotifyImportService.is_track_saved(object(), "4iV5W9uYEdYUVa79Axb7Rh")
+
+        assert saved is True
+        assert calls == [
+            ("token", "/me/tracks/contains", {"ids": "4iV5W9uYEdYUVa79Axb7Rh"})
+        ]
+
+    @pytest.mark.asyncio
+    async def test_is_track_saved_handles_not_saved_and_blank(self, monkeypatch):
+        monkeypatch.setattr(SpotifyImportService, "_access_token", lambda request: "token")
+
+        async def fake_get(access_token, path, params=None):
+            return [False]
+
+        monkeypatch.setattr(SpotifyImportService, "_spotify_get", fake_get)
+
+        assert await SpotifyImportService.is_track_saved(object(), "abc") is False
+        # blank id short-circuits without touching Spotify
+        assert await SpotifyImportService.is_track_saved(object(), "") is False
+
 
 class TestMusicBrainzMatcher:
     """Tests for MusicBrainz matching."""
@@ -438,6 +567,133 @@ class TestLyricsParsing:
 
     def test_parse_malformed_synced_lyrics(self):
         assert LyricsService._parse_synced_lyrics("no timestamp\n[bad]line") == []
+
+
+class TestLyricsLocalization:
+    """Tests for the CaptionLocalizer bridge used to localize lyric lines."""
+
+    def _lines(self):
+        return [
+            LyricsLine(text="Look at the stars", start_time_ms=0, end_time_ms=2000),
+            LyricsLine(text="Look how they shine", start_time_ms=2000, end_time_ms=4000),
+        ]
+
+    def _fake_urlopen(self, segments):
+        import json as _json
+        from contextlib import contextmanager
+
+        @contextmanager
+        def _ctx(request, timeout=None):
+            class _Resp:
+                def read(self_inner):
+                    return _json.dumps({"output": {"segments": segments}}).encode("utf-8")
+
+            yield _Resp()
+
+        return _ctx
+
+    def test_localize_maps_localized_text_by_index(self, monkeypatch):
+        segments = [
+            {"localized_text": "Mira las estrellas"},
+            {"localized_text": "Mira cómo brillan"},
+        ]
+        monkeypatch.setattr(
+            "services.lyrics_localization_service.urlopen", self._fake_urlopen(segments)
+        )
+        result = LyricsLocalizationService.localize(self._lines(), "es-MX")
+
+        assert [line.localized_text for line in result] == [
+            "Mira las estrellas",
+            "Mira cómo brillan",
+        ]
+        # timing and source text are preserved
+        assert result[0].start_time_ms == 0
+        assert result[0].text == "Look at the stars"
+
+    def test_localize_no_locale_is_passthrough(self):
+        lines = self._lines()
+        assert LyricsLocalizationService.localize(lines, "") is lines
+
+    def test_localize_falls_back_on_error(self, monkeypatch):
+        def _boom(request, timeout=None):
+            raise URLError("localizer down")
+
+        monkeypatch.setattr("services.lyrics_localization_service.urlopen", _boom)
+        result = LyricsLocalizationService.localize(self._lines(), "es-MX")
+
+        assert [line.localized_text for line in result] == [None, None]
+        assert [line.text for line in result] == ["Look at the stars", "Look how they shine"]
+
+    def test_localize_subset_returns_only_requested_indices(self, monkeypatch):
+        # Three lines, but only indices 0 and 2 are requested.
+        lines = [
+            LyricsLine(text="one", start_time_ms=0, end_time_ms=1000),
+            LyricsLine(text="two", start_time_ms=1000, end_time_ms=2000),
+            LyricsLine(text="three", start_time_ms=2000, end_time_ms=3000),
+        ]
+        segments = [{"localized_text": "uno"}, {"localized_text": "tres"}]
+        monkeypatch.setattr(
+            "services.lyrics_localization_service.urlopen", self._fake_urlopen(segments)
+        )
+        result = LyricsLocalizationService.localize_subset(lines, [0, 2], "es-MX")
+        assert result == {0: "uno", 2: "tres"}
+
+    def test_localize_items_maps_by_carried_index(self, monkeypatch):
+        segments = [{"localized_text": "uno"}, {"localized_text": "dos"}]
+        monkeypatch.setattr(
+            "services.lyrics_localization_service.urlopen", self._fake_urlopen(segments)
+        )
+        result = LyricsLocalizationService.localize_items([(5, "one"), (9, "two")], "es-MX")
+        assert result == {5: "uno", 9: "dos"}
+
+    def test_localize_items_empty_is_passthrough(self):
+        assert LyricsLocalizationService.localize_items([], "es-MX") == {}
+
+
+class TestLyricsWindow:
+    """Just-in-time window localization on LyricsService."""
+
+    def setup_method(self):
+        LyricsService._localized_cache.clear()
+        LyricsService._localized_expiry.clear()
+        LyricsService._localized_inflight.clear()
+
+    def test_localize_window_translates_then_caches(self, monkeypatch):
+        calls = []
+
+        def _fake_items(items, locale):
+            calls.append(list(items))
+            return {index: f"{text}-{locale}" for index, text in items}
+
+        monkeypatch.setattr(
+            "services.lyrics_service.LyricsLocalizationService.localize_items", _fake_items
+        )
+        items = [(0, "hello"), (1, "world")]
+        first = LyricsService.localize_window("T", "A", None, None, "es", items)
+        assert first == {0: "hello-es", 1: "world-es"}
+
+        # second call is served from cache — the bridge is not hit again
+        second = LyricsService.localize_window("T", "A", None, None, "es", items)
+        assert second == {0: "hello-es", 1: "world-es"}
+        assert len(calls) == 1
+
+    def test_localize_window_only_requests_missing(self, monkeypatch):
+        calls = []
+
+        def _fake_items(items, locale):
+            calls.append([i for i, _ in items])
+            return {index: f"x{index}" for index, _ in items}
+
+        monkeypatch.setattr(
+            "services.lyrics_service.LyricsLocalizationService.localize_items", _fake_items
+        )
+        LyricsService.localize_window("T", "A", None, None, "es", [(0, "a")])
+        LyricsService.localize_window("T", "A", None, None, "es", [(0, "a"), (1, "b")])
+        # second call only asks the bridge for the new index 1
+        assert calls == [[0], [1]]
+
+    def test_localize_window_empty_locale_is_noop(self):
+        assert LyricsService.localize_window("T", "A", None, None, "", [(0, "a")]) == {}
 
 
 class TestFocusScoring:

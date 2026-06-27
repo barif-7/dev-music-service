@@ -296,6 +296,110 @@ class TestStreamEndpoint:
         assert response.headers["Access-Control-Allow-Origin"] == "*"
 
 
+class TestVideoEndpoints:
+    def test_video_search_requires_title(self, client: TestClient):
+        response = client.get("/api/video/search")
+        assert response.status_code == 422
+
+    def test_video_search_returns_payload(self, client: TestClient):
+        payload = {
+            "title": "Artist - Song (Official Music Video)",
+            "webpage_url": "https://youtube.com/watch?v=video",
+            "video_stream_url": (
+                "/api/video/stream?url=https%3A%2F%2Fyoutube.com%2Fwatch%3Fv%3Dvideo"
+            ),
+            "duration": 210,
+            "thumbnail": "https://img.example/video.jpg",
+            "channel": "Artist VEVO",
+            "kind": "music_video",
+            "width": 854,
+            "height": 480,
+        }
+
+        with patch("main.VideoService.search") as mock_search:
+            mock_search.return_value = [MagicMock(model_dump=lambda: payload)]
+            response = client.get(
+                "/api/video/search",
+                params={
+                    "title": "Song",
+                    "artist": "Artist",
+                    "kind": "music_video",
+                    "limit": 1,
+                },
+            )
+
+        assert response.status_code == 200
+        assert response.json() == [payload]
+        mock_search.assert_called_once_with("Song", "Artist", "music_video", 1)
+
+    def test_video_search_validates_kind(self, client: TestClient):
+        response = client.get(
+            "/api/video/search",
+            params={"title": "Song", "kind": "unsupported"},
+        )
+        assert response.status_code == 422
+
+    def test_video_stream_preserves_range_response(self, client: TestClient):
+        class FakeStream:
+            status_code = 206
+            headers = {
+                "content-type": "video/mp4",
+                "accept-ranges": "bytes",
+                "content-length": "5",
+                "content-range": "bytes 10-14/100",
+            }
+
+            async def aiter_bytes(self, chunk_size=8192):
+                yield b"video"
+
+            async def aclose(self):
+                return None
+
+        captured = {}
+
+        async def fake_open_stream(client, url, headers):
+            captured["headers"] = headers
+            return FakeStream()
+
+        with patch("main.VideoService.get_video_stream_source") as mock_source:
+            with patch("main.open_validated_stream", side_effect=fake_open_stream):
+                mock_source.return_value = (
+                    "https://rr1---sn.googlevideo.com/videoplayback",
+                    {"User-Agent": "fixture"},
+                )
+                response = client.get(
+                    "/api/video/stream",
+                    params={"url": "https://youtube.com/watch?v=video"},
+                    headers={"Range": "bytes=10-14"},
+                )
+
+        assert response.status_code == 206
+        assert response.content == b"video"
+        assert response.headers["content-type"].startswith("video/mp4")
+        assert response.headers["content-range"] == "bytes 10-14/100"
+        assert captured["headers"]["Range"] == "bytes=10-14"
+
+    def test_video_stream_blocks_private_direct_target(self, client: TestClient):
+        with patch("main.VideoService.get_video_stream_source") as mock_source:
+            mock_source.return_value = ("http://127.0.0.1/video", {})
+            response = client.get(
+                "/api/video/stream",
+                params={"url": "https://youtube.com/watch?v=video"},
+            )
+
+        assert response.status_code == 403
+
+    def test_video_stream_blocks_private_source_before_extraction(self, client: TestClient):
+        with patch("main.VideoService.get_video_stream_source") as mock_source:
+            response = client.get(
+                "/api/video/stream",
+                params={"url": "http://127.0.0.1/video"},
+            )
+
+        assert response.status_code == 403
+        mock_source.assert_not_called()
+
+
 class TestLocalPlaybackEndpoints:
     """Tests for local playback integration endpoints."""
 
@@ -573,6 +677,27 @@ class TestSpotifyImportEndpoints:
             "spotify_id": "4iV5W9uYEdYUVa79Axb7Rh",
         }
 
+    def test_spotify_liked_track_contains(self, client: TestClient, mock_spotify_env):
+        """Contains endpoint should report whether a track is already saved."""
+        client.cookies.set("spotify_access_token", "test_access_token")
+
+        with patch("main.SpotifyImportService.is_track_saved") as mock_contains:
+            mock_contains.return_value = True
+            response = client.get(
+                "/api/import/spotify/liked-tracks/contains",
+                params={"spotify_id": "4iV5W9uYEdYUVa79Axb7Rh"},
+            )
+
+        assert response.status_code == 200
+        assert response.json() == {"saved": True}
+        mock_contains.assert_awaited_once()
+        args, _ = mock_contains.call_args
+        assert args[1] == "4iV5W9uYEdYUVa79Axb7Rh"
+
+    def test_spotify_liked_track_contains_requires_id(self, client: TestClient, mock_spotify_env):
+        response = client.get("/api/import/spotify/liked-tracks/contains")
+        assert response.status_code == 422
+
     def test_spotify_save_liked_track_requires_title(self, client: TestClient, mock_spotify_env):
         response = client.post(
             "/api/import/spotify/liked-tracks",
@@ -764,6 +889,52 @@ class TestErrorHandling:
         response = client.get("/api/search")  # Missing required param
         
         assert response.status_code == 422
+
+
+class TestLiveLyricsEndpoints:
+    """Tests for the live localization + transcription endpoints."""
+
+    def test_localize_window_returns_mapping(self, client: TestClient):
+        with patch(
+            "main.LyricsService.localize_window", return_value={0: "hola", 2: "mundo"}
+        ) as mocked:
+            response = client.post(
+                "/api/lyrics/localize-window",
+                json={
+                    "title": "Song",
+                    "artist": "Artist",
+                    "locale": "es",
+                    "lines": [
+                        {"index": 0, "text": "hello"},
+                        {"index": 2, "text": "world"},
+                    ],
+                },
+            )
+
+        assert response.status_code == 200
+        assert response.json() == {"localized": {"0": "hola", "2": "mundo"}}
+        _, kwargs = mocked.call_args
+        assert kwargs["items"] == [(0, "hello"), (2, "world")]
+
+    def test_localize_window_requires_locale(self, client: TestClient):
+        response = client.post(
+            "/api/lyrics/localize-window",
+            json={"title": "S", "artist": "A", "lines": [{"index": 0, "text": "hi"}]},
+        )
+        assert response.status_code == 422
+
+    def test_transcribe_reports_job_status(self, client: TestClient):
+        job = {"status": "pending", "lines": [], "error": None}
+        with patch("main.LiveTranscriptionService.get_or_start", return_value=job):
+            response = client.get(
+                "/api/lyrics/transcribe",
+                params={"title": "S", "artist": "A", "url": "https://www.youtube.com/watch?v=1"},
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "pending"
+        assert data["lines"] == []
 
 
 class TestLogRedaction:

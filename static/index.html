@@ -150,8 +150,109 @@
   #info .i-meta{font-family:var(--mono);font-size:11.5px;color:var(--dim);margin-top:5px;letter-spacing:.02em}
   #info .i-lyric{font-size:15px;font-style:italic;color:rgba(244,244,242,.78);margin-top:14px;
     line-height:1.5;text-wrap:pretty}
+  /* live lyric under the title: original + localized line */
+  #info .i-lyric-live{margin-top:12px;line-height:1.45;text-wrap:pretty;
+    transition:opacity .3s var(--ease)}
+  #info .i-lyric-live[hidden]{display:none}
+  #info .i-lyric-orig{font-size:15px;font-style:italic;color:rgba(244,244,242,.82)}
+  #info .i-lyric-loc{font-size:14px;color:rgba(244,244,242,.6);margin-top:4px}
+  #info .i-lyric-loc[hidden]{display:none}
   #info .i-src{font-family:var(--mono);font-size:10.5px;color:var(--faint);margin-top:12px;
     letter-spacing:.04em;text-transform:lowercase}
+  /* lyric language picker */
+  #lyricLocaleWrap{display:flex;align-items:center;gap:7px;margin-bottom:12px;
+    font-family:var(--mono);font-size:10.5px;color:var(--faint);
+    letter-spacing:.04em;text-transform:lowercase}
+  #lyricLocale{font-family:var(--mono);font-size:11px;color:var(--dim);
+    background:rgba(0,0,0,.35);border:1px solid var(--hair);border-radius:8px;
+    padding:4px 8px;cursor:pointer;outline:none}
+  #lyricLocale:hover{color:var(--fg,#f4f4f2)}
+  #clockOpenBtn{width:28px;height:28px;border-radius:8px;border:1px solid var(--hair);
+    display:grid;place-items:center;color:var(--dim);background:rgba(0,0,0,.28);
+    transition:color .2s,border-color .2s,background .2s}
+  #clockOpenBtn:hover{color:var(--ink);border-color:var(--dim);background:rgba(244,244,242,.06)}
+  #clockOpenBtn svg{width:15px;height:15px;stroke:currentColor;stroke-width:1.7;fill:none;
+    stroke-linecap:round;stroke-linejoin:round}
+  #videoHero{width:min(420px,72vw);aspect-ratio:16/9;margin-bottom:18px;border:1px solid var(--hair);
+    border-radius:18px;overflow:hidden;background:rgba(0,0,0,.42);
+    box-shadow:0 24px 80px rgba(0,0,0,.46);transition:opacity .35s var(--ease),translate .35s var(--ease)}
+  #videoHero.hidden{display:none}
+  #videoHero.loading{opacity:.5;translate:0 4px}
+  #videoHero video{width:100%;height:100%;display:block;object-fit:cover;background:#050507}
+
+  /* small icon above the title that opens the video search modal */
+  #videoSearchBtn{display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 10px 0 8px;
+    margin-bottom:10px;border-radius:8px;border:1px solid var(--hair);background:rgba(0,0,0,.28);
+    color:var(--dim);font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
+    cursor:pointer;transition:color .2s,border-color .2s,background .2s}
+  #videoSearchBtn:hover{color:var(--ink);border-color:var(--dim);background:rgba(244,244,242,.06)}
+  #videoSearchBtn svg{width:15px;height:15px;stroke:currentColor;stroke-width:1.7;fill:none}
+
+  /* video search modal — reuses the Field omni-search design: the .omni-field
+     bar, the #omniDrop slide-fade reveal, and the .result rows + resIn stagger */
+  #videoModal{position:fixed;inset:0;z-index:70;display:flex;align-items:flex-start;justify-content:center;
+    padding-top:14vh;pointer-events:none;opacity:0;transition:opacity .3s var(--ease)}
+  #videoModal.show{opacity:1;pointer-events:auto}
+  #videoModal .vm-scrim{position:absolute;inset:0;background:rgba(4,4,6,.5);
+    backdrop-filter:blur(14px) saturate(.8);-webkit-backdrop-filter:blur(14px) saturate(.8)}
+  .vm-stage{position:relative;width:min(460px,92vw);display:flex;flex-direction:column;
+    transform:translateY(-10px);transition:transform .42s var(--ease)}
+  #videoModal.show .vm-stage{transform:none}
+  /* search bar = .omni-field; close (×) sits inline at its right edge */
+  .vm-field:focus-within{border-color:var(--dim)}
+  #videoModal .vm-close{flex:none;width:24px;height:24px;border-radius:7px;display:grid;
+    place-items:center;color:var(--faint);transition:color .2s,background .2s}
+  #videoModal .vm-close:hover{color:var(--ink);background:rgba(244,244,242,.08)}
+  #videoModal .vm-close svg{width:13px;height:13px;stroke:currentColor;stroke-width:1.8;fill:none;
+    stroke-linecap:round;stroke-linejoin:round}
+  #clockModal{position:fixed;inset:0;z-index:88;opacity:0;pointer-events:none;
+    transition:opacity .28s var(--ease)}
+  #clockModal.show{opacity:1;pointer-events:auto}
+  #clockModal .clock-scrim{position:absolute;inset:0;background:rgba(4,4,6,.58);
+    backdrop-filter:blur(16px) saturate(.82);-webkit-backdrop-filter:blur(16px) saturate(.82)}
+  .clock-stage{position:absolute;inset:min(5vh,48px) min(4vw,48px);border-radius:18px;
+    overflow:hidden;border:1px solid var(--hair);background:#050507;
+    box-shadow:0 30px 90px rgba(0,0,0,.66);transform:translateY(10px) scale(.985);
+    transition:transform .36s var(--ease)}
+  #clockModal.show .clock-stage{transform:none}
+  .clock-stage iframe{width:100%;height:100%;border:0;display:block;background:#08090b}
+  #clockModal .clock-close{position:absolute;right:14px;top:14px;z-index:2;width:36px;height:36px;
+    border-radius:10px;display:grid;place-items:center;color:var(--ink);background:rgba(0,0,0,.42);
+    border:1px solid rgba(255,255,255,.12);transition:background .2s,color .2s}
+  #clockModal .clock-close:hover{background:rgba(244,244,242,.1)}
+  #clockModal .clock-close svg{width:16px;height:16px;stroke:currentColor;stroke-width:1.8;fill:none;
+    stroke-linecap:round;stroke-linejoin:round}
+  .vm-kinds{display:flex;gap:6px;margin-top:8px}
+  .vm-kind{flex:1;height:30px;border-radius:9px;border:1px solid var(--hair);font-family:var(--mono);
+    font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--dim);transition:.2s}
+  .vm-kind:hover{color:var(--ink)}
+  .vm-kind.on{color:var(--ink);background:rgba(244,244,242,.08);border-color:transparent}
+  /* results: identical reveal + row design to #omniDrop / .result */
+  #videoResults{margin-top:8px;max-height:50vh;overflow:auto;border-radius:14px;
+    background:rgba(8,8,11,.82);border:1px solid var(--hair);
+    backdrop-filter:blur(28px) saturate(.8);-webkit-backdrop-filter:blur(28px) saturate(.8);
+    box-shadow:0 24px 60px rgba(0,0,0,.5);padding:6px;
+    opacity:0;transform:translateY(-6px);pointer-events:none;
+    transition:opacity .22s var(--ease),transform .22s var(--ease);
+    scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent}
+  #videoResults::-webkit-scrollbar{width:8px}
+  #videoResults::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16);border-radius:8px}
+  #videoResults.open{opacity:1;transform:none;pointer-events:auto}
+  #videoResults .r-art{width:58px;height:34px;border-radius:8px}   /* 16:9 thumb for videos */
+  #videoResults .r-name{font-size:15px;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;
+    -webkit-box-orient:vertical;overflow:hidden}
+  #videoResults .r-conf.dur{color:var(--dim)}
+  #videoResults .r-empty.err{color:#ff9b8a}
+  /* graceful loading: shimmer skeleton rows while the (slow) video search runs */
+  .r-skel{pointer-events:none}
+  .r-skel .r-art,.r-skel .sk{position:relative;overflow:hidden;background:rgba(244,244,242,.05)}
+  .r-skel .r-body{gap:0}
+  .r-skel .sk{height:12px;border-radius:6px}
+  .r-skel .sk.w1{width:60%}.r-skel .sk.w2{width:34%;margin-top:9px}
+  .r-skel .r-art::after,.r-skel .sk::after{content:"";position:absolute;inset:0;
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.07),transparent);
+    transform:translateX(-100%);animation:shimmer 1.15s var(--ease) infinite}
+  @keyframes shimmer{to{transform:translateX(100%)}}
 
   #capClick{display:flex;align-items:baseline;gap:16px;text-align:left}
   #capNum{font-family:var(--mono);font-size:13px;color:var(--dim);letter-spacing:.1em;
@@ -282,6 +383,7 @@
     #searchInput,#searchGhost{font-size:26px}
     .r-pal{display:none}
     #topL{left:20px}#capWrap{left:20px}#topR{right:16px}
+    #videoHero{width:min(360px,calc(100vw - 40px));border-radius:14px}
   }
   @media (prefers-reduced-motion: reduce){
     *{animation-duration:.001ms !important;transition-duration:.08s !important}
@@ -421,9 +523,9 @@
   #omni:focus-within .omni-field{border-color:var(--dim)}
   .omni-field svg{width:17px;height:17px;stroke:var(--dim);stroke-width:1.6;fill:none;
     stroke-linecap:round;stroke-linejoin:round;flex:none}
-  #omniInput{flex:1;height:100%;border:0;outline:0;background:none;color:var(--ink);
+  #omniInput,#videoQuery{flex:1;height:100%;border:0;outline:0;background:none;color:var(--ink);
     font-family:var(--sans);font-size:14px;font-weight:400;letter-spacing:-.01em;min-width:0}
-  #omniInput::placeholder{color:var(--faint)}
+  #omniInput::placeholder,#videoQuery::placeholder{color:var(--faint)}
   #omniDrop{margin-top:8px;max-height:54vh;overflow:auto;border-radius:14px;
     background:rgba(8,8,11,.82);border:1px solid var(--hair);
     backdrop-filter:blur(28px) saturate(.8);-webkit-backdrop-filter:blur(28px) saturate(.8);
@@ -461,6 +563,8 @@
   .nb-btn.nb-like.saved{color:#1ed760;background:rgba(30,215,96,.12)}
   .nb-btn.nb-like.saved svg{fill:currentColor}
   .nb-btn.nb-like.saving{animation:savePulse .8s ease-in-out infinite alternate}
+  /* already in Liked Songs: stays active (filled/green), just not interactive */
+  .nb-btn.nb-like.locked{cursor:default;pointer-events:none}
   .nb-btn:disabled{opacity:.3;cursor:default;pointer-events:none}
   @keyframes savePulse{to{opacity:.45}}
   .nb-btn:hover{color:var(--ink);background:rgba(244,244,242,.08)}
@@ -604,6 +708,28 @@
 
   <!-- caption + info -->
   <div class="chrome" id="capWrap">
+    <div id="videoHero" class="hidden" aria-live="polite">
+      <video id="videoEl" playsinline muted controls preload="metadata"></video>
+    </div>
+    <button id="videoSearchBtn" type="button" aria-label="Search videos" aria-haspopup="dialog">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+      <span>Videos</span>
+    </button>
+    <div id="lyricLocaleWrap">
+      <label for="lyricLocale">lyrics</label>
+      <select id="lyricLocale" aria-label="Lyric language">
+        <option value="">original</option>
+        <option value="es-MX">Español (MX)</option>
+        <option value="fr-CA">Français (CA)</option>
+        <option value="pt-BR">Português (BR)</option>
+        <option value="ar">العربية</option>
+        <option value="ko-KR">한국어</option>
+        <option value="ja-JP">日本語</option>
+      </select>
+      <button id="clockOpenBtn" type="button" aria-label="Open solar clock" aria-haspopup="dialog" title="Solar clock">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>
+      </button>
+    </div>
     <div id="info"></div>
     <button id="capClick" aria-label="Toggle track info">
       <span id="capNum">01</span>
@@ -686,6 +812,38 @@
     </aside>
   </div>
 
+  <!-- Video search modal (mirrors the Field omni-search: bar + live dropdown) -->
+  <div id="videoModal" role="dialog" aria-modal="true" aria-label="Search videos">
+    <div class="vm-scrim" id="videoModalClose"></div>
+    <div class="vm-stage">
+      <div class="omni-field vm-field">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+        <input id="videoQuery" type="text" autocomplete="off" autocapitalize="off" spellcheck="false"
+          role="combobox" aria-controls="videoResults" aria-expanded="false"
+          placeholder="Search videos on YouTube…" />
+        <button class="vm-close" id="videoModalCloseBtn" aria-label="Close">
+          <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <div class="vm-kinds" role="tablist" aria-label="Video type">
+        <button class="vm-kind on" data-kind="music_video" role="tab" aria-selected="true">Music video</button>
+        <button class="vm-kind" data-kind="live" role="tab" aria-selected="false">Live</button>
+        <button class="vm-kind" data-kind="shorts" role="tab" aria-selected="false">Shorts</button>
+      </div>
+      <div id="videoResults" role="listbox" aria-label="Video results" aria-live="polite"></div>
+    </div>
+  </div>
+
+  <div id="clockModal" role="dialog" aria-modal="true" aria-label="Solar clock">
+    <div class="clock-scrim" id="clockModalClose"></div>
+    <div class="clock-stage">
+      <button class="clock-close" id="clockModalCloseBtn" type="button" aria-label="Close solar clock">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+      <iframe id="clockFrame" src="/static/clock/index.html" title="Solar clock" allow="geolocation; autoplay"></iframe>
+    </div>
+  </div>
+
   <!-- Focus mode panel (right drawer) -->
   <div id="focusPanel">
     <div class="sp-scrim" id="focusClose"></div>
@@ -760,5 +918,6 @@
 <script src="/static/gallery/spotify.js"></script>
 <script src="/static/gallery/focus.js"></script>
 <script src="/static/gallery/search.js"></script>
+<script src="/static/gallery/clock-modal.js"></script>
 </body>
 </html>

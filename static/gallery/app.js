@@ -81,6 +81,10 @@ function renderNowPlaying(track, status){
   const meta = [track.artist, track.album, track.release_year].filter(Boolean).map(escHtml).join(' · ');
   infoEl.innerHTML =
     `<div class="i-track">${escHtml(track.title || 'Untitled')}</div>`+
+    `<div class="i-lyric-live" id="iLyricLive" hidden>`+
+      `<div class="i-lyric-orig" id="iLyricOrig"></div>`+
+      `<div class="i-lyric-loc" id="iLyricLoc" hidden></div>`+
+    `</div>`+
     `<div class="i-meta">${meta || '—'}</div>`+
     `<div class="i-src">${escHtml(status || 'streaming')} · reacting live</div>`;
   infoEl.classList.add('show'); state.infoOpen = true;
@@ -107,6 +111,7 @@ const playerControls = new PlayerControls({
   onNext:()=>Wallpaper.go(state.index+1),
   onTrackRendered:track=>{
     if(typeof syncSpotifySaveButton === 'function') syncSpotifySaveButton(track);
+    if(typeof refreshSpotifySavedState === 'function') refreshSpotifySavedState(track);
   },
 }).bind();
 
@@ -140,10 +145,50 @@ function setCenterLyric(line){
     lyricSwap = setTimeout(()=>{ if(lyricLast==='') lyricLineEl.textContent = ''; }, 1100);
   }
 }
+/* ---- live lyric under the track title (original + localized) ---- */
+function updateLiveLyric(){
+  const box = document.getElementById('iLyricLive');
+  if(!box) return;
+  if(!(nowPlaying && AUDIO.mode==='stream') || typeof currentLyricLine!=='function'){
+    box.hidden = true; return;
+  }
+  const line = currentLyricLine(player.currentTime*1000);
+  const orig = document.getElementById('iLyricOrig');
+  const loc  = document.getElementById('iLyricLoc');
+  if(!line || !line.text){
+    box.hidden = true;
+    if(orig) orig.textContent = '';
+    if(loc){ loc.textContent = ''; loc.hidden = true; }
+    return;
+  }
+  box.hidden = false;
+  if(orig) orig.textContent = line.text;
+  if(loc){
+    loc.textContent = line.localized || '';
+    loc.hidden = !line.localized;
+  }
+}
+
 function toggleInfo(force){
   state.infoOpen = force===undefined ? !state.infoOpen : force;
   infoEl.classList.toggle('show', state.infoOpen);
   wake();
+}
+
+/* ---- lyric language picker — re-localizes the current track live ---- */
+const lyricLocaleSel = $('#lyricLocale');
+if(lyricLocaleSel){
+  const saved = (()=>{ try{ return localStorage.getItem('lyricLocale')||''; }catch(e){ return ''; } })();
+  if(saved){ lyricLocaleSel.value = saved; }
+  if(typeof setLyricLocale === 'function') setLyricLocale(lyricLocaleSel.value);
+  lyricLocaleSel.addEventListener('change', ()=>{
+    const v = lyricLocaleSel.value;
+    try{ localStorage.setItem('lyricLocale', v); }catch(e){ /* ignore */ }
+    const loc = $('#iLyricLoc');
+    if(v && loc){ loc.textContent = '…'; loc.hidden = false; }   // translating hint
+    if(typeof setLyricLocale === 'function') setLyricLocale(v);
+    wake();
+  });
 }
 
 /* ---- Wallpaper: the SINGLE owner of the active shader. Every switch — dots,
@@ -429,9 +474,18 @@ $('#fileInput').addEventListener('change', (e)=>{
 });
 
 /* ---- render loop ---- */
+let lastLocalizeAhead = 0;
 function frame(now){
   AUDIO.update(now/1000);
   playerControls.update();
+  updateLiveLyric();
+  // Pre-translate the upcoming lyric window just-in-time (throttled — the work
+  // is network-bound and cached server-side, so a few times a second is plenty).
+  if(nowPlaying && AUDIO.mode==='stream' && typeof localizeAhead==='function'
+     && now - lastLocalizeAhead > 600){
+    lastLocalizeAhead = now;
+    localizeAhead(player.currentTime*1000);
+  }
   if(typeof EQ==='object'){ EQ.update(); EQ.draw(eqCanvas); }
   // ambient centered lyric — persists over the shader while a track streams in
   // the immersive view; hidden in grid/search/spotify or when not streaming.
