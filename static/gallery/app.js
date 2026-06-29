@@ -400,6 +400,22 @@ $('#btnSpotify').addEventListener('click', openSpotifyPanel);
 $('#spotifyClose').addEventListener('click', closeSpotifyPanel);
 $('#spotifyCloseBtn').addEventListener('click', closeSpotifyPanel);
 
+/* ---- Apple Music import panel ---- */
+function openApplePanel(){
+  state.searchOpen = true;
+  $('#applePanel').classList.add('show');
+  document.body.classList.add('apple-music-mode');
+}
+function closeApplePanel(){
+  $('#applePanel').classList.remove('show');
+  document.body.classList.remove('apple-music-mode');
+  state.searchOpen = false;
+  wake();
+}
+$('#btnAppleMusic').addEventListener('click', openApplePanel);
+$('#appleClose').addEventListener('click', closeApplePanel);
+$('#appleCloseBtn').addEventListener('click', closeApplePanel);
+
 /* ---- Focus mode panel ---- */
 function openFocusPanel(){
   state.searchOpen = true;
@@ -448,9 +464,11 @@ window.addEventListener('keydown', (e)=>{
   if(e.metaKey||e.ctrlKey||e.altKey) return;
   const typing = /^(INPUT|TEXTAREA)$/.test(e.target.tagName||'');
   const spOpen = $('#spotifyPanel').classList.contains('show');
+  const amOpen = $('#applePanel').classList.contains('show');
   const fcOpen = $('#focusPanel').classList.contains('show');
-  if(e.key==='Escape'){ if(spOpen) closeSpotifyPanel(); if(fcOpen) closeFocusPanel(); return; }
+  if(e.key==='Escape'){ if(spOpen) closeSpotifyPanel(); if(amOpen) closeApplePanel(); if(fcOpen) closeFocusPanel(); return; }
   if(typing || state.searchOpen) return;
+  if(e.key==='a'||e.key==='A'){ openApplePanel(); }
   if(e.key==='s'||e.key==='S'){ openSpotifyPanel(); }
   if(e.key==='f'||e.key==='F'){ openFocusPanel(); }
 });

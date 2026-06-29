@@ -1,8 +1,17 @@
 """End-to-end tests for main API endpoints."""
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+
+from models import (
+    BrowserPlaybackState,
+    ImportedPlaylistPreview,
+    ImportedPlaylistTrack,
+    ImportedTrack,
+    MusicBrainzTrackMatch,
+    ProviderPlaylist,
+)
 
 
 class TestHealthEndpoint:
@@ -19,6 +28,7 @@ class TestHealthEndpoint:
         assert data["stream_delivery"] == "proxy"
         assert "local_integration" in data
         assert "spotify_import" in data
+        assert "apple_music_import" in data
 
     def test_health_spotify_not_configured(self, client: TestClient):
         """Health should show spotify_import as missing-client-id when not configured."""
@@ -28,6 +38,7 @@ class TestHealthEndpoint:
         data = response.json()
         # Without SPOTIFY_CLIENT_ID env var, should show missing
         assert data["spotify_import"] == "missing-client-id"
+        assert data["apple_music_import"] == "upload-json"
 
     def test_health_spotify_configured(self, client: TestClient, mock_spotify_env):
         """Health should show spotify_import as configured when env var is set."""
@@ -36,6 +47,117 @@ class TestHealthEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert data["spotify_import"] == "configured"
+        assert data["apple_music_import"] == "upload-json"
+
+
+class TestAppleMusicImport:
+    """Tests for Apple Music fallback import endpoints."""
+
+    def test_apple_music_preview_returns_matches(self, client: TestClient):
+        preview = ImportedPlaylistPreview(
+            provider="apple_music",
+            playlist=ProviderPlaylist(
+                provider="apple_music",
+                id="album-1",
+                name="After Hours",
+                track_count=1,
+                owner="The Weeknd",
+            ),
+            tracks=[
+                ImportedPlaylistTrack(
+                    source=ImportedTrack(
+                        provider="apple_music",
+                        provider_track_id="track-1",
+                        provider_playlist_id="album-1",
+                        title="Blinding Lights",
+                        artist_names=["The Weeknd"],
+                        album="After Hours",
+                        duration_ms=200000,
+                    ),
+                    musicbrainz=MusicBrainzTrackMatch(
+                        title="Blinding Lights",
+                        artist="The Weeknd",
+                        album="After Hours",
+                        confidence=96,
+                        match_reason="artist_title_duration",
+                    ),
+                )
+            ],
+            matched_count=1,
+            low_confidence_count=0,
+            unmatched_count=0,
+        )
+        with patch("main.ImportPreviewService.build_preview", new=AsyncMock(return_value=preview)):
+            response = client.post(
+                "/api/import/apple-music/preview",
+                json={
+                    "provider": "apple_music",
+                    "id": "album-1",
+                    "name": "After Hours",
+                    "artist": "The Weeknd",
+                    "track_count": 1,
+                    "tracks": [
+                        {
+                            "provider": "apple_music",
+                            "provider_track_id": "track-1",
+                            "provider_playlist_id": "album-1",
+                            "title": "Blinding Lights",
+                            "artist_names": ["The Weeknd"],
+                            "album": "After Hours",
+                            "duration_ms": 200000,
+                        }
+                    ],
+                },
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["provider"] == "apple_music"
+        assert data["playlist"]["id"] == "album-1"
+        assert data["matched_count"] == 1
+
+    def test_apple_music_playback_returns_browser_state(self, client: TestClient):
+        playback = BrowserPlaybackState(
+            mode="browser",
+            title="Blinding Lights",
+            duration=200,
+            webpage_url="https://youtube.com/watch?v=test",
+            stream_url="/api/stream?url=https%3A%2F%2Fyoutube.com%2Fwatch%3Fv%3Dtest",
+            album="After Hours",
+            artist="The Weeknd",
+            thumbnail="https://img.example/cover.jpg",
+            artwork_source="musicbrainz",
+            artwork_confidence="artist_title_duration",
+            release_year=2020,
+        )
+        with patch("main.ImportPreviewService.resolve_track_playback", new=AsyncMock(return_value=playback)):
+            response = client.post(
+                "/api/import/apple-music/playback",
+                json={
+                    "source": {
+                        "provider": "apple_music",
+                        "provider_track_id": "track-1",
+                        "provider_playlist_id": "album-1",
+                        "title": "Blinding Lights",
+                        "artist_names": ["The Weeknd"],
+                        "album": "After Hours",
+                        "duration_ms": 200000,
+                    },
+                    "musicbrainz": {
+                        "title": "Blinding Lights",
+                        "artist": "The Weeknd",
+                        "album": "After Hours",
+                        "confidence": 96,
+                        "match_reason": "artist_title_duration",
+                    },
+                },
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["title"] == "Blinding Lights"
+        assert data["artist"] == "The Weeknd"
+        assert data["mode"] == "browser"
 
 
 class TestFrontendAssets:

@@ -402,17 +402,17 @@
   .r-conf.high{color:#8affc4;border-color:rgba(138,255,196,.3)}
   .r-conf.mid{color:var(--dim)}
 
-  /* ───────── Spotify panel (right drawer) ───────── */
-  #spotifyPanel{position:fixed;inset:0;z-index:60;pointer-events:none;opacity:0;
+  /* ───────── Import panels (right drawers) ───────── */
+  #spotifyPanel,#applePanel{position:fixed;inset:0;z-index:60;pointer-events:none;opacity:0;
     transition:opacity .42s var(--ease)}
-  #spotifyPanel.show{opacity:1;pointer-events:auto}
+  #spotifyPanel.show,#applePanel.show{opacity:1;pointer-events:auto}
   .sp-scrim{position:absolute;inset:0;background:rgba(4,4,6,.5);
     backdrop-filter:blur(14px) saturate(.8);-webkit-backdrop-filter:blur(14px) saturate(.8)}
   .sp-drawer{position:absolute;top:0;right:0;bottom:0;width:min(440px,92vw);
     background:rgba(12,12,15,.86);border-left:1px solid var(--hair);
     display:flex;flex-direction:column;padding:26px 24px 18px;
     transform:translateX(24px);transition:transform .5s var(--ease)}
-  #spotifyPanel.show .sp-drawer{transform:none}
+  #spotifyPanel.show .sp-drawer,#applePanel.show .sp-drawer{transform:none}
   .sp-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:18px}
   .sp-id b{display:block;font-size:18px;font-weight:500;letter-spacing:-.01em}
   .sp-id span{font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:.04em;margin-top:4px;display:block}
@@ -423,15 +423,15 @@
   #spotifyConnectBtn:hover{color:var(--ink);border-color:var(--dim)}
   #spotifyConnectBtn .dot{width:7px;height:7px;border-radius:50%;background:var(--faint)}
   #spotifyConnectBtn .dot.connected{background:#8affc4;box-shadow:0 0 8px #8affc4}
-  #spStat{font-family:var(--mono);font-size:10.5px;color:var(--faint);letter-spacing:.04em;margin-left:auto}
+  #spStat,#amStat{font-family:var(--mono);font-size:10.5px;color:var(--faint);letter-spacing:.04em;margin-left:auto}
   .sp-views{display:flex;gap:6px;margin-bottom:14px}
   .sp-view{flex:1;height:34px;border-radius:10px;border:1px solid var(--hair);
     font-size:13px;color:var(--dim);transition:.2s}
   .sp-view.on{color:var(--ink);background:rgba(244,244,242,.08);border-color:transparent}
-  #plList{flex:1;overflow:auto;display:flex;flex-direction:column;gap:2px;
+  #plList,#amList{flex:1;overflow:auto;display:flex;flex-direction:column;gap:2px;
     scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent}
-  #plList::-webkit-scrollbar{width:7px}
-  #plList::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16);border-radius:7px}
+  #plList::-webkit-scrollbar,#amList::-webkit-scrollbar{width:7px}
+  #plList::-webkit-scrollbar-thumb,#amList::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16);border-radius:7px}
   .plRow,.likedRow{display:flex;align-items:center;gap:12px;width:100%;text-align:left;
     padding:11px 12px;border-radius:11px;transition:background .18s;cursor:pointer}
   .plRow:hover,.likedRow:hover{background:rgba(244,244,242,.07)}
@@ -459,6 +459,17 @@
   .spotifyBack:hover{color:var(--ink)}
   .spotifyPreviewTitle{font-size:15px;font-weight:500}
   .spotifyPreviewSub{font-family:var(--mono);font-size:10.5px;color:var(--dim);margin-top:3px}
+  .am-tools{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+  #appleUploadBtn{display:flex;align-items:center;justify-content:center;height:34px;padding:0 14px;
+    border-radius:10px;border:1px solid var(--hair);font-family:var(--mono);font-size:11px;
+    color:var(--dim);letter-spacing:.04em;transition:color .2s,border-color .2s}
+  #appleUploadBtn:hover{color:var(--ink);border-color:var(--dim)}
+  #appleSearch{flex:1;height:34px;padding:0 12px;border-radius:10px;border:1px solid var(--hair);
+    background:rgba(0,0,0,.24);color:var(--ink);font-family:var(--mono);font-size:11px;
+    letter-spacing:.03em}
+  #appleSearch::placeholder{color:var(--faint)}
+  #appleSearch:focus{outline:none;border-color:var(--dim)}
+  .am-subtle{font-family:var(--mono);font-size:10px;color:var(--faint);letter-spacing:.05em;text-transform:uppercase}
 
   /* ───────── Focus mode panel ───────── */
   #focusPanel{position:fixed;inset:0;z-index:60;pointer-events:none;opacity:0;transition:opacity .42s var(--ease)}
@@ -645,6 +656,9 @@
     <button class="tool" id="btnInfo" aria-label="Track info" title="Track  I">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg>
     </button>
+    <button class="tool" id="btnAppleMusic" aria-label="Apple Music import" title="Apple Music  A">
+      <svg viewBox="0 0 24 24"><path d="M15 5v9.6a3.2 3.2 0 1 1-1.6-2.8V7.2l6-1.2v7.4a3.2 3.2 0 1 1-1.6-2.8V5z"/></svg>
+    </button>
     <button class="tool" id="btnSpotify" aria-label="Spotify library" title="Spotify  S">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M7.5 9.5c3-1 6.5-.7 9 1"/><path d="M8 13c2.4-.8 5-.5 7 .8"/><path d="M8.5 16c1.8-.6 3.7-.4 5 .6"/></svg>
     </button>
@@ -812,6 +826,31 @@
     </aside>
   </div>
 
+  <div id="applePanel">
+    <div class="sp-scrim" id="appleClose"></div>
+    <aside class="sp-drawer">
+      <div class="sp-head">
+        <div class="sp-id">
+          <b id="appleAccount">Apple Music import</b>
+          <span id="appleScope">upload `apple_music_import.json` from the gallery export</span>
+        </div>
+        <button class="tool" id="appleCloseBtn" aria-label="Close">
+          <svg viewBox="0 0 24 24" style="width:19px;height:19px;stroke:currentColor;stroke-width:1.5;fill:none;stroke-linecap:round;stroke-linejoin:round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <div class="am-tools">
+        <button id="appleUploadBtn" type="button">choose export</button>
+        <input id="appleSearch" type="search" placeholder="filter albums" autocomplete="off" spellcheck="false" />
+        <input id="appleImportFile" type="file" accept="application/json,.json" hidden />
+      </div>
+      <div class="sp-conn">
+        <span class="am-subtle">fallback import</span>
+        <span id="amStat">select apple_music_import.json</span>
+      </div>
+      <div id="amList"></div>
+    </aside>
+  </div>
+
   <!-- Video search modal (mirrors the Field omni-search: bar + live dropdown) -->
   <div id="videoModal" role="dialog" aria-modal="true" aria-label="Search videos">
     <div class="vm-scrim" id="videoModalClose"></div>
@@ -916,6 +955,7 @@
 <script src="/static/gallery/app.js"></script>
 <script src="/static/gallery/eq.js"></script>
 <script src="/static/gallery/spotify.js"></script>
+<script src="/static/gallery/apple-music.js"></script>
 <script src="/static/gallery/focus.js"></script>
 <script src="/static/gallery/search.js"></script>
 <script src="/static/gallery/clock-modal.js"></script>

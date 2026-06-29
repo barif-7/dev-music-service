@@ -26,7 +26,13 @@ from slowapi.util import get_remote_address
 from starlette.concurrency import run_in_threadpool
 
 from config import get_settings
-from models import ImportedPlaylistTrack, LocalizeWindowRequest, SpotifySaveTrackRequest
+from models import (
+    AppleMusicImportAlbum,
+    ImportedPlaylistTrack,
+    LocalizeWindowRequest,
+    ProviderPlaylist,
+    SpotifySaveTrackRequest,
+)
 from security import (
     open_validated_stream,
     redact_sensitive_data,
@@ -34,6 +40,7 @@ from security import (
     validate_stream_url,
 )
 from services.focus_service import FocusProfile, FocusService
+from services.import_preview_service import ImportPreviewError, ImportPreviewService
 from services.local_playback_service import LocalPlaybackService
 from services.metadata_service import MetadataService, MetadataServiceError
 from services.live_transcription_service import LiveTranscriptionService
@@ -121,7 +128,13 @@ def fail_with_http_error(exc: Exception) -> None:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     if isinstance(
         exc,
-        (MusicServiceError, MetadataServiceError, SpotifyImportError, VideoServiceError),
+        (
+            ImportPreviewError,
+            MusicServiceError,
+            MetadataServiceError,
+            SpotifyImportError,
+            VideoServiceError,
+        ),
     ):
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -156,6 +169,7 @@ def health():
             "disabled-on-vercel" if settings.vercel else "openclaw-cli-optional"
         ),
         "spotify_import": "configured" if SpotifyImportService.is_configured() else "missing-client-id",
+        "apple_music_import": "upload-json",
     }
 
 
@@ -288,6 +302,47 @@ async def spotify_track_playback(request: Request, body: ImportedPlaylistTrack):
 @app.post("/api/import/spotify/disconnect")
 def spotify_disconnect():
     return SpotifyImportService.clear_connection()
+
+
+@app.post("/api/import/apple-music/preview")
+@limiter.limit("20 per minute")
+async def apple_music_album_preview(request: Request, body: AppleMusicImportAlbum):
+    try:
+        logger.info(
+            "apple_music_album_preview",
+            album_id=body.id,
+            track_count=len(body.tracks),
+        )
+        playlist = ProviderPlaylist(
+            provider="apple_music",
+            id=body.id,
+            name=body.name,
+            track_count=body.track_count or len(body.tracks),
+            owner=body.artist,
+            thumbnail=body.artwork_url,
+            provider_url=body.provider_url,
+        )
+        return (
+            await ImportPreviewService.build_preview(
+                provider="apple_music",
+                playlist=playlist,
+                imported_tracks=body.tracks,
+            )
+        ).model_dump()
+    except Exception as exc:
+        logger.error("apple_music_album_preview_failed", album_id=body.id, error=str(exc))
+        fail_with_http_error(exc)
+
+
+@app.post("/api/import/apple-music/playback")
+@limiter.limit("30 per minute")
+async def apple_music_track_playback(request: Request, body: ImportedPlaylistTrack):
+    try:
+        logger.info("apple_music_track_playback_requested", title=body.source.title)
+        return (await ImportPreviewService.resolve_track_playback(body)).model_dump()
+    except Exception as exc:
+        logger.error("apple_music_track_playback_failed", error=str(exc))
+        fail_with_http_error(exc)
 
 
 @app.get("/api/search")

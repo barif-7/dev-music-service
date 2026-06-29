@@ -20,8 +20,7 @@ from models import (
     ProviderPlaylist,
     SpotifyLikedTracksPreview,
 )
-from services.music_service import MusicService
-from services.musicbrainz_matcher import MusicBrainzMatcher
+from services.import_preview_service import ImportPreviewService
 
 
 class SpotifyImportError(Exception):
@@ -380,24 +379,10 @@ class SpotifyImportService:
             for item in (payload.get("items") or [])
             if (imported := SpotifyImportService._normalize_track(playlist_id, item)) is not None
         ]
-
-        # Match all tracks against MusicBrainz concurrently (rate-limited by the async lock inside)
-        match_results = await asyncio.gather(*[MusicBrainzMatcher.match_track(t) for t in imported_tracks])
-
-        tracks = [
-            ImportedPlaylistTrack(source=src, musicbrainz=match)
-            for src, match in zip(imported_tracks, match_results)
-        ]
-        matched = sum(1 for item in tracks if item.musicbrainz.confidence >= 80)
-        low = sum(1 for item in tracks if 0 < item.musicbrainz.confidence < 80)
-        unmatched = sum(1 for item in tracks if item.musicbrainz.confidence == 0)
-        return ImportedPlaylistPreview(
+        return await ImportPreviewService.build_preview(
             provider="spotify",
             playlist=playlist,
-            tracks=tracks,
-            matched_count=matched,
-            low_confidence_count=low,
-            unmatched_count=unmatched,
+            imported_tracks=imported_tracks,
         )
 
     @staticmethod
@@ -458,26 +443,26 @@ class SpotifyImportService:
             for item in (payload.get("items") or [])
             if (imported := SpotifyImportService._normalize_saved_track(item)) is not None
         ]
-        match_results = await asyncio.gather(
-            *[MusicBrainzMatcher.match_track(track) for track in imported_tracks]
+        preview = await ImportPreviewService.build_preview(
+            provider="spotify",
+            playlist=ProviderPlaylist(
+                provider="spotify",
+                id="liked",
+                name="Liked songs",
+                track_count=payload.get("total") or 0,
+            ),
+            imported_tracks=imported_tracks,
         )
-        tracks = [
-            ImportedPlaylistTrack(source=src, musicbrainz=match)
-            for src, match in zip(imported_tracks, match_results)
-        ]
-        matched = sum(1 for item in tracks if item.musicbrainz.confidence >= 80)
-        low = sum(1 for item in tracks if 0 < item.musicbrainz.confidence < 80)
-        unmatched = sum(1 for item in tracks if item.musicbrainz.confidence == 0)
 
         return SpotifyLikedTracksPreview(
             title="Liked songs",
             total=payload.get("total") or 0,
             limit=payload.get("limit") or limit,
             offset=payload.get("offset") or offset,
-            tracks=tracks,
-            matched_count=matched,
-            low_confidence_count=low,
-            unmatched_count=unmatched,
+            tracks=preview.tracks,
+            matched_count=preview.matched_count,
+            low_confidence_count=preview.low_confidence_count,
+            unmatched_count=preview.unmatched_count,
         )
 
     @staticmethod
@@ -523,110 +508,8 @@ class SpotifyImportService:
         return False
 
     @staticmethod
-    async def _search_playback_candidate(
-        query: str,
-        duration: int,
-        artist: str | None,
-        title: str | None,
-    ) -> list[dict]:
-        return await asyncio.to_thread(
-            MusicService.search,
-            query,
-            1,
-            duration or None,
-            artist,
-            title,
-        )
-
-    @staticmethod
     async def resolve_track_playback(item: ImportedPlaylistTrack) -> BrowserPlaybackState:
-        source = item.source
-        match = item.musicbrainz
-
-        title = match.title or source.title
-        artist = match.artist or (source.artist_names[0] if source.artist_names else None)
-        album = match.album or source.album
-        duration = round(source.duration_ms / 1000) if source.duration_ms else 0
-        query_variants = []
-        if artist and title:
-            query_variants.extend(
-                [
-                    f"{artist} {title}",
-                    f"{title} {artist}",
-                    f"{artist} - {title}",
-                    f"{artist} {title} official audio",
-                    f"{artist} {title} audio",
-                ]
-            )
-        if title:
-            query_variants.append(title)
-            query_variants.append(f"{title} official audio")
-            query_variants.append(f"{title} audio")
-            query_variants.append(f"{title} topic")
-        if artist:
-            query_variants.append(artist)
-            if title:
-                query_variants.append(f"{artist} - {title} official audio")
-        if source.title and source.title not in query_variants:
-            query_variants.append(source.title)
-        if source.artist_names:
-            query_variants.append(" ".join(source.artist_names + [source.title]))
-
-        query_variants = [q.strip() for q in query_variants if q and q.strip()]
-        if not query_variants:
-            raise SpotifyImportError("Spotify track is missing a searchable title and artist")
-
-        search_tasks = [
-            asyncio.create_task(
-                SpotifyImportService._search_playback_candidate(query, duration, artist, title)
-            )
-            for query in query_variants[:5]
-        ]
-        results = []
-        last_error: str | None = None
-        try:
-            for completed in asyncio.as_completed(search_tasks, timeout=8.0):
-                try:
-                    results = await completed
-                except Exception as exc:
-                    last_error = str(exc)
-                    continue
-                if results:
-                    break
-        except TimeoutError:
-            last_error = "search timed out"
-        finally:
-            for task in search_tasks:
-                if not task.done():
-                    task.cancel()
-
-        if not results:
-            raise SpotifyImportError(
-                f"No playback result found for '{query_variants[0]}'"
-                + (f" ({last_error})" if last_error else "")
-            )
-
-        result = results[0]
-        result_webpage_url = getattr(result, "webpage_url", None) if not isinstance(result, dict) else result.get("webpage_url")
-        result_duration = getattr(result, "duration", None) if not isinstance(result, dict) else result.get("duration")
-        result_thumbnail = getattr(result, "thumbnail", None) if not isinstance(result, dict) else result.get("thumbnail")
-        result_artwork_source = getattr(result, "artwork_source", None) if not isinstance(result, dict) else result.get("artwork_source")
-        result_artwork_confidence = getattr(result, "artwork_confidence", None) if not isinstance(result, dict) else result.get("artwork_confidence")
-        return MusicService.build_browser_state(
-            result_webpage_url,
-            title=title,
-            duration=duration or result_duration or 0,
-            album=album,
-            artist=artist,
-            thumbnail=match.artwork_url or source.artwork_url or result_thumbnail,
-            artwork_source="musicbrainz"
-            if match.artwork_url
-            else ("spotify" if source.artwork_url else result_artwork_source),
-            artwork_confidence=match.match_reason if match.match_reason != "unmatched" else result_artwork_confidence,
-            release_year=match.release_year or MusicService._extract_year(
-                {"release_year": match.release_year, "release_date": source.release_date}
-            ),
-        )
+        return await ImportPreviewService.resolve_track_playback(item)
 
     @staticmethod
     def clear_connection() -> HTMLResponse:

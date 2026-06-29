@@ -5,14 +5,18 @@ from urllib.error import URLError
 
 from models import (
     AutocompleteSuggestion,
+    ImportedPlaylistTrack,
     ImportedTrack,
     LyricsLine,
+    MusicBrainzTrackMatch,
+    ProviderPlaylist,
     SongSearchResult,
     VideoSearchResult,
 )
 from services.lyrics_localization_service import LyricsLocalizationService
 from services.focus_service import AudioFeatures, DEFAULT_PROFILE, FocusProfile, FocusService
 from services.focus_storage import KvFocusProfileStorageStub, LocalJsonFocusProfileStorage
+from services.import_preview_service import ImportPreviewService
 from services.lyrics_service import LyricsService
 from services.musicbrainz_matcher import MusicBrainzMatcher
 from services.music_service import MusicService, MusicServiceError, SearchServiceError, StreamResolutionError
@@ -777,3 +781,94 @@ class TestFocusProfileStorage:
 
         with pytest.raises(RuntimeError, match="KV focus profile storage is not wired"):
             storage.load()
+
+
+class TestImportPreviewService:
+    @pytest.mark.anyio
+    async def test_build_preview_counts_match_levels(self, monkeypatch):
+        tracks = [
+            ImportedTrack(
+                provider="apple_music",
+                provider_track_id=f"track-{idx}",
+                provider_playlist_id="album-1",
+                title=f"Song {idx}",
+                artist_names=["Fixture Artist"],
+                album="Fixture Album",
+                duration_ms=180000,
+            )
+            for idx in range(3)
+        ]
+        matches = iter(
+            [
+                MusicBrainzTrackMatch(confidence=92, match_reason="isrc"),
+                MusicBrainzTrackMatch(confidence=64, match_reason="artist_title_duration"),
+                MusicBrainzTrackMatch(confidence=0, match_reason="unmatched"),
+            ]
+        )
+
+        async def fake_match(_track):
+            return next(matches)
+
+        monkeypatch.setattr(MusicBrainzMatcher, "match_track", fake_match)
+        preview = await ImportPreviewService.build_preview(
+            provider="apple_music",
+            playlist=ProviderPlaylist(
+                provider="apple_music",
+                id="album-1",
+                name="Fixture Album",
+                track_count=3,
+                owner="Fixture Artist",
+            ),
+            imported_tracks=tracks,
+        )
+
+        assert preview.matched_count == 1
+        assert preview.low_confidence_count == 1
+        assert preview.unmatched_count == 1
+        assert len(preview.tracks) == 3
+
+    @pytest.mark.anyio
+    async def test_resolve_track_playback_prefers_import_metadata(self, monkeypatch):
+        item = ImportedPlaylistTrack(
+            source=ImportedTrack(
+                provider="apple_music",
+                provider_track_id="track-1",
+                provider_playlist_id="album-1",
+                title="Blinding Lights",
+                artist_names=["The Weeknd"],
+                album="After Hours",
+                duration_ms=200000,
+                release_year=2020,
+                artwork_url="https://img.example/source.jpg",
+            ),
+            musicbrainz=MusicBrainzTrackMatch(
+                title="Blinding Lights",
+                artist="The Weeknd",
+                album="After Hours",
+                release_year=2020,
+                confidence=94,
+                match_reason="artist_title_duration",
+                artwork_url="https://img.example/musicbrainz.jpg",
+            ),
+        )
+
+        async def fake_search(_query, _duration, _artist, _title):
+            return [
+                {
+                    "webpage_url": "https://youtube.com/watch?v=test",
+                    "duration": 201,
+                    "thumbnail": "https://img.example/youtube.jpg",
+                    "artwork_source": "youtube",
+                    "artwork_confidence": "video",
+                }
+            ]
+
+        monkeypatch.setattr(ImportPreviewService, "_search_playback_candidate", fake_search)
+        state = await ImportPreviewService.resolve_track_playback(item)
+
+        assert state.title == "Blinding Lights"
+        assert state.artist == "The Weeknd"
+        assert state.album == "After Hours"
+        assert state.thumbnail == "https://img.example/musicbrainz.jpg"
+        assert state.artwork_source == "musicbrainz"
+        assert state.release_year == 2020

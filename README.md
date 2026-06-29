@@ -19,6 +19,8 @@ The main product surface is the web app served from `/`, backed by search and st
 - `GET /api/import/spotify/start` starts read-only Spotify playlist import auth.
 - `GET /api/import/spotify/playlists` lists authenticated Spotify playlists.
 - `GET /api/import/spotify/playlists/{playlist_id}/preview` maps playlist tracks to MusicBrainz.
+- `POST /api/import/apple-music/preview` matches uploaded Apple Music export albums against MusicBrainz.
+- `POST /api/import/apple-music/playback` resolves matched Apple Music tracks to browser playback.
 - `GET /api/integrations/openclaw/play` launches local playback with `ffplay`.
 - `GET /api/integrations/openclaw/stop` stops current local playback.
 - `GET /api/integrations/openclaw/resume` restarts the most recent local playback.
@@ -71,6 +73,12 @@ starts failing.
 - Optionally set `SPOTIFY_REDIRECT_URI` if automatic callback URL detection does not match the registered Spotify redirect URI exactly.
 - Requested scopes include `playlist-read-private`, `playlist-read-collaborative`, `user-library-read`, and `user-library-modify` so users can browse and save Liked Songs.
 - Reconnect Spotify after adding new scopes so the access token picks them up.
+
+## Apple Music fallback import
+
+- Build the Apple Music gallery export so it writes `apple_music_import.json`.
+- In the browser UI, open the Apple Music drawer and upload that JSON file.
+- The browser keeps the file local and sends one album at a time to `/api/import/apple-music/preview` for MusicBrainz matching before playback.
 
 ## Playback rules
 
