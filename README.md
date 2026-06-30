@@ -1,13 +1,10 @@
 # dev-music-service
 
-**FastAPI music platform with browser-first playback, search, streaming, synced lyrics, and Spotify import.**
+**Production-Ready Music Streaming Service**
 
-[![Python](https://img.shields.io/badge/Python-3.x-blue)](https://python.org) [![FastAPI](https://img.shields.io/badge/FastAPI-teal)](https://fastapi.tiangolo.com)
+FastAPI backend with browser-first playback, lyrics, Spotify import, and local integrations.
 
-## Key Endpoints
-- Browser UI + streaming.
-- Lyrics from LRCLIB.
-- Local playback integrations.
+## Status
+Currently on `production-readiness-phase-1` branch for incremental improvements.
 
-## Quick Start
-`./run.sh` for local dev. See original for yt-dlp and deployment notes.
+See original README for full details. This branch focuses on stability and polish.
