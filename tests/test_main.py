@@ -53,13 +53,13 @@ class TestFrontendAssets:
     """Tests for the extracted static frontend."""
 
     def test_root_serves_static_index(self, client: TestClient):
-        """Root should serve the static index with external assets."""
+        """Root should serve the static index with the gallery frontend."""
         response = client.get("/")
 
         assert response.status_code == 200
-        assert 'href="/static/styles.css"' in response.text
-        assert 'src="/static/app.js"' in response.text
-        assert 'id="themeModal"' in response.text
+        assert "Phase · Field" in response.text
+        assert 'src="/static/gallery/app.js"' in response.text
+        assert 'id="streamEl"' in response.text
 
     def test_static_assets_served(self, client: TestClient):
         """Static CSS and JS assets should be mounted."""
@@ -547,10 +547,10 @@ class TestMetadataEndpoint:
 class TestSpotifyImportEndpoints:
     """Tests for Spotify import endpoints."""
 
-    def test_spotify_start_without_config(self, client: TestClient):
+    def test_spotify_start_without_config(self, client: TestClient, no_spotify_env):
         """Spotify start should error when not configured."""
         response = client.get("/api/import/spotify/start")
-        
+
         assert response.status_code == 502
 
     def test_spotify_start_with_config(self, client: TestClient, mock_spotify_env):

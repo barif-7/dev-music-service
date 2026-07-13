@@ -52,6 +52,14 @@ def mock_spotify_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture
+def no_spotify_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Force Spotify to be unconfigured even when a local .env supplies
+    credentials (env vars take precedence over the .env file)."""
+    monkeypatch.setenv("SPOTIFY_CLIENT_ID", "")
+    monkeypatch.setenv("SPOTIFY_CLIENT_SECRET", "")
+
+
+@pytest.fixture
 def mock_vercel_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Mock Vercel environment for testing."""
     monkeypatch.setenv("VERCEL", "true")

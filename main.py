@@ -319,10 +319,10 @@ async def search_song(
             query,
             limit,
             target_duration,
-            expected_artist,
-            expected_title,
-            expected_album,
-            expected_year,
+            expected_artist=expected_artist,
+            expected_title=expected_title,
+            expected_album=expected_album,
+            expected_year=expected_year,
         )
         results = [result.model_dump() for result in search_results]
         return JSONResponse(content=results, headers={"Cache-Control": "public, max-age=300"})
