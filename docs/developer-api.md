@@ -25,6 +25,7 @@ example is safe to copy verbatim. `.env` is gitignored; never commit secrets.
 | `SPOTIFY_CLIENT_ID` | – | Spotify app client ID (required for import + autocomplete) |
 | `SPOTIFY_CLIENT_SECRET` | – | Spotify app secret (required for client-credentials autocomplete) |
 | `SPOTIFY_REDIRECT_URI` | – | OAuth callback; must match the Spotify dashboard exactly |
+| `CAPTION_LOCALIZER_URL` | `http://127.0.0.1:8001` | Separate CaptionLocalizer service used for lyric translation and transcription |
 | `PHASE_FIELD_API_BASE_URL` | `http://localhost:8787` | Upstream for the `/api/shaders` proxy |
 | `STREAM_ALLOWED_HOSTS` | media host allowlist | Comma-separated suffix allowlist for `/stream` targets (whitespace trimmed) |
 | `STREAM_DELIVERY_MODE` | `proxy` | `proxy` streams bytes; `redirect` returns a 302 |
@@ -58,8 +59,19 @@ unreachable. Responses cache for 5 minutes. Start the worker with
 - `GET /api/search?q=` — MusicBrainz-first, then YouTube.
 - `GET /api/stream?url=` — proxied (or redirected) media stream; target host
   must match `STREAM_ALLOWED_HOSTS`.
-- `GET /api/lyrics?title=&artist=[&album=&duration=]` — LRCLIB synced lyrics.
+- `GET /api/lyrics?title=&artist=[&album=&duration=&locale=]` — LRCLIB synced lyrics,
+  optionally localized through CaptionLocalizer.
+- `POST /api/lyrics/localize-window` — localize a small lyric window just in time.
 - `GET /api/metadata?url=` — track metadata for a webpage URL.
+
+Lyric localization requires CaptionLocalizer to run separately from this app.
+For local development, keep dev-music-service on `127.0.0.1:8000`, start
+CaptionLocalizer on `127.0.0.1:8001`, and set
+`CAPTION_LOCALIZER_URL=http://127.0.0.1:8001`. dev-music-service calls
+CaptionLocalizer's lyrics-native `/tools/localize_lyrics/run` tool. If both
+apps point at `:8000`, dev-music-service would call its own tool path and get
+`404 Not Found`, so the bridge guards against that self-reference and falls
+back to the default local CaptionLocalizer port.
 
 ### Spotify import (see below)
 

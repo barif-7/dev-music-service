@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     focus_profile_kv_namespace: str | None = None
     phase_field_api_base_url: str = "http://localhost:8787"
     # CaptionLocalizer integration — used to localize synced lyric lines on demand.
-    caption_localizer_url: str = "http://127.0.0.1:8000"
+    caption_localizer_url: str = "http://127.0.0.1:8001"
     lyrics_source_locale: str = "auto"
     # Live localization tuning. The first window of lines is translated inline so
     # the caption appears quickly; the rest are filled in the background and

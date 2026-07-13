@@ -19,9 +19,11 @@ class TestHealthEndpoint:
         assert data["stream_delivery"] == "proxy"
         assert "local_integration" in data
         assert "spotify_import" in data
+        assert "caption_localizer_url" in data
 
-    def test_health_spotify_not_configured(self, client: TestClient):
+    def test_health_spotify_not_configured(self, client: TestClient, monkeypatch: pytest.MonkeyPatch):
         """Health should show spotify_import as missing-client-id when not configured."""
+        monkeypatch.setenv("SPOTIFY_CLIENT_ID", "")
         response = client.get("/health")
         
         assert response.status_code == 200
@@ -36,6 +38,15 @@ class TestHealthEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert data["spotify_import"] == "configured"
+
+    def test_health_reports_caption_localizer_url(self, client: TestClient, monkeypatch: pytest.MonkeyPatch):
+        """Health should expose the configured CaptionLocalizer URL for diagnostics."""
+        monkeypatch.setenv("CAPTION_LOCALIZER_URL", "http://127.0.0.1:8001")
+        response = client.get("/health")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["caption_localizer_url"] == "http://127.0.0.1:8001"
 
 
 class TestFrontendAssets:
@@ -904,9 +915,11 @@ class TestLiveLyricsEndpoints:
                     "title": "Song",
                     "artist": "Artist",
                     "locale": "es",
+                    "bpm": 92,
+                    "mood": ["sad"],
                     "lines": [
-                        {"index": 0, "text": "hello"},
-                        {"index": 2, "text": "world"},
+                        {"index": 0, "text": "hello", "start_time_ms": 0, "end_time_ms": 1000},
+                        {"index": 2, "text": "world", "start_time_ms": 2000, "end_time_ms": 3000},
                     ],
                 },
             )
@@ -914,7 +927,9 @@ class TestLiveLyricsEndpoints:
         assert response.status_code == 200
         assert response.json() == {"localized": {"0": "hola", "2": "mundo"}}
         _, kwargs = mocked.call_args
-        assert kwargs["items"] == [(0, "hello"), (2, "world")]
+        assert kwargs["items"] == [(0, "hello", 0, 1000), (2, "world", 2000, 3000)]
+        assert kwargs["bpm"] == 92
+        assert kwargs["mood"] == ["sad"]
 
     def test_localize_window_requires_locale(self, client: TestClient):
         response = client.post(

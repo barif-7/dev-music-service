@@ -152,6 +152,7 @@ def health():
         "backend_origin": settings.backend_origin,
         "frontend_origin": settings.dev_music_frontend_origin,
         "mcp_origin": settings.dev_music_mcp_origin,
+        "caption_localizer_url": settings.caption_localizer_url,
         "local_integration": (
             "disabled-on-vercel" if settings.vercel else "openclaw-cli-optional"
         ),
@@ -414,7 +415,15 @@ def localize_lyrics_window(request: Request, body: LocalizeWindowRequest):
             album=body.album,
             duration=body.duration,
             locale=body.locale,
-            items=[(line.index, line.text) for line in body.lines],
+            items=[
+                (line.index, line.text, line.start_time_ms, line.end_time_ms)
+                for line in body.lines
+            ],
+            section=body.section,
+            bpm=body.bpm,
+            mood=body.mood,
+            preserve_singability=body.preserve_singability,
+            preserve_repetition=body.preserve_repetition,
         )
         payload = {"localized": {str(index): text for index, text in mapping.items()}}
         return JSONResponse(content=payload)

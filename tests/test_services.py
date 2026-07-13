@@ -13,7 +13,7 @@ from models import (
 from services.lyrics_localization_service import LyricsLocalizationService
 from services.focus_service import AudioFeatures, DEFAULT_PROFILE, FocusProfile, FocusService
 from services.focus_storage import KvFocusProfileStorageStub, LocalJsonFocusProfileStorage
-from services.lyrics_service import LyricsService
+from services.lyrics_service import LyricsProviderError, LyricsService
 from services.musicbrainz_matcher import MusicBrainzMatcher
 from services.music_service import MusicService, MusicServiceError, SearchServiceError, StreamResolutionError
 from services.metadata_service import MetadataService, MetadataServiceError
@@ -568,6 +568,20 @@ class TestLyricsParsing:
     def test_parse_malformed_synced_lyrics(self):
         assert LyricsService._parse_synced_lyrics("no timestamp\n[bad]line") == []
 
+    def test_lrclib_provider_outage_returns_empty_response(self, monkeypatch):
+        def _provider_down(path, params):
+            raise LyricsProviderError("Could not reach LRCLIB")
+
+        monkeypatch.setattr(LyricsService, "_request_json", _provider_down)
+        monkeypatch.setattr(LyricsService, "_request_json_list", lambda path, params: [])
+
+        response = LyricsService.get_lyrics("luther", "Kendrick Lamar", "GNX", 177)
+
+        assert response.provider == "lrclib_unavailable"
+        assert response.title == "luther"
+        assert response.artist == "Kendrick Lamar"
+        assert response.lines == []
+
 
 class TestLyricsLocalization:
     """Tests for the CaptionLocalizer bridge used to localize lyric lines."""
@@ -578,12 +592,20 @@ class TestLyricsLocalization:
             LyricsLine(text="Look how they shine", start_time_ms=2000, end_time_ms=4000),
         ]
 
-    def _fake_urlopen(self, segments):
+    def _fake_urlopen(self, segments, calls=None):
         import json as _json
         from contextlib import contextmanager
 
         @contextmanager
         def _ctx(request, timeout=None):
+            if calls is not None:
+                calls.append(
+                    {
+                        "url": request.full_url,
+                        "payload": _json.loads(request.data.decode("utf-8")),
+                    }
+                )
+
             class _Resp:
                 def read(self_inner):
                     return _json.dumps({"output": {"segments": segments}}).encode("utf-8")
@@ -594,8 +616,12 @@ class TestLyricsLocalization:
 
     def test_localize_maps_localized_text_by_index(self, monkeypatch):
         segments = [
-            {"localized_text": "Mira las estrellas"},
-            {"localized_text": "Mira cómo brillan"},
+            {"index": 0, "localized_text": "Mira las estrellas"},
+            {
+                "index": 1,
+                "localized_text": "Mira cómo brillan",
+                "quality": {"timing_fit": "ok", "too_long": False},
+            },
         ]
         monkeypatch.setattr(
             "services.lyrics_localization_service.urlopen", self._fake_urlopen(segments)
@@ -609,6 +635,38 @@ class TestLyricsLocalization:
         # timing and source text are preserved
         assert result[0].start_time_ms == 0
         assert result[0].text == "Look at the stars"
+        assert result[1].localization_quality == {"timing_fit": "ok", "too_long": False}
+
+    def test_call_uses_lyrics_tool_and_song_context(self, monkeypatch):
+        calls = []
+        segments = [{"index": 0, "localized_text": "Mira las estrellas"}]
+        monkeypatch.setattr(
+            "services.lyrics_localization_service.urlopen",
+            self._fake_urlopen(segments, calls),
+        )
+
+        result = LyricsLocalizationService.localize_subset(
+            self._lines(),
+            [0],
+            "es-MX",
+            song_context={
+                "title": "Yellow",
+                "artist": "Coldplay",
+                "bpm": 87,
+                "mood": ["wistful"],
+                "preserve_singability": True,
+            },
+        )
+
+        assert result == {0: "Mira las estrellas"}
+        assert calls[0]["url"].endswith("/tools/localize_lyrics/run")
+        payload = calls[0]["payload"]["input"]
+        assert payload["segments"][0]["index"] == 0
+        assert payload["segments"][0]["start_ms"] == 0
+        assert payload["song_context"]["title"] == "Yellow"
+        assert payload["song_context"]["mood"] == ["wistful"]
+        assert payload["localization_policy"]["mode"] == "lyrics"
+        assert payload["localization_policy"]["avoid_ad_copy_rewrite"] is True
 
     def test_localize_no_locale_is_passthrough(self):
         lines = self._lines()
@@ -631,7 +689,7 @@ class TestLyricsLocalization:
             LyricsLine(text="two", start_time_ms=1000, end_time_ms=2000),
             LyricsLine(text="three", start_time_ms=2000, end_time_ms=3000),
         ]
-        segments = [{"localized_text": "uno"}, {"localized_text": "tres"}]
+        segments = [{"index": 0, "localized_text": "uno"}, {"index": 2, "localized_text": "tres"}]
         monkeypatch.setattr(
             "services.lyrics_localization_service.urlopen", self._fake_urlopen(segments)
         )
@@ -639,7 +697,7 @@ class TestLyricsLocalization:
         assert result == {0: "uno", 2: "tres"}
 
     def test_localize_items_maps_by_carried_index(self, monkeypatch):
-        segments = [{"localized_text": "uno"}, {"localized_text": "dos"}]
+        segments = [{"index": 5, "localized_text": "uno"}, {"index": 9, "localized_text": "dos"}]
         monkeypatch.setattr(
             "services.lyrics_localization_service.urlopen", self._fake_urlopen(segments)
         )
@@ -661,8 +719,10 @@ class TestLyricsWindow:
     def test_localize_window_translates_then_caches(self, monkeypatch):
         calls = []
 
-        def _fake_items(items, locale):
+        def _fake_items(items, locale, song_context=None):
             calls.append(list(items))
+            assert song_context["title"] == "T"
+            assert song_context["artist"] == "A"
             return {index: f"{text}-{locale}" for index, text in items}
 
         monkeypatch.setattr(
@@ -680,7 +740,7 @@ class TestLyricsWindow:
     def test_localize_window_only_requests_missing(self, monkeypatch):
         calls = []
 
-        def _fake_items(items, locale):
+        def _fake_items(items, locale, song_context=None):
             calls.append([i for i, _ in items])
             return {index: f"x{index}" for index, _ in items}
 

@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -171,11 +171,17 @@ class LyricsLine(BaseModel):
     localized_text: Optional[str] = Field(
         default=None, description="Line translated into the requested target locale"
     )
+    localization_quality: Optional[Dict[str, object]] = Field(
+        default=None,
+        description="Optional quality metadata from the lyrics localization service",
+    )
 
 
 class LocalizeWindowLine(BaseModel):
     index: int = Field(ge=0, description="Stable line index within the track's lyric lines")
     text: str = Field(min_length=1, max_length=1000)
+    start_time_ms: Optional[int] = Field(default=None, ge=0)
+    end_time_ms: Optional[int] = Field(default=None, ge=0)
 
 
 class LocalizeWindowRequest(BaseModel):
@@ -184,6 +190,11 @@ class LocalizeWindowRequest(BaseModel):
     album: Optional[str] = Field(default=None, max_length=500)
     duration: Optional[int] = Field(default=None, ge=0)
     locale: str = Field(min_length=1, max_length=35)
+    bpm: Optional[int] = Field(default=None, ge=1, le=400)
+    mood: List[str] = Field(default_factory=list, max_length=12)
+    section: Optional[str] = Field(default=None, max_length=100)
+    preserve_singability: bool = True
+    preserve_repetition: bool = True
     lines: List[LocalizeWindowLine] = Field(
         default_factory=list,
         max_length=200,

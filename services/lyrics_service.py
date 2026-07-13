@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import threading
 import time
@@ -17,6 +18,7 @@ from services.music_service import MusicServiceError
 from services.text_match import combined_score
 
 _TIMESTAMP_RE = re.compile(r"\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\]")
+logger = logging.getLogger(__name__)
 
 
 class LyricsServiceError(MusicServiceError):
@@ -237,6 +239,24 @@ class LyricsService:
         )
 
     @staticmethod
+    def _unavailable_response(query: _LyricsQuery, exc: Exception) -> LyricsResponse:
+        """Return an empty successful payload so the UI can try transcription.
+
+        LRCLIB is an upstream lyrics provider, not the whole lyrics experience.
+        When it is unreachable, the frontend can still fall through to
+        /api/lyrics/transcribe if this endpoint returns an empty 200 response.
+        """
+        logger.warning("lrclib_unavailable: %s", exc)
+        return LyricsResponse(
+            provider="lrclib_unavailable",
+            title=query.title,
+            artist=query.artist,
+            album=query.album,
+            duration=query.duration,
+            lines=[],
+        )
+
+    @staticmethod
     def get_lyrics(
         title: str,
         artist: str,
@@ -265,6 +285,7 @@ class LyricsService:
         if cached is not None:
             return cached
 
+        provider_error: LyricsProviderError | None = None
         try:
             payload = LyricsService._request_json(
                 "/get",
@@ -278,8 +299,15 @@ class LyricsService:
             return LyricsService._cache_set(cache_key, LyricsService._build_response(payload, query))
         except LyricsNotFoundError:
             pass
+        except LyricsProviderError as exc:
+            provider_error = exc
 
-        payload = LyricsService._search_fallback(query)
+        try:
+            payload = LyricsService._search_fallback(query)
+        except LyricsNotFoundError:
+            if provider_error is not None:
+                return LyricsService._unavailable_response(query, provider_error)
+            raise
         return LyricsService._cache_set(cache_key, LyricsService._build_response(payload, query))
 
     # ── Live (windowed) localization ────────────────────────────────────────
@@ -331,7 +359,11 @@ class LyricsService:
 
     @staticmethod
     def _background_fill(
-        loc_key: tuple, lines: list[LyricsLine], locale: str, already: set[int]
+        loc_key: tuple,
+        lines: list[LyricsLine],
+        locale: str,
+        already: set[int],
+        song_context: dict,
     ) -> None:
         """Translate every still-untranslated line into the cache, in chunks, so
         later just-in-time windows are cache hits. Runs on a daemon thread."""
@@ -340,14 +372,22 @@ class LyricsService:
             pending = [i for i in range(len(lines)) if i not in already]
             for start in range(0, len(pending), chunk):
                 indices = pending[start : start + chunk]
-                mapping = LyricsLocalizationService.localize_subset(lines, indices, locale)
+                mapping = LyricsLocalizationService.localize_subset(
+                    lines, indices, locale, song_context=song_context
+                )
                 LyricsService._store_localized(loc_key, mapping)
         finally:
             with LyricsService._cache_lock:
                 LyricsService._localized_inflight.discard(loc_key)
 
     @staticmethod
-    def _start_background_fill(loc_key: tuple, lines: list[LyricsLine], locale: str, already: set[int]) -> None:
+    def _start_background_fill(
+        loc_key: tuple,
+        lines: list[LyricsLine],
+        locale: str,
+        already: set[int],
+        song_context: dict,
+    ) -> None:
         if not get_settings().lyrics_localize_background_fill:
             return
         if len(already) >= len(lines):
@@ -358,7 +398,7 @@ class LyricsService:
             LyricsService._localized_inflight.add(loc_key)
         thread = threading.Thread(
             target=LyricsService._background_fill,
-            args=(loc_key, lines, locale, set(already)),
+            args=(loc_key, lines, locale, set(already), dict(song_context)),
             daemon=True,
         )
         thread.start()
@@ -370,7 +410,13 @@ class LyricsService:
         album: str | None,
         duration: int | None,
         locale: str,
-        items: list[tuple[int, str]],
+        items: list[tuple[int, str] | tuple[int, str, int | None, int | None]],
+        *,
+        section: str | None = None,
+        bpm: int | None = None,
+        mood: list[str] | None = None,
+        preserve_singability: bool = True,
+        preserve_repetition: bool = True,
     ) -> dict[int, str]:
         """Return localized text for the requested ``(index, text)`` lines only.
 
@@ -385,21 +431,35 @@ class LyricsService:
 
         loc_key = (LyricsService._base_key(title, artist, album, duration), locale)
         cached = LyricsService._localized_map(loc_key)
+        song_context = LyricsLocalizationService.build_song_context(
+            title=title,
+            artist=artist,
+            album=album,
+            duration=duration,
+            section=section,
+            bpm=bpm,
+            mood=mood or [],
+            preserve_singability=preserve_singability,
+            preserve_repetition=preserve_repetition,
+        )
 
         result: dict[int, str] = {}
-        missing: list[tuple[int, str]] = []
+        missing: list[tuple[int, str] | tuple[int, str, int | None, int | None]] = []
         seen: set[int] = set()
-        for index, text in items:
+        for item in items:
+            index = item[0]
             if index in seen:
                 continue
             seen.add(index)
             if index in cached:
                 result[index] = cached[index]
             else:
-                missing.append((index, text))
+                missing.append(item)
 
         if missing:
-            fresh = LyricsLocalizationService.localize_items(missing, locale)
+            fresh = LyricsLocalizationService.localize_items(
+                missing, locale, song_context=song_context
+            )
             LyricsService._store_localized(loc_key, fresh)
             result.update(fresh)
         return result
@@ -425,13 +485,23 @@ class LyricsService:
 
         loc_key = (LyricsService._base_key(title, artist, album, duration), locale)
         cached = LyricsService._localized_map(loc_key)
+        song_context = LyricsLocalizationService.build_song_context(
+            title=response.title,
+            artist=response.artist,
+            album=response.album,
+            duration=response.duration,
+        )
 
         window = max(0, get_settings().lyrics_localize_window)
         first = [i for i in range(min(window, len(response.lines))) if i not in cached]
         if first:
-            fresh = LyricsLocalizationService.localize_subset(response.lines, first, locale)
+            fresh = LyricsLocalizationService.localize_subset(
+                response.lines, first, locale, song_context=song_context
+            )
             LyricsService._store_localized(loc_key, fresh)
             cached.update(fresh)
 
-        LyricsService._start_background_fill(loc_key, response.lines, locale, set(cached))
+        LyricsService._start_background_fill(
+            loc_key, response.lines, locale, set(cached), song_context
+        )
         return LyricsService._apply_localized(response, cached, locale)
