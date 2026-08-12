@@ -139,13 +139,13 @@ class AudioFeaturesUnavailableError(Exception):
 class FocusProfile:
 
     @staticmethod
-    def load() -> dict:
+    def load(user_id: str | None = None) -> dict:
         with _PROFILE_LOCK:
-            profile = build_focus_profile_storage(get_settings()).load()
+            profile = build_focus_profile_storage(get_settings(), user_id).load()
             return {**DEFAULT_PROFILE, **profile} if profile else dict(DEFAULT_PROFILE)
 
     @staticmethod
-    def save(profile: dict) -> dict:
+    def save(profile: dict, user_id: str | None = None) -> dict:
         merged = {**DEFAULT_PROFILE, **profile}
         # clamp values
         merged["bpm_min"] = max(40, min(220, int(merged["bpm_min"])))
@@ -156,13 +156,13 @@ class FocusProfile:
         merged["valence_min"] = max(0.0, min(1.0, float(merged["valence_min"])))
         merged["valence_max"] = max(merged["valence_min"], min(1.0, float(merged["valence_max"])))
         with _PROFILE_LOCK:
-            build_focus_profile_storage(get_settings()).save(merged)
+            build_focus_profile_storage(get_settings(), user_id).save(merged)
         return merged
 
     @staticmethod
-    def reset() -> dict:
+    def reset(user_id: str | None = None) -> dict:
         with _PROFILE_LOCK:
-            build_focus_profile_storage(get_settings()).reset()
+            build_focus_profile_storage(get_settings(), user_id).reset()
         return dict(DEFAULT_PROFILE)
 
 
