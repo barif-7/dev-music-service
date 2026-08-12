@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ipaddress
+import hmac
 from collections.abc import Mapping
 from urllib.parse import urljoin, urlparse
 
@@ -53,7 +54,9 @@ def validate_control_auth(request: Request) -> None:
     auth_header = request.headers.get("authorization", "")
     bearer = auth_header.removeprefix("Bearer ").strip()
     header_token = request.headers.get("x-dev-music-token")
-    if bearer == token or header_token == token:
+    bearer_matches = bool(bearer) and hmac.compare_digest(bearer, token)
+    header_matches = bool(header_token) and hmac.compare_digest(header_token, token)
+    if bearer_matches or header_matches:
         return
     raise HTTPException(status_code=401, detail="Control route auth required")
 
