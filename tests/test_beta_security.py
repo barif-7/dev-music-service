@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from unittest.mock import patch
+
 from fastapi.testclient import TestClient
 
 from main import app
@@ -78,3 +80,21 @@ def test_host_controls_fail_closed_during_beta(monkeypatch, tmp_path):
     with TestClient(app, raise_server_exceptions=False) as client:
         _login(client)
         assert client.get("/stop").status_code == 403
+
+
+def test_user_supplied_private_urls_are_rejected_before_services(client):
+    private_url = "http://127.0.0.1:8766/private"
+    with patch("main.MusicService.get_metadata") as metadata:
+        response = client.get("/api/metadata", params={"url": private_url})
+    assert response.status_code == 403
+    metadata.assert_not_called()
+
+    with patch("main.MusicService.build_browser_state") as playback:
+        response = client.post("/api/browser/playback", json={"url": private_url})
+    assert response.status_code == 403
+    playback.assert_not_called()
+
+    with patch("main.MusicService.get_stream_source") as stream:
+        response = client.get("/api/stream", params={"url": private_url})
+    assert response.status_code == 403
+    stream.assert_not_called()
