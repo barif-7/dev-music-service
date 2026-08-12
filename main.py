@@ -132,6 +132,12 @@ def root():
     return FileResponse(STATIC_DIR / "index.html")
 
 
+@app.get("/share")
+def share_entry():
+    """Serve the share-link entry point; the frontend resolves its query params."""
+    return FileResponse(STATIC_DIR / "index.html")
+
+
 @app.get("/debug-playback.html")
 def debug_playback():
     """Serve the debug playback test page."""
