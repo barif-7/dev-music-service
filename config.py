@@ -29,6 +29,16 @@ class Settings(BaseSettings):
     spotify_redirect_uri: str | None = None
     vercel: bool = Field(default=False)
     dms_control_auth_token: str | None = None
+    # Small private-beta authentication. Disabled by default so local development
+    # remains frictionless; hosted deployments should enable it and provide all
+    # three secrets/identity settings below.
+    beta_auth_enabled: bool = False
+    beta_auth_secret: str | None = None
+    beta_invite_code: str | None = None
+    beta_allowed_emails: Annotated[tuple[str, ...], NoDecode] = ()
+    beta_owner_email: str | None = None
+    beta_session_hours: int = 168
+    beta_cookie_secure: bool = False
     # NoDecode keeps pydantic-settings from JSON-decoding the env value so the
     # comma-separated form below is parsed by _parse_stream_allowed_hosts.
     stream_allowed_hosts: Annotated[tuple[str, ...], NoDecode] = (
@@ -66,6 +76,20 @@ class Settings(BaseSettings):
             return tuple(item.strip() for item in value.split(",") if item.strip())
         return value
 
+    @field_validator("beta_allowed_emails", mode="before")
+    @classmethod
+    def _parse_beta_allowed_emails(cls, value):
+        if isinstance(value, str):
+            return tuple(
+                item.strip().lower() for item in value.split(",") if item.strip()
+            )
+        return value
+
+    @field_validator("beta_owner_email", mode="before")
+    @classmethod
+    def _normalize_beta_owner_email(cls, value):
+        return value.strip().lower() if isinstance(value, str) and value.strip() else None
+
     @field_validator("stream_delivery_mode")
     @classmethod
     def _validate_stream_delivery_mode(cls, value: str) -> str:
@@ -89,6 +113,15 @@ class Settings(BaseSettings):
     @property
     def focus_profile_path(self) -> Path:
         return self.dms_data_dir / "focus_profile.json"
+
+    @property
+    def beta_auth_configured(self) -> bool:
+        return bool(
+            self.beta_auth_secret
+            and self.beta_invite_code
+            and self.beta_owner_email
+            and self.beta_owner_email in self.beta_allowed_emails
+        )
 
 
 def get_settings() -> Settings:

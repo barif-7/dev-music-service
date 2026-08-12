@@ -1,4 +1,5 @@
 import os
+import json
 import logging
 import re
 import subprocess  # nosec B404
@@ -19,7 +20,7 @@ from fastapi.responses import (
     StreamingResponse,
 )
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -32,6 +33,16 @@ from security import (
     redact_sensitive_data,
     validate_control_auth,
     validate_stream_url,
+)
+from services.beta_auth_service import (
+    SESSION_COOKIE,
+    authenticate_invite,
+    create_session,
+    is_owner,
+    login_redirect,
+    request_user,
+    safe_next_path,
+    verify_session,
 )
 from services.focus_service import FocusProfile, FocusService
 from services.local_playback_service import LocalPlaybackService
@@ -111,6 +122,33 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
+_PUBLIC_BETA_PATHS = {"/health", "/login", "/api/auth/login", "/api/auth/status"}
+
+
+@app.middleware("http")
+async def beta_auth_gate(request: Request, call_next):
+    """Keep the hosted beta private while leaving local development opt-in."""
+    settings = get_settings()
+    request.state.beta_user = None
+    if settings.beta_auth_enabled:
+        user = verify_session(request.cookies.get(SESSION_COOKIE), settings)
+        request.state.beta_user = user
+        path = request.url.path
+        is_public = path in _PUBLIC_BETA_PATHS or path.startswith("/static/")
+        if not user and not is_public and request.method != "OPTIONS":
+            if path.startswith("/api/") or path in {"/search", "/lyrics", "/metadata", "/stream"}:
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "Beta sign-in required"},
+                    headers={"Cache-Control": "no-store"},
+                )
+            return RedirectResponse(login_redirect(path), status_code=303)
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "same-origin")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    return response
+
 
 def fail_with_http_error(exc: Exception) -> None:
     if isinstance(exc, HTTPException):
@@ -132,6 +170,80 @@ def root():
     return FileResponse(STATIC_DIR / "index.html")
 
 
+class BetaLoginRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    invite_code: str = Field(min_length=1, max_length=256)
+    next: Optional[str] = None
+
+
+@app.get("/login")
+def beta_login_page(next: Optional[str] = Query(default="/")):
+    target = safe_next_path(next)
+    html = f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Phase private beta</title><style>
+body{{font:16px system-ui;background:#0d0d12;color:#f7f7fb;display:grid;place-items:center;min-height:100vh;margin:0}}
+form{{width:min(360px,calc(100% - 48px));padding:30px;border:1px solid #343442;border-radius:18px;background:#17171f}}
+h1{{margin:0 0 8px}}p{{color:#aaaabd}}label{{display:block;margin-top:18px}}input,button{{box-sizing:border-box;width:100%;padding:12px;margin-top:7px;border-radius:9px;border:1px solid #454557;background:#0d0d12;color:inherit}}
+button{{background:#735cff;border:0;font-weight:700;cursor:pointer}}#error{{color:#ff8c9d;min-height:1.3em}}
+</style></head><body><form id="login"><h1>Phase</h1><p>Private friends &amp; family beta</p>
+<label>Email<input name="email" type="email" autocomplete="email" required></label>
+<label>Invite code<input name="invite_code" type="password" autocomplete="one-time-code" required></label>
+<p id="error"></p><button>Enter beta</button></form><script>
+document.getElementById('login').addEventListener('submit',async(e)=>{{e.preventDefault();const f=new FormData(e.target);const r=await fetch('/api/auth/login',{{method:'POST',headers:{{'content-type':'application/json'}},body:JSON.stringify({{email:f.get('email'),invite_code:f.get('invite_code'),next:{json.dumps(target)}}})}});const d=await r.json();if(r.ok)location.assign(d.next);else document.getElementById('error').textContent=d.detail||'Sign-in failed';}});
+</script></body></html>"""
+    return HTMLResponse(
+        html,
+        headers={
+            "Cache-Control": "no-store",
+            "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; form-action 'self'; base-uri 'none'",
+        },
+    )
+
+
+@app.post("/api/auth/login")
+@limiter.limit("10 per minute")
+def beta_login(request: Request, body: BetaLoginRequest):
+    email = authenticate_invite(body.email, body.invite_code)
+    settings = get_settings()
+    response = JSONResponse({"authenticated": True, "next": safe_next_path(body.next)})
+    response.set_cookie(
+        SESSION_COOKIE,
+        create_session(email, settings),
+        max_age=max(1, min(settings.beta_session_hours, 24 * 30)) * 3600,
+        httponly=True,
+        secure=settings.beta_cookie_secure,
+        samesite="lax",
+        path="/",
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@app.post("/api/auth/logout")
+def beta_logout():
+    response = JSONResponse({"authenticated": False})
+    response.delete_cookie(SESSION_COOKIE, path="/")
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@app.get("/api/auth/status")
+def beta_auth_status(request: Request):
+    settings = get_settings()
+    user = request_user(request)
+    return JSONResponse(
+        {
+            "enabled": settings.beta_auth_enabled,
+            "configured": settings.beta_auth_configured if settings.beta_auth_enabled else True,
+            "authenticated": bool(user) if settings.beta_auth_enabled else True,
+            "email": user,
+            "owner": is_owner(request),
+        },
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 @app.get("/share")
 def share_entry():
     """Serve the share-link entry point; the frontend resolves its query params."""
@@ -149,8 +261,10 @@ def debug_playback():
 
 
 @app.get("/health")
-def health():
+def health(request: Request):
     settings = get_settings()
+    if settings.beta_auth_enabled and not request_user(request):
+        return {"status": "ok", "auth": "required"}
     return {
         "status": "ok",
         "mode": "browser-first",

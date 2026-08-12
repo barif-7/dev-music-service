@@ -44,10 +44,10 @@ def validate_control_auth(request: Request) -> None:
     settings = get_settings()
     token = settings.dms_control_auth_token
     if not token:
-        if settings.vercel:
+        if settings.vercel or settings.beta_auth_enabled:
             raise HTTPException(
                 status_code=403,
-                detail="Control routes are disabled in serverless without auth",
+                detail="Control routes are disabled without a separate control token",
             )
         return
 
