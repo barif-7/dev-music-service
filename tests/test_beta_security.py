@@ -53,6 +53,24 @@ def test_beta_gate_and_signed_session(monkeypatch, tmp_path):
         assert client.get("/").status_code == 200
 
 
+def test_focus_profiles_are_separate_per_beta_user(monkeypatch, tmp_path):
+    _enable_beta(monkeypatch, tmp_path)
+    app.state.limiter.enabled = False
+    with TestClient(app, raise_server_exceptions=False) as client:
+        _login(client, "owner@example.com")
+        assert client.post("/api/focus/profile", json={"bpm_min": 72}).status_code == 200
+
+        _login(client, "friend@example.com")
+        assert client.get("/api/focus/profile").json()["bpm_min"] == 60
+        assert client.post("/api/focus/profile", json={"bpm_min": 88}).status_code == 200
+
+        _login(client, "owner@example.com")
+        assert client.get("/api/focus/profile").json()["bpm_min"] == 72
+        user_files = list((tmp_path / "users").glob("*/focus_profile.json"))
+        assert len(user_files) == 2
+        assert all("@" not in str(path) for path in user_files)
+
+
 def test_host_controls_fail_closed_during_beta(monkeypatch, tmp_path):
     _enable_beta(monkeypatch, tmp_path)
     monkeypatch.delenv("DMS_CONTROL_AUTH_TOKEN", raising=False)

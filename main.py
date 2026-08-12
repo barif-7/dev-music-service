@@ -951,18 +951,17 @@ def resume_song(request: Request):
 # ── Focus / ADHD mode routes ──────────────────────────────────────────────────
 
 @app.get("/api/focus/profile")
-def get_focus_profile():
+def get_focus_profile(request: Request):
     """Return the current focus profile (BPM range, instrumentalness threshold, etc.)"""
-    return FocusProfile.load()
+    return FocusProfile.load(request_user(request))
 
 
 @app.post("/api/focus/profile")
 @limiter.limit("30 per minute")
 def update_focus_profile(request: Request, profile: dict):
     """Update and persist the focus profile."""
-    validate_control_auth(request)
     try:
-        return FocusProfile.save(profile)
+        return FocusProfile.save(profile, request_user(request))
     except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -970,8 +969,7 @@ def update_focus_profile(request: Request, profile: dict):
 @app.post("/api/focus/profile/reset")
 def reset_focus_profile(request: Request):
     """Reset to defaults."""
-    validate_control_auth(request)
-    return FocusProfile.reset()
+    return FocusProfile.reset(request_user(request))
 
 
 @app.get("/api/focus/playlist/{playlist_id}")
@@ -985,10 +983,9 @@ async def focus_filter_playlist(
     Filter a Spotify playlist to only tracks that match the focus profile,
     ranked by focus score. Returns audio features for every track.
     """
-    validate_control_auth(request)
     try:
         token = SpotifyImportService._access_token(request)
-        profile = FocusProfile.load()
+        profile = FocusProfile.load(request_user(request))
         logger.info("focus_filter_playlist", playlist_id=playlist_id)
         return await FocusService.focus_filter_playlist(token, playlist_id, limit=limit, profile=profile)
     except Exception as exc:
@@ -1007,10 +1004,9 @@ async def focus_top_tracks(
     Returns BPM insights and ranked focus-suitable tracks.
     Requires user-top-read scope (users must reconnect Spotify after this update).
     """
-    validate_control_auth(request)
     try:
         token = SpotifyImportService._access_token(request)
-        profile = FocusProfile.load()
+        profile = FocusProfile.load(request_user(request))
         logger.info("focus_top_tracks", time_range=time_range)
         return await FocusService.analyse_top_tracks(token, time_range=time_range, profile=profile)
     except Exception as exc:
@@ -1024,10 +1020,9 @@ async def focus_track_features(track_id: str, request: Request):
     """
     Return audio features + focus score for a single Spotify track ID.
     """
-    validate_control_auth(request)
     try:
         token = SpotifyImportService._access_token(request)
-        profile = FocusProfile.load()
+        profile = FocusProfile.load(request_user(request))
         af = await FocusService.get_track_features(token, track_id)
         if af is None:
             raise HTTPException(status_code=404, detail="Audio features not available for this track")

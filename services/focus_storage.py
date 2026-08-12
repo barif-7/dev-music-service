@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from abc import ABC, abstractmethod
 from pathlib import Path
 
@@ -61,7 +62,20 @@ class KvFocusProfileStorageStub(FocusProfileStorage):
         raise self._not_configured()
 
 
-def build_focus_profile_storage(settings: Settings) -> FocusProfileStorage:
+def build_focus_profile_storage(
+    settings: Settings, user_id: str | None = None
+) -> FocusProfileStorage:
     if settings.focus_profile_storage_backend == "kv":
-        return KvFocusProfileStorageStub(settings.focus_profile_kv_namespace)
-    return LocalJsonFocusProfileStorage(settings.focus_profile_path)
+        namespace = settings.focus_profile_kv_namespace
+        if user_id:
+            namespace = f"{namespace or 'focus'}:{_user_storage_key(user_id)}"
+        return KvFocusProfileStorageStub(namespace)
+    if not user_id:
+        return LocalJsonFocusProfileStorage(settings.focus_profile_path)
+    path = settings.dms_data_dir / "users" / _user_storage_key(user_id) / "focus_profile.json"
+    return LocalJsonFocusProfileStorage(path)
+
+
+def _user_storage_key(user_id: str) -> str:
+    """Stable pseudonymous directory name; never place an email in a path."""
+    return hashlib.sha256(user_id.strip().lower().encode()).hexdigest()[:24]
