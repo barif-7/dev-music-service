@@ -64,7 +64,7 @@ def validate_control_auth(request: Request) -> None:
 def validate_stream_url(url: str) -> str:
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"}:
-        raise HTTPException(status_code=403, detail="Stream URL scheme is not allowed")
+        raise HTTPException(status_code=400, detail="Stream URL scheme is not allowed")
     if not parsed.hostname:
         raise HTTPException(status_code=403, detail="Stream URL host is required")
     host = parsed.hostname.lower().rstrip(".")
