@@ -590,7 +590,8 @@ def get_metadata(
 ):
     try:
         logger.info("metadata_requested", url_length=len(url))
-        payload = MusicService.get_metadata(url).model_dump()
+        webpage_url = validate_stream_url(url)
+        payload = MusicService.get_metadata(webpage_url).model_dump()
         return JSONResponse(content=payload, headers={"Cache-Control": "public, max-age=300"})
     except Exception as exc:
         logger.error("metadata_failed", url_length=len(url), error=str(exc))
@@ -716,14 +717,15 @@ async def get_shader_source(
 @limiter.limit("30 per minute")
 async def stream_song(
     request: Request,
-    url: str = Query(..., description="Track webpage URL"),
+    url: str = Query(..., min_length=1, max_length=2000, description="Track webpage URL"),
     range_header: Optional[str] = Header(None, alias="Range"),
 ):
     try:
         logger.info("stream_requested", url_length=len(url))
+        webpage_url = validate_stream_url(url)
         direct_url, req_headers = await run_in_threadpool(
             MusicService.get_stream_source,
-            url,
+            webpage_url,
         )
         direct_url = validate_stream_url(direct_url)
         settings = get_settings()
@@ -893,8 +895,9 @@ class PlaybackRequest(BaseModel):
 def browser_playback(request: Request, body: PlaybackRequest):
     try:
         logger.info("browser_playback_requested", title=body.title)
+        webpage_url = validate_stream_url(body.url)
         return MusicService.build_browser_state(
-            body.url,
+            webpage_url,
             body.title,
             body.duration,
             album=body.album,
