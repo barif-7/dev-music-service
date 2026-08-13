@@ -1,6 +1,6 @@
 """End-to-end tests for main API endpoints."""
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -951,6 +951,41 @@ class TestLiveLyricsEndpoints:
         data = response.json()
         assert data["status"] == "pending"
         assert data["lines"] == []
+
+    def test_transcribe_stream_proxies_caption_events(self, client: TestClient):
+        async def events(session_id: str, after: int = 0):
+            assert session_id == "session-1"
+            assert after == 0
+            yield (
+                b'id: 1\nevent: final\ndata: '
+                b'{"type":"final","segment_id":0,"start_ms":0,'
+                b'"end_ms":1000,"text":"hello"}\n\n'
+            )
+            yield b'id: 2\nevent: complete\ndata: {"type":"complete"}\n\n'
+
+        session = {"session_id": "session-1", "cached": False}
+        with (
+            patch(
+                "main.LiveTranscriptionService.start_session",
+                new=AsyncMock(return_value=session),
+            ) as start,
+            patch("main.LiveTranscriptionService.stream_events", side_effect=events),
+        ):
+            response = client.get(
+                "/api/lyrics/transcribe/events",
+                params={
+                    "title": "S",
+                    "artist": "A",
+                    "url": "https://www.youtube.com/watch?v=1",
+                    "locale": "fr-CA",
+                },
+            )
+
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/event-stream")
+        assert "event: final" in response.text
+        assert "event: complete" in response.text
+        assert start.await_args.kwargs["target_locale"] == "fr-CA"
 
 
 class TestTranslatedVocalEndpoints:

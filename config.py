@@ -64,6 +64,9 @@ class Settings(BaseSettings):
     apple_music_import_path: Path | None = None
     # CaptionLocalizer integration — used to localize synced lyric lines on demand.
     caption_localizer_url: str = "http://127.0.0.1:8001"
+    # CaptionLocalizer decodes this trusted internal stream URL. Keep it on the
+    # loopback interface even when the browser-facing app uses a Funnel origin.
+    caption_audio_source_base_url: str = "http://127.0.0.1:8000"
     lyrics_source_locale: str = "auto"
     # Live localization tuning. The first window of lines is translated inline so
     # the caption appears quickly; the rest are filled in the background and

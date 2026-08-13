@@ -726,6 +726,52 @@ def transcribe_lyrics(
         fail_with_http_error(exc)
 
 
+@app.get("/api/lyrics/transcribe/events")
+@app.get("/lyrics/transcribe/events")
+@limiter.limit("30 per minute")
+async def transcribe_lyrics_events(
+    request: Request,
+    title: str = Query(..., min_length=1, max_length=500, description="Track title"),
+    artist: str = Query(..., min_length=1, max_length=500, description="Track artist"),
+    url: str = Query(..., min_length=1, max_length=2000, description="Track webpage URL"),
+    locale: Optional[str] = Query(default=None, max_length=35),
+    last_event_id: Optional[str] = Header(default=None, alias="Last-Event-ID"),
+):
+    """Proxy progressive transcription and translation events to the browser."""
+    settings = get_settings()
+    if not settings.lyrics_transcription_enabled:
+        raise HTTPException(status_code=404, detail="Transcription is disabled")
+    webpage_url = validate_stream_url(url)
+    try:
+        session = await LiveTranscriptionService.start_session(
+            title=title,
+            artist=artist,
+            webpage_url=webpage_url,
+            target_locale=locale,
+        )
+    except RuntimeError as exc:
+        logger.error("lyrics_transcribe_session_failed", title=title, error=str(exc))
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    after = int(last_event_id) if last_event_id and last_event_id.isdigit() else 0
+    logger.info(
+        "lyrics_transcribe_stream_started",
+        title=title,
+        session_id=session["session_id"],
+        locale=locale,
+        cached=session.get("cached", False),
+    )
+    return StreamingResponse(
+        LiveTranscriptionService.stream_events(session["session_id"], after=after),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
 @app.get("/api/metadata")
 @app.get("/metadata")
 @limiter.limit("60 per minute")
