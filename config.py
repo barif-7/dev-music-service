@@ -53,6 +53,15 @@ class Settings(BaseSettings):
     focus_profile_storage_backend: str = "local-json"
     focus_profile_kv_namespace: str | None = None
     phase_field_api_base_url: str = "http://localhost:8787"
+    # MusicKit on the Web embeds a signed developer token in the client. Prefer
+    # an origin claim restricted to the app's Funnel and local development URLs.
+    apple_music_developer_token: str | None = None
+    apple_music_storefront: str = "ca"
+    apple_music_app_name: str = "Phase Field"
+    apple_music_app_build: str = "0.4.0"
+    # Optional local Music/iTunes export used as Phase's persistent read-only
+    # Apple Music library. JSON exports and raw Library.xml plists are accepted.
+    apple_music_import_path: Path | None = None
     # CaptionLocalizer integration — used to localize synced lyric lines on demand.
     caption_localizer_url: str = "http://127.0.0.1:8001"
     lyrics_source_locale: str = "auto"
@@ -113,6 +122,15 @@ class Settings(BaseSettings):
     @property
     def focus_profile_path(self) -> Path:
         return self.dms_data_dir / "focus_profile.json"
+
+    @property
+    def apple_music_configured(self) -> bool:
+        return bool(self.apple_music_developer_token and self.apple_music_developer_token.strip())
+
+    @property
+    def apple_music_import_available(self) -> bool:
+        path = self.apple_music_import_path
+        return bool(path and path.expanduser().is_file())
 
     @property
     def beta_auth_configured(self) -> bool:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -53,6 +54,22 @@ def test_beta_gate_and_signed_session(monkeypatch, tmp_path):
             "owner": True,
         }
         assert client.get("/").status_code == 200
+
+
+def test_apple_music_export_is_owner_only(monkeypatch, tmp_path):
+    _enable_beta(monkeypatch, tmp_path)
+    export = tmp_path / "library.json"
+    export.write_text(json.dumps({"provider": "apple_music", "albums": []}))
+    monkeypatch.setenv("APPLE_MUSIC_IMPORT_PATH", str(export))
+    app.state.limiter.enabled = False
+    with TestClient(app, raise_server_exceptions=False) as client:
+        assert _login(client, "friend@example.com").status_code == 200
+        assert client.get("/api/apple-music/config").json()["importAvailable"] is False
+        assert client.get("/api/import/apple-music/library").status_code == 403
+
+        assert _login(client, "owner@example.com").status_code == 200
+        assert client.get("/api/apple-music/config").json()["importAvailable"] is True
+        assert client.get("/api/import/apple-music/library").status_code == 200
 
 
 def test_focus_profiles_are_separate_per_beta_user(monkeypatch, tmp_path):
