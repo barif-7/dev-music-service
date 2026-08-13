@@ -34,7 +34,7 @@ function compileProg(gl, fragSrc){
 }
 
 const U_NAMES = ['iResolution','iTime','iMouse','iClick','iPulse','iEnergy','iIntensity','iWarp','iGrain','iMid','iVocal',
-                'iBass','iTreble','iHue','iPlaying',
+                'iBass','iTreble','iSub','iLowMid','iHighMid','iCentroid','iFlux','iRms','iPeak','iHue','iPlaying',
                 'iDance','iValence','iAcoustic','iInstrum','iLive','iSpeech','iTrackEnergy','iLoud',
                 'iTempo','iBpm','iBeat','iProgress','iAccent'];
 
@@ -143,8 +143,15 @@ class Tile {
     // extra uniforms the 5 built-in shaders use (null/no-op for the cloud shaders)
     gl.uniform1f(this.u.iBass, m.bass);
     gl.uniform1f(this.u.iTreble, m.treble);
+    gl.uniform1f(this.u.iSub, m.sub);
+    gl.uniform1f(this.u.iLowMid, m.lowMid);
+    gl.uniform1f(this.u.iHighMid, m.highMid);
+    gl.uniform1f(this.u.iCentroid, m.centroid);
+    gl.uniform1f(this.u.iFlux, m.flux);
+    gl.uniform1f(this.u.iRms, m.rms);
+    gl.uniform1f(this.u.iPeak, m.peak);
     gl.uniform1f(this.u.iHue, m.hue);      // mood (valence) + key → hue shift
-    gl.uniform1f(this.u.iPlaying, 1);      // always live in the immersive gallery
+    gl.uniform1f(this.u.iPlaying, m.live ? 1 : 0); // distinguish playback from the synthetic idle wave
     // ReccoBeats per-track features, plugged straight in (neutral without a track)
     gl.uniform1f(this.u.iDance,       m.dance);
     gl.uniform1f(this.u.iValence,     m.valence);
