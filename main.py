@@ -27,13 +27,19 @@ from slowapi.util import get_remote_address
 from starlette.concurrency import run_in_threadpool
 
 from config import get_settings
-from models import ImportedPlaylistTrack, LocalizeWindowRequest, SpotifySaveTrackRequest
+from models import (
+    AppleMusicImportAlbum,
+    ImportedPlaylistTrack,
+    LocalizeWindowRequest,
+    SpotifySaveTrackRequest,
+)
 from security import (
     open_validated_stream,
     redact_sensitive_data,
     validate_control_auth,
     validate_stream_url,
 )
+from services.apple_music_import_service import AppleMusicImportError, AppleMusicImportService
 from services.beta_auth_service import (
     SESSION_COOKIE,
     authenticate_invite,
@@ -41,10 +47,12 @@ from services.beta_auth_service import (
     is_owner,
     login_redirect,
     request_user,
+    require_owner,
     safe_next_path,
     verify_session,
 )
 from services.focus_service import FocusProfile, FocusService
+from services.import_preview_service import ImportPreviewError, ImportPreviewService
 from services.local_playback_service import LocalPlaybackService
 from services.metadata_service import MetadataService, MetadataServiceError
 from services.live_transcription_service import LiveTranscriptionService
@@ -159,7 +167,13 @@ def fail_with_http_error(exc: Exception) -> None:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     if isinstance(
         exc,
-        (MusicServiceError, MetadataServiceError, SpotifyImportError, VideoServiceError),
+        (
+            ImportPreviewError,
+            MusicServiceError,
+            MetadataServiceError,
+            SpotifyImportError,
+            VideoServiceError,
+        ),
     ):
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -277,7 +291,93 @@ def health(request: Request):
             "disabled-on-vercel" if settings.vercel else "openclaw-cli-optional"
         ),
         "spotify_import": "configured" if SpotifyImportService.is_configured() else "missing-client-id",
+        "apple_music": "configured" if settings.apple_music_configured else "missing-developer-token",
+        "apple_music_import": "xml-or-json",
+        "chromecast": "default-media-receiver",
     }
+
+
+@app.get("/api/apple-music/config")
+def apple_music_config(request: Request):
+    """Return the public MusicKit client configuration for this origin."""
+    settings = get_settings()
+    payload = {
+        "configured": settings.apple_music_configured,
+        "importAvailable": settings.apple_music_import_available and is_owner(request),
+        "storefront": settings.apple_music_storefront,
+        "app": {
+            "name": settings.apple_music_app_name,
+            "build": settings.apple_music_app_build,
+        },
+    }
+    if settings.apple_music_configured:
+        # MusicKit on the Web requires the developer token in the browser. The
+        # token should carry Apple's recommended origin claim so it is not useful
+        # from any origin other than this app.
+        payload["developerToken"] = settings.apple_music_developer_token
+    return JSONResponse(content=payload, headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/import/apple-music/library")
+def apple_music_persistent_library(request: Request):
+    """Return the configured read-only Apple Music export in normalized form."""
+    settings = get_settings()
+    require_owner(request)
+    if not settings.apple_music_import_available or not settings.apple_music_import_path:
+        raise HTTPException(status_code=404, detail="No persistent Apple Music export is configured")
+    try:
+        payload = AppleMusicImportService.load_export(settings.apple_music_import_path)
+        return JSONResponse(content=payload, headers={"Cache-Control": "no-store"})
+    except AppleMusicImportError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/import/apple-music/xml")
+@limiter.limit("5 per minute")
+async def apple_music_xml_import(request: Request):
+    """Normalize a Music/iTunes XML library export into the fallback import shape."""
+    require_owner(request)
+    try:
+        payload = await request.body()
+        return AppleMusicImportService.parse_xml(payload)
+    except AppleMusicImportError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/import/apple-music/preview")
+@limiter.limit("20 per minute")
+async def apple_music_album_preview(request: Request, body: AppleMusicImportAlbum):
+    require_owner(request)
+    try:
+        return (
+            await ImportPreviewService.build_preview(
+                provider="apple_music",
+                playlist={
+                    "provider": "apple_music",
+                    "id": body.id,
+                    "name": body.name,
+                    "track_count": body.track_count or len(body.tracks),
+                    "owner": body.artist,
+                    "thumbnail": body.artwork_url,
+                    "provider_url": body.provider_url,
+                },
+                imported_tracks=body.tracks,
+            )
+        ).model_dump()
+    except Exception as exc:
+        logger.error("apple_music_album_preview_failed", album_id=body.id, error=str(exc))
+        fail_with_http_error(exc)
+
+
+@app.post("/api/import/apple-music/playback")
+@limiter.limit("30 per minute")
+async def apple_music_track_playback(request: Request, body: ImportedPlaylistTrack):
+    require_owner(request)
+    try:
+        return (await ImportPreviewService.resolve_track_playback(body)).model_dump()
+    except Exception as exc:
+        logger.error("apple_music_track_playback_failed", error=str(exc))
+        fail_with_http_error(exc)
 
 
 @app.get("/api/import/spotify/start")

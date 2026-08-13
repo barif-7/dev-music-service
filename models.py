@@ -93,8 +93,19 @@ class ImportedTrack(BaseModel):
     duration_ms: int = 0
     isrc: Optional[str] = None
     release_date: Optional[str] = None
+    release_year: Optional[int] = None
     artwork_url: Optional[str] = None
     provider_url: Optional[str] = None
+    track_number: Optional[int] = None
+    disc_number: Optional[int] = None
+    plays: int = 0
+    skips: int = 0
+    loved: bool = False
+    explicit: bool = False
+    streaming: bool = False
+    genre: Optional[str] = None
+    last_played_at: Optional[str] = None
+    date_added_at: Optional[str] = None
 
 
 class MusicBrainzTrackMatch(BaseModel):
@@ -122,6 +133,25 @@ class ImportedPlaylistPreview(BaseModel):
     matched_count: int
     low_confidence_count: int
     unmatched_count: int
+
+
+class AppleMusicImportAlbum(BaseModel):
+    provider: str = "apple_music"
+    id: str
+    name: str
+    artist: str
+    year: Optional[int] = None
+    genre: Optional[str] = None
+    track_count: int = 0
+    duration_ms: int = 0
+    plays: int = 0
+    skips: int = 0
+    loved: bool = False
+    explicit: bool = False
+    streaming: bool = False
+    artwork_url: Optional[str] = None
+    provider_url: Optional[str] = None
+    tracks: List[ImportedTrack] = Field(default_factory=list)
 
 
 class SpotifyLikedTracksPreview(BaseModel):

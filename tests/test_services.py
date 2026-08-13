@@ -1,4 +1,7 @@
 """Unit and integration tests for service layer."""
+import json
+import plistlib
+
 import pytest
 
 from urllib.error import URLError
@@ -11,6 +14,7 @@ from models import (
     VideoSearchResult,
 )
 from services.lyrics_localization_service import LyricsLocalizationService
+from services.apple_music_import_service import AppleMusicImportError, AppleMusicImportService
 from services.focus_service import AudioFeatures, DEFAULT_PROFILE, FocusProfile, FocusService
 from services.focus_storage import KvFocusProfileStorageStub, LocalJsonFocusProfileStorage
 from services.lyrics_service import LyricsProviderError, LyricsService
@@ -19,6 +23,76 @@ from services.music_service import MusicService, MusicServiceError, SearchServic
 from services.metadata_service import MetadataService, MetadataServiceError
 from services.spotify_import_service import SpotifyImportError, SpotifyImportService
 from services.video_service import VideoService, VideoStreamResolutionError
+
+
+class TestAppleMusicImportService:
+    def test_parses_music_xml_and_preserves_listening_history(self):
+        payload = plistlib.dumps(
+            {
+                "Library Persistent ID": "LIBRARY123",
+                "Tracks": {
+                    "1": {
+                        "Persistent ID": "TRACK1",
+                        "Name": "First Song",
+                        "Artist": "Fixture Artist",
+                        "Album": "Fixture Album",
+                        "Total Time": 183000,
+                        "Track Number": 1,
+                        "Year": 2024,
+                        "Play Count": 17,
+                        "Skip Count": 2,
+                        "Loved": True,
+                        "Apple Music": True,
+                        "Genre": "Electronic",
+                    },
+                    "2": {
+                        "Persistent ID": "TRACK2",
+                        "Name": "Second Song",
+                        "Artist": "Fixture Artist",
+                        "Album": "Fixture Album",
+                        "Total Time": 201000,
+                        "Track Number": 2,
+                        "Year": 2024,
+                        "Play Count": 3,
+                    },
+                },
+            }
+        )
+
+        result = AppleMusicImportService.parse_xml(payload)
+
+        assert result["provider"] == "apple_music"
+        assert result["library"]["track_count"] == 2
+        assert result["library"]["plays"] == 20
+        assert result["albums"][0]["track_count"] == 2
+        assert result["albums"][0]["tracks"][0]["plays"] == 17
+        assert result["albums"][0]["tracks"][0]["streaming"] is True
+
+    def test_rejects_non_library_xml(self):
+        with pytest.raises(AppleMusicImportError, match="Tracks"):
+            AppleMusicImportService.parse_xml(plistlib.dumps({"Playlists": []}))
+
+    def test_loads_and_normalizes_persistent_json_export(self, tmp_path):
+        export = {
+            "provider": "apple_music",
+            "library": {"title": "Fixture Library", "track_count": 999},
+            "albums": [{
+                "id": "album-1", "name": "Fixture Album", "artist": "Fixture Artist",
+                "tracks": [{
+                    "provider": "apple_music", "provider_track_id": "TRACK1",
+                    "title": "Fixture Song", "artist_names": ["Fixture Artist"],
+                    "album": "Fixture Album", "duration_ms": 183000,
+                }],
+            }],
+        }
+        path = tmp_path / "apple_music_import.json"
+        path.write_text(json.dumps(export))
+
+        result = AppleMusicImportService.load_export(path)
+
+        assert result["library"]["album_count"] == 1
+        assert result["library"]["track_count"] == 1
+        assert result["albums"][0]["tracks"][0]["provider"] == "apple_music"
 
 
 class TestMusicServiceSearch:
