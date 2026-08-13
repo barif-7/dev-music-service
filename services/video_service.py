@@ -8,6 +8,7 @@ import structlog
 import yt_dlp
 
 from models import VideoSearchResult
+from services.text_match import fuzzy_score
 
 logger = structlog.get_logger()
 
@@ -87,11 +88,30 @@ class VideoService:
         return f"{base} official music video"
 
     @staticmethod
-    def _score_video(entry: dict, kind: str) -> float:
+    def _score_video(
+        entry: dict,
+        kind: str,
+        expected_title: str | None = None,
+        expected_artist: str | None = None,
+    ) -> float:
         title = (entry.get("title") or "").lower()
         channel = (entry.get("channel") or entry.get("uploader") or "").lower()
         duration = entry.get("duration") or 0
         score = 0.0
+
+        # Identity outranks presentation. Without this term, any official upload
+        # by the right artist can beat the song the listener actually requested.
+        if expected_title:
+            title_match = fuzzy_score(expected_title, title)
+            score += title_match * 1.5
+            if title_match < 45:
+                score -= 90
+        if expected_artist:
+            artist_match = max(
+                fuzzy_score(expected_artist, channel),
+                fuzzy_score(expected_artist, title),
+            )
+            score += artist_match * 0.35
 
         if "official" in title:
             score += 20
@@ -107,6 +127,11 @@ class VideoService:
                 score += 30
             if "shorts" in title or "#shorts" in title:
                 score += 20
+        elif kind == "live":
+            if any(term in title for term in ("live", "concert", "performance", "session")):
+                score += 35
+            if "official audio" in title:
+                score -= 20
         elif duration and 90 <= duration <= 600:
             score += 15
 
@@ -182,7 +207,12 @@ class VideoService:
 
         ranked = sorted(
             entries,
-            key=lambda entry: VideoService._score_video(entry, kind),
+            key=lambda entry: VideoService._score_video(
+                entry,
+                kind,
+                expected_title=title,
+                expected_artist=artist,
+            ),
             reverse=True,
         )
         return [
