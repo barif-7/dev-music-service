@@ -180,8 +180,11 @@ function setSpotifyLoadMore(text, onClick = null){
 function setSpotifyView(view){
   spotify.view = view === 'liked' ? 'liked' : 'playlists';
   spotify.preview = null;
-  spotifyPlaylistsBtn?.classList.toggle('on', spotify.view === 'playlists');
-  spotifyLikedBtn?.classList.toggle('on', spotify.view === 'liked');
+  const playlistsOn = spotify.view === 'playlists';
+  spotifyPlaylistsBtn?.classList.toggle('on', playlistsOn);
+  spotifyPlaylistsBtn?.setAttribute('aria-selected', String(playlistsOn));
+  spotifyLikedBtn?.classList.toggle('on', !playlistsOn);
+  spotifyLikedBtn?.setAttribute('aria-selected', String(!playlistsOn));
   if(spotify.view === 'liked'){
     if(spotifyAccount) spotifyAccount.textContent = 'Liked songs';
     if(spotifyScope) spotifyScope.textContent = 'saved tracks · read-only';
@@ -262,9 +265,11 @@ async function refreshSpotifyStatus(){
 }
 
 function createSpotifyPlaylistRow(pl){
-  const row = document.createElement('div');
+  const row = document.createElement('button');
+  row.type = 'button';
   row.className = 'plRow';
   row.dataset.playlistId = pl.id;
+  row.setAttribute('aria-label', `Preview ${pl.name || 'playlist'}`);
 
   const meta = document.createElement('div');
   const name = document.createElement('div');
@@ -388,9 +393,14 @@ function createSpotifyLikedRow(item){
   const conf = Math.min(99, Math.max(20, match.confidence || 0));
   const tier = conf >= 85 ? 'high' : conf >= 60 ? 'mid' : 'low';
   const playable = conf >= 80;
-  const row = document.createElement('div');
+  const row = document.createElement('button');
+  row.type = 'button';
   row.className = `likedRow${playable ? ' playable' : ''}`;
   row.title = playable ? 'Play this well-matched track' : 'Track is not matched well enough to play directly';
+  row.disabled = !playable;
+  row.setAttribute('aria-label', playable
+    ? `Play ${match.title || track.title || 'track'}`
+    : `${match.title || track.title || 'Track'} is not matched well enough to play`);
 
   const meta = document.createElement('div');
   const title = document.createElement('div');
@@ -687,8 +697,21 @@ function wireSpotifyImport(){
   });
   spotifyLikedBtn?.addEventListener('click', ()=>{
     setSpotifyView('liked');
-    if(spotify.connected && !spotify.likedTracks.length) fetchSpotifyLikedTracks({ reset:true });
-    else openSpotifyAuth();
+    if(!spotify.connected) openSpotifyAuth();
+    else if(!spotify.likedTracks.length) fetchSpotifyLikedTracks({ reset:true });
+  });
+  [spotifyPlaylistsBtn, spotifyLikedBtn].filter(Boolean).forEach((btn, index, tabs)=>{
+    btn.addEventListener('keydown', e=>{
+      if(!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+      e.preventDefault();
+      const nextIndex = e.key === 'Home'
+        ? 0
+        : e.key === 'End'
+          ? tabs.length - 1
+          : (index + (e.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+      tabs[nextIndex].focus();
+      tabs[nextIndex].click();
+    });
   });
   spotifyList?.addEventListener('scroll', ()=>{
     if(!spotify.connected) return;
