@@ -14,6 +14,7 @@ from models import (
     VideoSearchResult,
 )
 from services.lyrics_localization_service import LyricsLocalizationService
+from services.live_transcription_service import LiveTranscriptionService
 from services.apple_music_import_service import AppleMusicImportError, AppleMusicImportService
 from services.focus_service import AudioFeatures, DEFAULT_PROFILE, FocusProfile, FocusService
 from services.focus_storage import KvFocusProfileStorageStub, LocalJsonFocusProfileStorage
@@ -23,6 +24,24 @@ from services.music_service import MusicService, MusicServiceError, SearchServic
 from services.metadata_service import MetadataService, MetadataServiceError
 from services.spotify_import_service import SpotifyImportError, SpotifyImportService
 from services.video_service import VideoService, VideoStreamResolutionError
+
+
+class TestLiveTranscriptionService:
+    def test_session_payload_uses_private_audio_proxy(self, monkeypatch):
+        monkeypatch.setenv("CAPTION_AUDIO_SOURCE_BASE_URL", "http://127.0.0.1:8000")
+        monkeypatch.setenv("LYRICS_TRANSCRIPTION_LANGUAGE", "auto")
+
+        payload = LiveTranscriptionService._payload(
+            "Song",
+            "Artist",
+            "https://www.youtube.com/watch?v=fixture",
+            "fr-CA",
+        )
+
+        assert payload["source_url"].startswith("http://127.0.0.1:8000/api/stream?")
+        assert "youtube.com%2Fwatch%3Fv%3Dfixture" in payload["source_url"]
+        assert payload["target_locale"] == "fr-CA"
+        assert len(payload["track_key"]) == 24
 
 
 class TestAppleMusicImportService:

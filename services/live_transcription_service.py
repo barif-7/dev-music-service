@@ -1,203 +1,135 @@
-"""Live transcription fallback — caption a track that has no LRCLIB lyrics.
+"""Private bridge to CaptionLocalizer's progressive transcription API.
 
-When LRCLIB returns nothing, dev-music-service can still produce timed,
-localizable lines by transcribing the audio: it downloads the resolved track to
-a temp file and hands the path to CaptionLocalizer's ``transcribe_video`` tool
-(local faster-whisper). The resulting segments become :class:`LyricsLine`s with
-the same shape as LRC lines, so the existing live-display and windowed
-localization paths work on them unchanged.
-
-Transcription is slow relative to a request, so it runs as a background job: the
-first call starts it and returns ``pending``; later calls poll until ``ready``.
-Sung audio over instrumentation transcribes imperfectly — this is a best-effort
-fallback, not a replacement for real synced lyrics.
+The browser never connects to the CaptionLocalizer tailnet port. This service
+creates a session using its own internal audio proxy as the source, then relays
+CaptionLocalizer's SSE stream to the browser. The legacy snapshot method is
+retained for API compatibility.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
-import logging
-import threading
-import time
-from pathlib import Path
+from collections.abc import AsyncGenerator
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-import yt_dlp
+import httpx
 
 from config import get_settings
 from models import LyricsLine
 
-logger = logging.getLogger(__name__)
-
-_TOOL_PATH = "/tools/transcribe_video/run"
-_REQUEST_TIMEOUT_SECONDS = 600.0
-_JOB_TTL_SECONDS = 3600.0
-
-# job status values surfaced to the API/frontend
-STATUS_PENDING = "pending"
-STATUS_READY = "ready"
-STATUS_ERROR = "error"
-STATUS_DISABLED = "disabled"
+_CREATE_PATH = "/live-sessions"
+_REQUEST_TIMEOUT_SECONDS = 30.0
 
 
 class LiveTranscriptionService:
-    _lock = threading.Lock()
-    # track_key -> {"status", "lines": list[LyricsLine], "error", "expires_at"}
-    _jobs: dict[str, dict] = {}
-
     @staticmethod
     def _track_key(title: str, artist: str, webpage_url: str) -> str:
         raw = "\n".join((title or "", artist or "", webpage_url or ""))
-        return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:24]
 
     @staticmethod
-    def _prune(now: float) -> None:
-        stale = [k for k, job in LiveTranscriptionService._jobs.items() if job["expires_at"] <= now]
-        for key in stale:
-            LiveTranscriptionService._jobs.pop(key, None)
+    def _source_url(webpage_url: str) -> str:
+        settings = get_settings()
+        base = settings.caption_audio_source_base_url.rstrip("/")
+        return f"{base}/api/stream?{urlencode({'url': webpage_url})}"
 
-    @staticmethod
-    def get_or_start(
+    @classmethod
+    def _payload(
+        cls,
         title: str,
         artist: str,
         webpage_url: str,
+        target_locale: str | None = None,
     ) -> dict:
-        """Return the transcription job for a track, starting it if needed.
-
-        Result shape: ``{"status", "lines": [LyricsLine...], "error"}``. ``lines``
-        is only populated once ``status == "ready"``.
-        """
         settings = get_settings()
-        if not settings.lyrics_transcription_enabled:
-            return {"status": STATUS_DISABLED, "lines": [], "error": "Transcription is disabled"}
-        if not webpage_url:
-            return {"status": STATUS_ERROR, "lines": [], "error": "A track URL is required"}
-
-        key = LiveTranscriptionService._track_key(title, artist, webpage_url)
-        now = time.monotonic()
-        with LiveTranscriptionService._lock:
-            LiveTranscriptionService._prune(now)
-            job = LiveTranscriptionService._jobs.get(key)
-            if job is None:
-                job = {
-                    "status": STATUS_PENDING,
-                    "lines": [],
-                    "error": None,
-                    "expires_at": now + _JOB_TTL_SECONDS,
-                }
-                LiveTranscriptionService._jobs[key] = job
-                thread = threading.Thread(
-                    target=LiveTranscriptionService._run_job,
-                    args=(key, title, artist, webpage_url),
-                    daemon=True,
-                )
-                thread.start()
-            return {
-                "status": job["status"],
-                "lines": list(job["lines"]),
-                "error": job["error"],
-            }
-
-    @staticmethod
-    def _finish(key: str, *, status: str, lines: list[LyricsLine] | None = None, error: str | None = None) -> None:
-        with LiveTranscriptionService._lock:
-            job = LiveTranscriptionService._jobs.get(key)
-            if job is None:
-                return
-            job["status"] = status
-            job["lines"] = lines or []
-            job["error"] = error
-            job["expires_at"] = time.monotonic() + _JOB_TTL_SECONDS
-
-    @staticmethod
-    def _run_job(key: str, title: str, artist: str, webpage_url: str) -> None:
-        audio_path: Path | None = None
-        try:
-            audio_path = LiveTranscriptionService._download_audio(key, webpage_url)
-            segments = LiveTranscriptionService._transcribe(audio_path, key)
-            lines = LiveTranscriptionService._segments_to_lines(segments)
-            if not lines:
-                LiveTranscriptionService._finish(key, status=STATUS_ERROR, error="No speech detected")
-                return
-            LiveTranscriptionService._finish(key, status=STATUS_READY, lines=lines)
-            logger.info("transcription_ready: %s lines for %s - %s", len(lines), artist, title)
-        except Exception as exc:  # noqa: BLE001 — surface any failure as job error
-            logger.warning("transcription_failed: %s", exc)
-            LiveTranscriptionService._finish(key, status=STATUS_ERROR, error=str(exc))
-        finally:
-            if audio_path is not None:
-                try:
-                    audio_path.unlink(missing_ok=True)
-                except OSError:
-                    pass
-
-    @staticmethod
-    def _temp_dir() -> Path:
-        path = Path(get_settings().lyrics_transcription_temp_dir)
-        path.mkdir(parents=True, exist_ok=True)
-        return path
-
-    @staticmethod
-    def _download_audio(key: str, webpage_url: str) -> Path:
-        temp_dir = LiveTranscriptionService._temp_dir()
-        outtmpl = str(temp_dir / f"{key}.%(ext)s")
-        ydl_opts = {
-            "format": "bestaudio/best",
-            "outtmpl": outtmpl,
-            "quiet": True,
-            "noplaylist": True,
-            "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
+        return {
+            "track_key": cls._track_key(title, artist, webpage_url),
+            "source_url": cls._source_url(webpage_url),
+            "title": title,
+            "artist": artist,
+            "source_locale": settings.lyrics_transcription_language,
+            "target_locale": target_locale or None,
         }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(webpage_url, download=True)
-        downloaded = info.get("requested_downloads", [{}])[0].get("filepath")
-        if downloaded and Path(downloaded).exists():
-            return Path(downloaded)
-        # Fall back to whatever file landed under the key prefix.
-        for candidate in temp_dir.glob(f"{key}.*"):
-            return candidate
-        raise RuntimeError("Audio download produced no file")
+
+    @classmethod
+    async def start_session(
+        cls,
+        title: str,
+        artist: str,
+        webpage_url: str,
+        target_locale: str | None = None,
+    ) -> dict:
+        settings = get_settings()
+        url = settings.caption_localizer_url.rstrip("/") + _CREATE_PATH
+        try:
+            async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT_SECONDS) as client:
+                response = await client.post(
+                    url,
+                    json=cls._payload(title, artist, webpage_url, target_locale),
+                )
+                response.raise_for_status()
+                return response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise RuntimeError(f"CaptionLocalizer live session unavailable: {exc}") from exc
 
     @staticmethod
-    def _transcribe(audio_path: Path, video_id: str) -> list[dict]:
+    async def stream_events(session_id: str, after: int = 0) -> AsyncGenerator[bytes, None]:
         settings = get_settings()
-        payload = json.dumps(
-            {
-                "input": {
-                    "video_path": str(audio_path),
-                    "video_id": video_id,
-                    "language": settings.lyrics_transcription_language,
-                }
+        url = (
+            settings.caption_localizer_url.rstrip("/")
+            + f"/live-sessions/{session_id}/events"
+        )
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, read=None)) as client:
+                async with client.stream("GET", url, params={"after": max(0, after)}) as response:
+                    response.raise_for_status()
+                    async for chunk in response.aiter_bytes():
+                        yield chunk
+        except (httpx.HTTPError, ValueError) as exc:
+            event = {
+                "type": "error",
+                "session_id": session_id,
+                "message": f"Caption stream interrupted: {exc}",
             }
-        ).encode("utf-8")
-        url = settings.caption_localizer_url.rstrip("/") + _TOOL_PATH
+            data = json.dumps(event, ensure_ascii=False, separators=(",", ":"))
+            yield f"event: error\ndata: {data}\n\n".encode("utf-8")
+
+    @classmethod
+    def get_or_start(cls, title: str, artist: str, webpage_url: str) -> dict:
+        """Legacy polling adapter backed by the new session API."""
+        settings = get_settings()
+        base = settings.caption_localizer_url.rstrip("/")
+        payload = json.dumps(cls._payload(title, artist, webpage_url)).encode("utf-8")
         request = Request(
-            url,
+            base + _CREATE_PATH,
             data=payload,
             headers={"Content-Type": "application/json"},
             method="POST",
         )
         try:
             with urlopen(request, timeout=_REQUEST_TIMEOUT_SECONDS) as response:
-                body = json.loads(response.read().decode("utf-8"))
-        except (HTTPError, URLError, TimeoutError) as exc:
-            raise RuntimeError(f"CaptionLocalizer transcribe unreachable: {exc}") from exc
-        return body.get("output", {}).get("segments", [])
-
-    @staticmethod
-    def _segments_to_lines(segments: list[dict]) -> list[LyricsLine]:
-        lines: list[LyricsLine] = []
-        for segment in segments:
-            text = (segment.get("text") or "").strip()
-            if not text:
-                continue
-            lines.append(
-                LyricsLine(
-                    text=text,
-                    start_time_ms=segment.get("start_ms"),
-                    end_time_ms=segment.get("end_ms"),
-                )
-            )
-        return lines
+                session = json.loads(response.read().decode("utf-8"))
+            status = session.get("status", "pending")
+            lines: list[LyricsLine] = []
+            if status == "complete":
+                with urlopen(
+                    base + f"/live-sessions/{session['session_id']}/segments",
+                    timeout=_REQUEST_TIMEOUT_SECONDS,
+                ) as response:
+                    snapshot = json.loads(response.read().decode("utf-8"))
+                lines = [
+                    LyricsLine(
+                        text=segment["text"],
+                        start_time_ms=segment.get("start_ms"),
+                        end_time_ms=segment.get("end_ms"),
+                        localized_text=segment.get("localized_text"),
+                    )
+                    for segment in snapshot.get("segments", [])
+                    if segment.get("text")
+                ]
+            return {"status": status, "lines": lines, "error": None}
+        except (HTTPError, URLError, TimeoutError, ValueError, KeyError) as exc:
+            return {"status": "error", "lines": [], "error": str(exc)}
