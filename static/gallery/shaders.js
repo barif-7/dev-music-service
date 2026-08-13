@@ -19,6 +19,13 @@ uniform float iMid;    // 170-1500 Hz melodic body  (0 when no audio / default)
 uniform float iVocal;  // 300-3000 Hz vocal/lead     (0 when no audio / default)
 uniform float iBass;   // low band (used by the 5 built-in shaders)
 uniform float iTreble; // high band
+uniform float iSub;    // 20-60 Hz foundation
+uniform float iLowMid; // 170-500 Hz warmth/body
+uniform float iHighMid;// 2-4 kHz presence/attack
+uniform float iCentroid;// spectral brightness, 0 dark .. 1 bright
+uniform float iFlux;   // normalized spectral onset/change
+uniform float iRms;    // normalized time-domain loudness
+uniform float iPeak;   // time-domain peak amplitude
 uniform float iHue;    // hue rotation (radians) — driven by track valence
 uniform float iPlaying;// 1 = live
 // ReccoBeats per-track features (0..1 constants; 0 / 0.5 when unknown)
@@ -59,6 +66,10 @@ vec3 hueShift(vec3 c, float h){
   return toRGB * yiq;
 }
 `;
+
+// API shader sources are populated lazily by app.js. The renderer prefers a
+// verified API source when available and falls back to the bundled equivalent.
+const API_FRAGS = Object.create(null);
 
 const FRAGS = {
   drift: `
@@ -1092,6 +1103,311 @@ void main(){
   col += iGrain * 0.025 * grain(gl_FragCoord.xy, iTime);
   col *= 0.94 + 0.06*smoothstep(1.7, 0.3, length(p));
   gl_FragColor = vec4(col, 1.0);
+}
+`,
+  codex: `
+void main(){
+  vec2 uv = gl_FragCoord.xy / iResolution.xy;
+  vec2 p = uv*2.0-1.0; p.x *= iResolution.x/iResolution.y;
+  vec2 m = (iMouse-0.5)*vec2(iResolution.x/iResolution.y,1.0);
+  float downbeat = pow(1.0-iBeat,3.0);
+  float tempoN = clamp(iTempo/180.0,0.0,1.0);
+  float drive = clamp(0.24*iEnergy+0.18*iRms+0.14*iTrackEnergy+0.12*iPeak+0.12*iLoud+0.20*iIntensity,0.0,1.0);
+  float t = iTime*(0.07+0.05*tempoN+0.04*iDance);
+  float rot = t*(0.34+0.20*iBpm) + iPulse*0.18 + downbeat*0.10
+            + m.x*0.38*iWarp + iProgress*0.7854;
+  float ca=cos(rot), sa=sin(rot);
+  vec2 q = mat2(ca,-sa,sa,ca)*(p-m*0.08*iWarp);
+  float r = length(q);
+  float a = atan(q.y,q.x);
+  float k = 0.0;
+  for(int i=0;i<3;i++){
+    float off = float(i)*1.04719755;
+    float lobe = 0.48 + (0.13+0.05*iLowMid)*cos(6.0*(a+off)+iInstrum*0.18*sin(a*3.0));
+    lobe += 0.028*iBass*sin(a*3.0+iBeat*6.2831853+off);
+    float w = 0.036 + 0.018*iMid + 0.010*iVocal
+            + 0.007*sin(t*(2.0+iBpm)+float(i));
+    k = max(k, smoothstep(w, w*0.25, abs(r-lobe)));
+  }
+  k *= smoothstep(0.06, 0.14, r) * smoothstep(0.98, 0.62, r);
+  float node = smoothstep(0.09+0.025*iSub,0.025,r);
+  float presence = clamp(0.5*iHighMid+0.3*iTreble+0.2*iCentroid,0.0,1.0);
+  float threadGlint = pow(k,3.0)*(0.20+0.45*presence+0.40*iFlux);
+  float clickRing = exp(-pow((length(p-m)-(1.0-iClick)*0.72)*10.0,2.0))*iClick;
+  vec3 bg = vec3(0.030,0.030,0.036)
+          + vec3(0.012+0.025*iAcoustic)*fbm(p*(1.7+0.8*iInstrum)+t*0.2);
+  bg += iAccent*(0.010+0.018*iLive)*fbm(p*0.9-t*0.13);
+  vec3 ink = mix(vec3(0.50,0.50,0.54),vec3(1.0,0.99,0.96),0.30+0.58*drive);
+  vec3 accentInk = mix(ink,iAccent,0.06+0.10*iValence);
+  vec3 col = bg + ink*(k+node)*(0.48+0.46*drive);
+  col += accentInk*threadGlint;
+  col += ink*node*(0.20*iVocal+0.16*iSpeech+0.25*iSub);
+  col += accentInk*(k+node)*(0.15*iPulse+0.12*downbeat);
+  col += accentInk*clickRing*0.55;
+  col = hueShift(col,iHue*0.08);
+  col *= mix(0.84,1.0,iPlaying);
+  col *= 0.8+0.2*smoothstep(1.5,0.2,r);
+  col += iGrain*0.03*grain(gl_FragCoord.xy, iTime);
+  gl_FragColor=vec4(col,1.0);
+}
+`,
+  qwen: `
+void main(){
+  vec2 uv = gl_FragCoord.xy / iResolution.xy;
+  vec2 p = uv*2.0-1.0; p.x *= iResolution.x/iResolution.y;
+  vec2 m = (iMouse-0.5)*vec2(iResolution.x/iResolution.y,1.0);
+  float downbeat = pow(1.0-iBeat,3.0);
+  float tempoN = clamp(iTempo/180.0,0.0,1.0);
+  float drive = clamp(0.20*iEnergy+0.16*iRms+0.14*iTrackEnergy+0.12*iLoud+0.10*iMid+0.08*iPeak+0.20*iIntensity,0.0,1.0);
+  float t = iTime*(0.06+0.05*tempoN+0.035*iDance);
+  vec3 night = mix(vec3(0.10,0.04,0.20),iAccent*0.16,0.22+0.16*iValence);
+  vec3 col = mix(night,vec3(0.025,0.008,0.060),smoothstep(-0.1,1.3,length(p)));
+  float acc = 0.0;
+  for(int i=0;i<6;i++){
+    float fi=float(i);
+    float ang = fi/6.0*6.2831853 + t*(0.36+0.20*iBpm)
+              + iPulse*0.16 + iProgress*0.38;
+    float orbit = 0.24+0.055*iBass+0.045*iSub
+                + 0.035*sin(t*(0.9+iBpm*0.35)+fi);
+    vec2 c = vec2(cos(ang),sin(ang))*orbit;
+    vec2 d = p-c+m*(0.10+0.10*iWarp);
+    float cc=cos(ang), ss=sin(ang);
+    vec2 qr = mat2(cc,ss,-ss,cc)*d;
+    qr.x *= 2.0-0.22*iAcoustic+0.12*iInstrum;
+    float petal = 0.13+0.055*iLowMid+0.040*iVocal
+                + 0.025*sin(t+fi)+0.018*downbeat;
+    acc += exp(-dot(qr,qr)/petal);
+  }
+  float core = exp(-dot(p-m*0.04*iWarp,p-m*0.04*iWarp)/(0.045+0.025*iSpeech));
+  float halo = exp(-dot(p,p)/(0.30+0.18*iLive));
+  float air = clamp(0.45*iTreble+0.35*iHighMid+0.20*iCentroid,0.0,1.0);
+  vec3 violet = mix(vec3(0.40,0.18,0.80),vec3(0.74,0.40,0.98),0.32+0.58*drive);
+  violet = mix(violet,iAccent,0.10+0.12*iValence);
+  vec3 magenta= hueShift(vec3(0.95,0.42,0.92),iHue*0.34);
+  col += violet*acc*(0.38+0.28*drive);
+  col += magenta*pow(acc,2.0)*(0.12+0.15*iVocal);
+  col += vec3(1.0,0.92,1.0)*core*(0.38+0.42*drive+0.22*iSpeech);
+  col += violet*core*(0.22*iPulse+0.18*downbeat+0.24*iSub);
+  col += mix(violet,vec3(1.0),air)*halo*(0.05+0.14*iLive+0.12*iFlux);
+  float clickRing=exp(-pow((length(p-m)-(1.0-iClick)*0.82)*9.0,2.0))*iClick;
+  col += magenta*clickRing*0.60;
+  col = hueShift(col,iHue*0.22);
+  col *= mix(0.84,1.0,iPlaying);
+  col *= 0.82+0.18*smoothstep(1.5,0.2,length(p));
+  col += iGrain*0.035*grain(gl_FragCoord.xy, iTime);
+  gl_FragColor=vec4(col,1.0);
+}
+`,
+  grok: `
+mat2 rotG(float a){ float c=cos(a),s=sin(a); return mat2(c,-s,s,c); }
+void main(){
+  vec2 uv = gl_FragCoord.xy / iResolution.xy;
+  vec2 p = uv*2.0-1.0; p.x *= iResolution.x/iResolution.y;
+  vec2 m = (iMouse-0.5)*vec2(iResolution.x/iResolution.y,1.0);
+  float downbeat=pow(1.0-iBeat,3.0);
+  float tempoN=clamp(iTempo/180.0,0.0,1.0);
+  float drive=clamp(0.18*iEnergy+0.13*iRms+0.12*iTrackEnergy+0.09*iLoud
+                   +0.10*iBass+0.09*iPeak+0.17*iIntensity,0.0,1.0);
+  float t=iTime*(0.20+0.12*tempoN+0.08*iDance);
+
+  /* The exported redesign: a central event horizon gravitationally lenses the
+     starfield and turns the xAI slash into an edge-on accretion disk. */
+  vec2 c=p-m*vec2(0.34,0.24)*iWarp;
+  float r=max(length(c),1e-4);
+  float rs=0.218+0.020*iSub+0.010*iBass+0.008*iPulse+0.005*downbeat;
+  float defl=1.0+(rs*rs*(1.28+0.72*iLowMid))/(r*r);
+  vec2 lp=c*defl;
+
+  vec3 col=vec3(0.007,0.008,0.013);
+  vec2 sg=floor((lp*0.5+0.5)*iResolution.xy*(0.50+0.28*iInstrum));
+  float sh=hash(sg);
+  float star=pow(sh,mix(112.0,58.0,iCentroid));
+  float tw=0.54+0.46*sin(t*(2.0+2.6*iTreble)+sh*30.0+iBeat*6.2831853);
+  float lensGain=1.0+(0.72+0.66*iMid)*smoothstep(rs*3.2,rs*1.08,r);
+  vec3 starTint=mix(vec3(0.82,0.88,1.0),iAccent,0.08+0.12*iValence);
+  col += starTint*star*(1.18+0.90*iHighMid+0.76*iFlux)*tw*lensGain;
+  col += mix(vec3(0.025,0.030,0.055),iAccent*0.11,0.28)
+       * fbm(lp*(1.15+0.65*iLive)+t*0.035)*(0.40+0.42*iLive+0.18*iAcoustic);
+
+  float diskAngle=0.7854+(iValence-0.5)*0.18+iProgress*0.14;
+  vec2 d=rotG(diskAngle)*c;
+  float glitchDrive=clamp(0.36*iBass+0.28*iFlux+0.18*iPulse+0.12*iPeak,0.0,1.0);
+  float goff=(step(0.5,fract(d.x*(12.0+7.0*iTreble)-t*(1.8+0.8*iBpm)))-0.5)
+             *(0.014+0.058*glitchDrive)*(1.0-0.28*iSpeech);
+  d.y += goff;
+  vec2 e=vec2(d.x,d.y/(0.145+0.030*iAcoustic+0.018*iVocal));
+  float re=length(e);
+  float ang=atan(e.y,e.x);
+  float swirl=fbm(vec2(ang*(1.5+0.45*iInstrum),re*(6.2+2.2*iHighMid)-t*(0.72+0.42*iBpm)));
+  float streak=0.42+0.88*swirl;
+  float band=smoothstep(rs*1.14,rs*(1.48+0.10*iBass),re)
+            *(1.0-smoothstep(rs*(2.55+0.10*iLowMid),rs*(3.55+0.22*iEnergy),re));
+  float dop=0.42+0.96*smoothstep(-1.0,1.0,-d.x/max(re,1e-3));
+  vec3 diskC=mix(vec3(0.48,0.58,0.88),vec3(1.0,0.99,0.96),clamp(streak+0.22*iCentroid,0.0,1.0));
+  diskC=mix(diskC,iAccent,0.07+0.11*iValence);
+  col += diskC*band*streak*dop*(0.38+0.58*drive+0.16*iVocal);
+
+  float slashD=abs(d.y);
+  float beyond=smoothstep(rs*1.18,rs*2.38,abs(d.x));
+  float seg=0.58+0.42*step(0.18+0.22*iSpeech,fract(d.x*(1.8+1.1*iDance)-t*(0.28+0.24*iBpm)));
+  float fade=1.0-smoothstep(0.62,1.92,abs(d.x));
+  vec3 slash=mix(vec3(1.0),iAccent,0.06+0.11*iValence);
+  col += slash*smoothstep(0.010+0.006*iVocal,0.0,slashD)*beyond*seg*fade
+       *(0.62+0.54*drive+0.18*iMid);
+  col += mix(vec3(0.70,0.79,1.0),iAccent,0.12)
+       * smoothstep(0.11+0.055*drive+0.035*iLowMid,0.0,slashD)*beyond*fade
+       *(0.10+0.16*iEnergy+0.13*iLive);
+  float chroma=(0.08+0.36*iHighMid+0.30*iFlux)*(0.38+0.62*iTreble);
+  col.r += smoothstep(0.045,0.0,abs(slashD-0.026))*beyond*fade*chroma;
+  col.b += smoothstep(0.045,0.0,abs(slashD+0.026))*beyond*fade*chroma;
+
+  float pr=rs*1.10;
+  float photon=smoothstep(0.018+0.006*iAcoustic,0.0,abs(r-pr));
+  col += slash*photon*(0.70+0.54*drive+0.38*iPeak+0.28*iFlux);
+  col += starTint*smoothstep(0.16+0.035*iLive,0.0,abs(r-pr))
+       *(0.08+0.14*iEnergy+0.14*iVocal);
+  col *= 1.0-smoothstep(rs*1.005,rs*0.982,r);
+
+  float clickRing=exp(-pow((length(p-m)-(1.0-iClick)*0.95)*10.0,2.0))*iClick;
+  col += starTint*clickRing*0.55;
+  col = hueShift(col,iHue*0.10);
+  col *= mix(0.84,1.0,iPlaying);
+  col *= 0.85+0.15*smoothstep(1.6,0.2,length(p));
+  col += iGrain*0.04*grain(gl_FragCoord.xy, iTime);
+  gl_FragColor=vec4(col,1.0);
+}
+`,
+  base44: `
+void main(){
+  vec2 uv = gl_FragCoord.xy / iResolution.xy;
+  vec2 p = uv*2.0-1.0; p.x *= iResolution.x/iResolution.y;
+  vec2 m = (iMouse-0.5)*vec2(iResolution.x/iResolution.y,1.0);
+  float downbeat=pow(1.0-iBeat,3.0);
+  float tempoN=clamp(iTempo/180.0,0.0,1.0);
+  float drive=clamp(0.18*iEnergy+0.14*iRms+0.14*iTrackEnergy+0.10*iLoud+0.10*iBass+0.08*iPeak+0.18*iIntensity,0.0,1.0);
+  float t=iTime*(0.16+0.12*tempoN+0.08*iDance);
+  vec3 darkAmber=mix(vec3(0.10,0.05,0.012),iAccent*0.12,0.18+0.18*iValence);
+  vec3 col=mix(darkAmber,vec3(0.025,0.012,0.0),uv.y);
+  float scale=3.8+1.1*iInstrum+0.7*iTreble;
+  vec2 g=vec2(p.x*scale+p.y*scale*0.5,p.y*scale)+m*(0.28+0.28*iWarp);
+  vec2 id = floor(g);
+  vec2 f = fract(g)-0.5;
+  float ph = hash(id);
+  float sequence=id.x*0.5-id.y*0.4-t*(1.2+iBpm)+ph*6.28+iBeat*6.2831853;
+  sequence += iProgress*6.2831853+downbeat*(1.2+1.4*iDance);
+  float build=0.5+0.5*sin(sequence);
+  build=smoothstep(0.30-0.12*iSub,0.82-0.12*iBass,build);
+  float mx = max(abs(f.x),abs(f.y));
+  float edgeSoft=0.035+0.028*iAcoustic;
+  float box=smoothstep(0.47,0.47-edgeSoft,mx);
+  float top=smoothstep(0.0,0.5,-f.y)*(0.34+0.30*iMid+0.18*iLowMid);
+  vec3 amber=mix(vec3(0.55,0.26,0.04),vec3(1.0,0.66,0.18),build);
+  amber=mix(amber,iAccent,0.08+0.14*iValence);
+  float lit = box*build;
+  col += amber*lit*(0.40+0.64*drive);
+  col += mix(vec3(1.0,0.8,0.4),iAccent,0.10)*lit*top*(0.34+0.26*iVocal);
+  float edge = box*smoothstep(0.40,0.47, mx);
+  col += vec3(1.0,0.55,0.1)*edge*build*(0.22+0.38*iHighMid+0.30*iTreble);
+  float packet=step(0.82,fract(ph+iBeat*2.0+iProgress*4.0))*lit;
+  col += vec3(1.0,0.92,0.64)*packet*(0.14+0.44*iFlux+0.24*iCentroid);
+  float foundation=smoothstep(-0.45,-0.05,p.y)*iSub*(0.18+0.20*iSpeech);
+  col += amber*foundation;
+  col += amber*fbm(p*1.3-t*0.08)*iLive*0.07;
+  float clickWave=exp(-pow((abs(p.x-m.x)+abs(p.y-m.y)-(1.0-iClick)*1.45)*8.0,2.0))*iClick;
+  col += vec3(1.0,0.78,0.30)*clickWave*0.66;
+  col = hueShift(col,iHue*0.16);
+  col *= mix(0.84,1.0,iPlaying);
+  col *= 0.85+0.15*smoothstep(1.7,0.2,length(p));
+  col += iGrain*0.035*grain(gl_FragCoord.xy, iTime);
+  gl_FragColor=vec4(col,1.0);
+}
+`,
+  replit: `
+float sdSegR(vec2 pt,vec2 a,vec2 b,float rad){
+  vec2 pa=pt-a,ba=b-a;
+  float h=clamp(dot(pa,ba)/max(dot(ba,ba),1e-6),0.0,1.0);
+  return length(pa-ba*h)-rad;
+}
+void main(){
+  vec2 uv = gl_FragCoord.xy / iResolution.xy;
+  vec2 p = uv*2.0-1.0; p.x *= iResolution.x/iResolution.y;
+  vec2 m=iMouse-0.5;
+  float asp=iResolution.x/iResolution.y;
+  float t=iTime;
+  float downbeat=pow(1.0-iBeat,3.0);
+  float drive=clamp(0.17*iEnergy+0.13*iRms+0.12*iTrackEnergy+0.10*iLoud+0.10*iMid+0.08*iPeak+0.05*iSpeech+0.15*iIntensity,0.0,1.0);
+  float aa=(1.45+0.55*iAcoustic)/iResolution.y;
+  float tempoHz=iTempo>0.0 ? iTempo/60.0 : iBpm;
+
+  vec3 slate=mix(vec3(0.078,0.088,0.108),iAccent*0.12,0.12+0.16*iValence);
+  vec3 col=mix(slate,vec3(0.026,0.031,0.045),length(p)*0.62);
+  col += mix(vec3(0.055,0.028,0.012),iAccent*0.08,0.24)
+       * fbm(p*(1.35+0.35*iLive)+t*0.04)*(0.18+0.18*iLive);
+
+  vec3 coral=vec3(0.95,0.38,0.03);
+  vec3 amber=vec3(1.0,0.64,0.26);
+  vec3 dim=vec3(0.52,0.34,0.34);
+  coral=mix(coral,iAccent,0.10+0.14*iValence);
+  amber=hueShift(amber,iHue*0.20);
+
+  const float ROWS=14.0;
+  float rh=1.0/ROWS;
+  float scroll=t*(0.12+0.12*tempoHz+0.10*iDance)+iProgress*ROWS*0.42+m.y*1.35*iWarp;
+  float lead=scroll+ROWS-1.5;
+  vec2 q=vec2(uv.x*asp,uv.y);
+  float base=floor(uv.y/rh+scroll);
+  vec3 ink=vec3(0.0);
+  float bloom=0.0;
+  float curGlow=0.0;
+
+  for(int k=-1;k<=1;k++){
+    float row=base+float(k);
+    float cy=(row-scroll+0.5)*rh;
+    float s1=hash(vec2(row,3.0));
+    float s2=hash(vec2(row,9.0));
+    float indent=floor(s1*3.0)*0.055;
+    float full=0.20+s2*(0.44+0.10*iLowMid);
+    float prog=clamp((lead-row)*(1.45+0.38*iBpm+0.30*iHighMid),0.0,1.0);
+    if(prog<=0.0) continue;
+    float x0=0.11+indent;
+    float x1=x0+full*prog;
+    float th=rh*(0.17+0.065*iRms+0.045*iAcoustic);
+    float d=sdSegR(q,vec2(x0*asp,cy),vec2(x1*asp,cy),th);
+
+    float tokenFreq=14.0+5.0*iTreble+3.0*iInstrum;
+    float tf=fract(uv.x*tokenFreq+s1*7.0);
+    float gap=smoothstep(0.0,0.09,tf)*smoothstep(1.0,0.91,tf);
+    float tok=hash(vec2(row,floor(uv.x*tokenFreq+s1*7.0)));
+    vec3 tc=tok<0.34 ? coral : (tok<0.68 ? amber : dim);
+    float shimmer=0.82+(0.10+0.14*iCentroid)*sin(t*(1.8+1.4*iHighMid)+tok*18.0+row);
+    float body=smoothstep(aa,-aa,d)*gap;
+    float activeRow=1.0-step(0.5,abs(row-floor(scroll+ROWS-1.5)));
+    ink += tc*body*shimmer*(0.34+0.42*drive+0.18*iVocal+0.14*activeRow*iMid);
+    bloom += exp(-max(d,0.0)*(58.0+18.0*iTreble))*gap*(0.16+0.18*iLive+0.12*iBass);
+
+    float active=step(prog,0.999)*step(0.001,prog);
+    float blink=0.38+0.62*smoothstep(0.30,0.66,fract(t*(0.9+0.55*tempoHz)+iBeat));
+    float caretRadius=rh*(0.07+0.065*iHighMid+0.045*iFlux);
+    float cd=sdSegR(q,vec2(x1*asp,cy-rh*0.17),vec2(x1*asp,cy+rh*0.17),caretRadius);
+    float caret=smoothstep(aa,-aa,cd)*active*mix(blink,1.0,0.30*active);
+    ink += mix(vec3(1.0,0.78,0.52),iAccent,0.10)*caret
+         *(0.66+0.40*iPulse+0.30*downbeat+0.38*iFlux+0.18*iSpeech);
+    curGlow += exp(-max(cd,0.0)*42.0)*active;
+  }
+
+  col += ink;
+  col += coral*bloom*(0.18+0.22*drive+0.14*iSub);
+  col += mix(vec3(1.0,0.66,0.35),iAccent,0.10)*curGlow
+       *(0.10+0.18*iPulse+0.14*iFlux);
+  float sweep=exp(-pow((uv.y-fract(t*(0.07+0.04*iBpm)+iProgress))*6.0,2.0));
+  col += amber*sweep*(0.010+0.030*iCentroid+0.025*iLive);
+  float clickRing=exp(-pow((length(p-m*vec2(asp,1.0))-(1.0-iClick)*0.88)*10.0,2.0))*iClick;
+  col += amber*clickRing*0.56;
+  col = hueShift(col,iHue*0.12);
+  col *= mix(0.84,1.0,iPlaying);
+  col *= 0.9+0.1*smoothstep(1.7,0.3,length(p));
+  col += iGrain*0.022*grain(gl_FragCoord.xy,iTime);
+  gl_FragColor=vec4(col,1.0);
 }
 `,
 };
