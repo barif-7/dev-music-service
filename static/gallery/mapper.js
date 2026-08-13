@@ -120,6 +120,16 @@ const ShaderMapper = (function(){
          treble (+ a little high-mid) → fine detail / hi-hats. */
       u.bass   = A.bass;
       u.treble = clamp01((1 - T.trebleHighMidMix)*A.treble + T.trebleHighMidMix*A.highMid);
+      /* Full analyzer contract for shaders that need more than the legacy four
+         bands. Flux and RMS are normalized here so every fragment receives a
+         stable 0..1 value instead of source-dependent Web Audio magnitudes. */
+      u.sub      = A.sub;
+      u.lowMid   = A.lowMid;
+      u.highMid  = A.highMid;
+      u.centroid = A.spectralCentroid;
+      u.flux     = clamp01(A.spectralFlux * 20);
+      u.rms      = clamp01(A.rms * 4);
+      u.peak     = clamp01(A.peak);
 
       /* calm the originals' direct band/beat reads so they don't out-punch the
          designed shaders (live only — their idle motion is left at full). */
@@ -143,6 +153,8 @@ const ShaderMapper = (function(){
       u.intensity = P.has ? clamp01(0.50 + 0.30*P.energy + T.brightFromMode*modeBias(P)) : 0.65;
       u.warp = P.has ? clamp01(0.30 + T.idleWarpFromDance*P.dance) : 0.40;
       u.mid = 0; u.vocal = 0; u.bass = 0; u.treble = 0;
+      u.sub = 0; u.lowMid = 0; u.highMid = 0; u.centroid = 0;
+      u.flux = 0; u.rms = 0; u.peak = 0;
     }
 
     /* hue: valence sets warmth, key adds a subtle per-track colour identity. */
