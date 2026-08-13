@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional
+from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -231,6 +231,23 @@ class LocalizeWindowRequest(BaseModel):
         description="Lines (index + source text) to localize just-in-time. Carrying "
         "text lets transcribed tracks be localized too, not just LRCLIB ones.",
     )
+
+
+class TranslatedVocalLine(BaseModel):
+    index: int = Field(ge=0, description="Stable line index within the track's lyric lines")
+    text: str = Field(min_length=1, max_length=1000, description="Translated lyric text to synthesize")
+    start_time_ms: Optional[int] = Field(default=None, ge=0)
+    end_time_ms: Optional[int] = Field(default=None, ge=0)
+
+
+class TranslatedVocalRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=500)
+    artist: str = Field(min_length=1, max_length=500)
+    locale: str = Field(min_length=1, max_length=35)
+    voice_mode: Literal["neutral", "user_consent", "licensed", "artist_clone"] = "neutral"
+    voice_profile_id: Optional[str] = Field(default=None, max_length=200)
+    voice_consent_token: Optional[str] = Field(default=None, max_length=500)
+    lines: List[TranslatedVocalLine] = Field(default_factory=list, min_length=1, max_length=80)
 
 
 class LyricsResponse(BaseModel):

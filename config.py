@@ -77,6 +77,20 @@ class Settings(BaseSettings):
     # Shared with the local CaptionLocalizer process — the resolved audio file is
     # written here and its path is handed to transcribe_video on the same host.
     lyrics_transcription_temp_dir: str = "/tmp/dev-music-transcribe"
+    # Optional permitted-voice TTS backend. This is deliberately not an artist
+    # voice-clone path; requests are limited to neutral, user-consented, or
+    # licensed profiles by the API layer.
+    pikaprojbackend_url: str | None = None
+    pikaprojbackend_tts_path: str = "/api/tts/segments"
+    translated_vocals_voice_mode: str = "neutral"
+    translated_vocals_voice_profile_id: str | None = None
+    translated_vocals_voice_consent_token: str | None = None
+    translated_vocals_voice_label: str = "Neutral voice"
+    translated_vocals_local_say_fallback: bool = True
+    translated_vocals_say_command: str = "/usr/bin/say"
+    translated_vocals_say_voice: str | None = None
+    translated_vocals_ffmpeg_command: str = "/opt/homebrew/bin/ffmpeg"
+    translated_vocals_audio_dir: Path | None = None
 
     @field_validator("stream_allowed_hosts", mode="before")
     @classmethod
@@ -113,6 +127,16 @@ class Settings(BaseSettings):
         normalized = value.strip().lower()
         if normalized not in {"local-json", "kv"}:
             raise ValueError("FOCUS_PROFILE_STORAGE_BACKEND must be local-json or kv")
+        return normalized
+
+    @field_validator("translated_vocals_voice_mode")
+    @classmethod
+    def _validate_translated_vocals_voice_mode(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"neutral", "user_consent", "licensed"}:
+            raise ValueError(
+                "TRANSLATED_VOCALS_VOICE_MODE must be neutral, user_consent, or licensed"
+            )
         return normalized
 
     @property

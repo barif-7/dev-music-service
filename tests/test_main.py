@@ -1,4 +1,5 @@
 """End-to-end tests for main API endpoints."""
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -950,6 +951,226 @@ class TestLiveLyricsEndpoints:
         data = response.json()
         assert data["status"] == "pending"
         assert data["lines"] == []
+
+
+class TestTranslatedVocalEndpoints:
+    """Tests for permitted translated-vocal segment generation."""
+
+    def test_translated_vocals_returns_segment_plan(self, client: TestClient, monkeypatch):
+        monkeypatch.setenv("TRANSLATED_VOCALS_LOCAL_SAY_FALLBACK", "false")
+        monkeypatch.setenv("PIKAPROJBACKEND_URL", "")
+        monkeypatch.setenv("TRANSLATED_VOCALS_VOICE_MODE", "neutral")
+        monkeypatch.setenv("TRANSLATED_VOCALS_VOICE_PROFILE_ID", "")
+        monkeypatch.setenv("TRANSLATED_VOCALS_VOICE_CONSENT_TOKEN", "")
+
+        response = client.post(
+            "/api/vocals/translated",
+            json={
+                "title": "Headlines",
+                "artist": "Drake",
+                "locale": "es-MX",
+                "voice_mode": "neutral",
+                "lines": [
+                    {
+                        "index": 0,
+                        "text": "Tengo dinero en mente",
+                        "start_time_ms": 0,
+                        "end_time_ms": 2000,
+                    }
+                ],
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "not_configured"
+        assert data["voice_mode"] == "neutral"
+        assert data["segments"][0]["audio_url"] is None
+
+    def test_translated_vocals_local_say_fallback_serves_audio(
+        self,
+        client: TestClient,
+        monkeypatch,
+        tmp_path,
+    ):
+        from services import translated_vocals_service as vocals_module
+
+        monkeypatch.setenv("PIKAPROJBACKEND_URL", "")
+        monkeypatch.setenv("TRANSLATED_VOCALS_LOCAL_SAY_FALLBACK", "true")
+        monkeypatch.setenv("TRANSLATED_VOCALS_SAY_COMMAND", "/usr/bin/say")
+        monkeypatch.setenv("TRANSLATED_VOCALS_FFMPEG_COMMAND", "/opt/homebrew/bin/ffmpeg")
+        monkeypatch.setenv("DMS_DATA_DIR", str(tmp_path))
+
+        def fake_run(args, **kwargs):
+            output_path = args[-1]
+            if output_path.endswith(".aiff"):
+                Path(output_path).write_bytes(b"AIFF")
+            elif output_path.endswith(".wav"):
+                Path(output_path).write_bytes(b"RIFFWAVE")
+
+        monkeypatch.setattr(vocals_module.subprocess, "run", fake_run)
+
+        response = client.post(
+            "/api/vocals/translated",
+            json={
+                "title": "Song",
+                "artist": "Artist",
+                "locale": "en-US",
+                "voice_mode": "neutral",
+                "lines": [{"index": 0, "text": "hello"}],
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ready"
+        audio_url = data["segments"][0]["audio_url"]
+        assert audio_url.startswith("/api/vocals/audio/")
+
+        audio_response = client.get(audio_url)
+        assert audio_response.status_code == 200
+        assert audio_response.content == b"RIFFWAVE"
+
+    def test_translated_vocals_user_consent_falls_back_when_pika_has_no_tts(
+        self,
+        client: TestClient,
+        monkeypatch,
+        tmp_path,
+    ):
+        from services import translated_vocals_service as vocals_module
+
+        monkeypatch.setenv("PIKAPROJBACKEND_URL", "http://pika.local")
+        monkeypatch.setenv("PIKAPROJBACKEND_TTS_PATH", "/tts")
+        monkeypatch.setenv("TRANSLATED_VOCALS_LOCAL_SAY_FALLBACK", "true")
+        monkeypatch.setenv("TRANSLATED_VOCALS_SAY_COMMAND", "/usr/bin/say")
+        monkeypatch.setenv("TRANSLATED_VOCALS_FFMPEG_COMMAND", "/opt/homebrew/bin/ffmpeg")
+        monkeypatch.setenv("TRANSLATED_VOCALS_VOICE_MODE", "user_consent")
+        monkeypatch.setenv("TRANSLATED_VOCALS_VOICE_PROFILE_ID", "voice-profile-local")
+        monkeypatch.setenv("TRANSLATED_VOCALS_VOICE_CONSENT_TOKEN", "consent")
+        monkeypatch.setenv("DMS_DATA_DIR", str(tmp_path))
+
+        class FakeResponse:
+            status_code = 503
+
+            def raise_for_status(self):
+                raise AssertionError("503 should be handled before raise_for_status")
+
+        class FakeClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return None
+
+            def post(self, *args, **kwargs):
+                return FakeResponse()
+
+        def fake_run(args, **kwargs):
+            output_path = args[-1]
+            if output_path.endswith(".aiff"):
+                Path(output_path).write_bytes(b"AIFF")
+            elif output_path.endswith(".wav"):
+                Path(output_path).write_bytes(b"RIFFWAVE")
+
+        monkeypatch.setattr(vocals_module.httpx, "Client", FakeClient)
+        monkeypatch.setattr(vocals_module.subprocess, "run", fake_run)
+
+        response = client.post(
+            "/api/vocals/translated",
+            json={
+                "title": "Song",
+                "artist": "Artist",
+                "locale": "en-US",
+                "lines": [{"index": 0, "text": "hello"}],
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ready"
+        assert data["voice_mode"] == "user_consent"
+        assert data["voice_profile_id"] == "voice-profile-local"
+        assert data["segments"][0]["audio_url"].startswith("/api/vocals/audio/")
+
+    def test_translated_vocals_rejects_artist_clone(self, client: TestClient):
+        response = client.post(
+            "/api/vocals/translated",
+            json={
+                "title": "Headlines",
+                "artist": "Drake",
+                "locale": "es-MX",
+                "voice_mode": "artist_clone",
+                "lines": [{"index": 0, "text": "hola"}],
+            },
+        )
+
+        assert response.status_code == 403
+        assert "Artist voice cloning is not supported" in response.json()["detail"]
+
+    def test_translated_vocals_requires_consent_for_profile_voice(self, client: TestClient, monkeypatch):
+        monkeypatch.setenv("PIKAPROJBACKEND_URL", "")
+        monkeypatch.setenv("TRANSLATED_VOCALS_VOICE_MODE", "neutral")
+        monkeypatch.setenv("TRANSLATED_VOCALS_VOICE_PROFILE_ID", "")
+        monkeypatch.setenv("TRANSLATED_VOCALS_VOICE_CONSENT_TOKEN", "")
+
+        response = client.post(
+            "/api/vocals/translated",
+            json={
+                "title": "Song",
+                "artist": "Artist",
+                "locale": "fr-CA",
+                "voice_mode": "licensed",
+                "voice_profile_id": "licensed-voice-1",
+                "lines": [{"index": 0, "text": "bonjour"}],
+            },
+        )
+
+        assert response.status_code == 403
+        assert "voice_profile_id and voice_consent_token" in response.json()["detail"]
+
+    def test_translated_vocals_uses_configured_permitted_voice(
+        self,
+        client: TestClient,
+        monkeypatch,
+    ):
+        monkeypatch.setenv("TRANSLATED_VOCALS_VOICE_MODE", "licensed")
+        monkeypatch.setenv("TRANSLATED_VOCALS_VOICE_PROFILE_ID", "licensed-voice-1")
+        monkeypatch.setenv("TRANSLATED_VOCALS_VOICE_CONSENT_TOKEN", "consent-ok")
+
+        response = client.post(
+            "/api/vocals/translated",
+            json={
+                "title": "Song",
+                "artist": "Artist",
+                "locale": "fr-CA",
+                "voice_mode": "neutral",
+                "lines": [{"index": 0, "text": "bonjour"}],
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["voice_mode"] == "licensed"
+        assert data["voice_profile_id"] == "licensed-voice-1"
+
+    def test_translated_vocals_config_status(self, client: TestClient, monkeypatch):
+        monkeypatch.setenv("PIKAPROJBACKEND_URL", "http://voice.example")
+        monkeypatch.setenv("TRANSLATED_VOCALS_VOICE_MODE", "licensed")
+        monkeypatch.setenv("TRANSLATED_VOCALS_VOICE_PROFILE_ID", "licensed-voice-1")
+        monkeypatch.setenv("TRANSLATED_VOCALS_VOICE_CONSENT_TOKEN", "consent-ok")
+        monkeypatch.setenv("TRANSLATED_VOCALS_VOICE_LABEL", "Licensed demo voice")
+
+        response = client.get("/api/vocals/config")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["backend_configured"] is True
+        assert data["voice_mode"] == "licensed"
+        assert data["voice_label"] == "Licensed demo voice"
+        assert data["profile_configured"] is True
 
 
 class TestLogRedaction:

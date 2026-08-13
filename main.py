@@ -32,6 +32,7 @@ from models import (
     ImportedPlaylistTrack,
     LocalizeWindowRequest,
     SpotifySaveTrackRequest,
+    TranslatedVocalRequest,
 )
 from security import (
     open_validated_stream,
@@ -59,6 +60,11 @@ from services.live_transcription_service import LiveTranscriptionService
 from services.lyrics_service import LyricsNotFoundError, LyricsRequestError, LyricsService
 from services.music_service import MusicService, MusicServiceError
 from services.spotify_import_service import SpotifyImportError, SpotifyImportService
+from services.translated_vocals_service import (
+    TranslatedVocalsPolicyError,
+    TranslatedVocalsService,
+    TranslatedVocalsServiceError,
+)
 from services.video_service import VideoService, VideoServiceError
 
 # Configure structured logging
@@ -173,6 +179,7 @@ def fail_with_http_error(exc: Exception) -> None:
             MetadataServiceError,
             SpotifyImportError,
             VideoServiceError,
+            httpx.HTTPError,
         ),
     ):
         raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -650,6 +657,44 @@ def localize_lyrics_window(request: Request, body: LocalizeWindowRequest):
     except Exception as exc:
         logger.error("lyrics_localize_window_failed", title=body.title, error=str(exc))
         fail_with_http_error(exc)
+
+
+@app.post("/api/vocals/translated")
+@app.post("/vocals/translated")
+@limiter.limit("30 per minute")
+def create_translated_vocals(request: Request, body: TranslatedVocalRequest):
+    """Create a timed translated-vocal segment plan using permitted voices only."""
+    try:
+        payload = TranslatedVocalsService.create(body)
+        return JSONResponse(content=payload)
+    except TranslatedVocalsPolicyError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except TranslatedVocalsServiceError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error("translated_vocals_failed", title=body.title, error=str(exc))
+        fail_with_http_error(exc)
+
+
+@app.get("/api/vocals/config")
+@app.get("/vocals/config")
+def translated_vocals_config():
+    """Report non-secret translated-vocal synthesis readiness."""
+    return JSONResponse(content=TranslatedVocalsService.config_status())
+
+
+@app.get("/api/vocals/audio/{filename}")
+@app.get("/vocals/audio/{filename}")
+def translated_vocals_audio(filename: str):
+    """Serve generated translated-vocal audio segments."""
+    try:
+        path = TranslatedVocalsService.audio_path(filename)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Audio segment not found") from exc
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Audio segment not found")
+    media_type = "audio/mpeg" if path.suffix == ".mp3" else "audio/wav"
+    return FileResponse(path, media_type=media_type)
 
 
 @app.get("/api/lyrics/transcribe")
