@@ -342,6 +342,24 @@ class TestVideoService:
             "shorts",
         )
 
+    def test_score_prioritizes_requested_song_over_other_official_uploads(self):
+        requested = {
+            "title": "The Weeknd - Blinding Lights (Official Video)",
+            "channel": "The Weeknd",
+            "duration": 260,
+        }
+        other_song = {
+            "title": "The Weeknd - Dancing In The Flames (Official Music Video)",
+            "channel": "The Weeknd",
+            "duration": 256,
+        }
+
+        assert VideoService._score_video(
+            requested, "music_video", "Blinding Lights", "The Weeknd"
+        ) > VideoService._score_video(
+            other_song, "music_video", "Blinding Lights", "The Weeknd"
+        )
+
     def test_search_returns_ranked_video_results(self, monkeypatch):
         VideoService._video_search_cache.clear()
         VideoService._video_stream_cache.clear()
