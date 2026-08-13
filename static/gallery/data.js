@@ -220,4 +220,44 @@ const ALTS = [
     palette:['#edeae0','#11141f','#3a4a6a','#9aa6c0','#0a0c12'],
     track:null, lyric:null
   },
+  {
+    id:'codex', name:'Codex', n:'26',
+    preset:'Mono', bpm:100, pairFrom:'OpenAI · the blossom knot',
+    desc:'OpenAI’s monochrome restraint: an interwoven six-fold knot rotating against near-black, drawn only in greys and warm white. Loudness lifts the ink toward pure white; each beat flares the strands and nudges the rotation.',
+    palette:['#050506','#3a3a40','#e8e8ea','#b8b8bc','#0e0e12'],
+    track:null,
+    lyric:'no colour, just the way the lines pass over and under'
+  },
+  {
+    id:'qwen', name:'Qwen', n:'27',
+    preset:'Bloom', bpm:92, pairFrom:'Alibaba · translucent bloom',
+    desc:'Qwen’s violet identity as a breathing bloom — six translucent petals orbiting a luminous core, overlapping into magenta where they cross. Energy saturates the glass; the beat opens the flower and brightens its heart.',
+    palette:['#120726','#5a24c0','#9a4cf0','#d96cf5','#1a0830'],
+    track:null,
+    lyric:'every petal a little more see-through than the last'
+  },
+  {
+    id:'grok', name:'Grok', n:'28',
+    preset:'Void', bpm:120, pairFrom:'xAI · the cosmic slash',
+    desc:'A black hole hangs dead centre, its photon halo bending the starfield while the diagonal slash continues through it as an edge-on accretion disk. Bass thickens the horizon; onsets tear chromatic glitches through the disk.',
+    palette:['#000000','#0a0a14','#ffffff','#3a4a7a','#06060a'],
+    track:null,
+    lyric:'one white line drawn straight through all that dark'
+  },
+  {
+    id:'base44', name:'Base44', n:'29',
+    preset:'Build', bpm:128, pairFrom:'foundation blocks',
+    desc:'Base44’s orange poured into foundations: an isometric field of amber blocks that build and settle in waves, top faces catching the light. The beat snaps whole ranks into place.',
+    palette:['#1a0d02','#e8770f','#ffb43c','#c2540a','#0e0700'],
+    track:null,
+    lyric:'lay the base, then watch the rest stack itself'
+  },
+  {
+    id:'replit', name:'Replit', n:'30',
+    preset:'Run', bpm:112, pairFrom:'the coral terminal',
+    desc:'Replit’s coral terminal is now a continuously scrolling buffer: fresh lines type themselves token by token, with a luminous caret riding the active line. Tempo controls the scroll and onsets strike the cursor.',
+    palette:['#0c0e12','#f26207','#ff8a3c','#1c2230','#f0a55a'],
+    track:null,
+    lyric:'the cursor kept blinking like it had more to say'
+  },
 ];
