@@ -18,18 +18,26 @@ function injectMidVocal(frag){
     '  $1');
 }
 
-function compileProg(gl, fragSrc){
+function compileProg(gl, fragSrc, standalone=false){
   function compile(type, src){
     const s = gl.createShader(type);
     gl.shaderSource(s, src); gl.compileShader(s);
-    if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s), src);
+    if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)){
+      const message = gl.getShaderInfoLog(s) || 'Shader compilation failed';
+      gl.deleteShader(s);
+      throw new Error(message);
+    }
     return s;
   }
   const v = compile(gl.VERTEX_SHADER, VERT);
-  const f = compile(gl.FRAGMENT_SHADER, COMMON + '\n' + injectMidVocal(fragSrc));
+  const f = compile(gl.FRAGMENT_SHADER, standalone ? fragSrc : (COMMON + '\n' + injectMidVocal(fragSrc)));
   const p = gl.createProgram();
   gl.attachShader(p,v); gl.attachShader(p,f); gl.linkProgram(p);
-  if(!gl.getProgramParameter(p, gl.LINK_STATUS)) console.error(gl.getProgramInfoLog(p));
+  if(!gl.getProgramParameter(p, gl.LINK_STATUS)){
+    const message = gl.getProgramInfoLog(p) || 'Shader program link failed';
+    gl.deleteProgram(p);
+    throw new Error(message);
+  }
   return p;
 }
 
@@ -43,8 +51,13 @@ class Tile {
     this.canvas = canvas;
     this.maxDpr = maxDpr || 1.75;
     this.reactScale = 1;
+    this.fragId = fragId;
+    this.bpm = presetBPM;
+    // Keep every wallpaper visually identifiable when WebGL is disabled,
+    // blocked, or still compiling. A successful shader paints over this.
+    this.setFallback(fragId);
     this.gl = canvas.getContext('webgl', {antialias:false, premultipliedAlpha:false});
-    if(!this.gl){ canvas.style.background = '#181a20'; return; }
+    if(!this.gl){ canvas.dataset.shaderState = 'fallback'; return; }
     const gl = this.gl;
     this.buf = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, this.buf);
@@ -70,14 +83,45 @@ class Tile {
     canvas.addEventListener('pointerleave', ()=>{ this.target.x = 0.5; this.target.y = 0.5; });
     canvas.addEventListener('pointerdown', ()=>{ this.click = 1; });
   }
+  setFallback(fragId){
+    const meta = typeof ALTS !== 'undefined' ? ALTS.find(item=>item.id===fragId) : null;
+    const palette = meta?.palette?.length ? meta.palette : ['#10141a','#263443','#7aa091'];
+    this.canvas.style.background =
+      `radial-gradient(circle at 68% 30%, ${palette[2] || palette[0]} 0%, transparent 42%),`+
+      `linear-gradient(145deg, ${palette[0]}, ${palette[1] || palette[0]} 58%, ${palette[3] || palette[2] || palette[0]})`;
+  }
   load(fragId, presetBPM){
+    this.fragId = fragId;
+    this.bpm = presetBPM;
+    this.setFallback(fragId);
     if(!this.gl) return;
     const gl = this.gl;
     if(this.prog) gl.deleteProgram(this.prog);
-    this.fragId = fragId;
-    this.bpm = presetBPM;
     this.reactScale = reactivityPlugin.scaleFor(fragId);   // focus/BPM-tuned mid/vocal scale
-    this.prog = compileProg(gl, FRAGS[fragId]);
+    const apiSource = typeof API_FRAGS !== 'undefined' ? API_FRAGS[fragId] : null;
+    const bundledSource = FRAGS[fragId];
+    try{
+      this.prog = compileProg(gl, apiSource || bundledSource, !!apiSource);
+      this.canvas.dataset.shaderState = apiSource ? 'api' : 'bundled';
+    }catch(error){
+      console.warn('shader compile failed', fragId, error);
+      // A bad or incompatible upstream source must never blank the gallery.
+      if(apiSource && bundledSource){
+        delete API_FRAGS[fragId];
+        try{
+          this.prog = compileProg(gl, bundledSource);
+          this.canvas.dataset.shaderState = 'bundled';
+        }catch(fallbackError){
+          console.warn('bundled shader compile failed', fragId, fallbackError);
+          this.prog = null;
+          this.canvas.dataset.shaderState = 'fallback';
+        }
+      }else{
+        this.prog = null;
+        this.canvas.dataset.shaderState = 'fallback';
+      }
+    }
+    if(!this.prog) return;
     gl.useProgram(this.prog);
     const loc = gl.getAttribLocation(this.prog, 'a_pos');
     gl.bindBuffer(gl.ARRAY_BUFFER, this.buf);
@@ -97,7 +141,7 @@ class Tile {
     }
   }
   draw(){
-    if(!this.gl) return;
+    if(!this.gl || !this.prog) return;
     this.resize();
     const gl = this.gl;
     const tSec = (performance.now() - this.start)/1000;
