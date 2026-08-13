@@ -64,20 +64,36 @@ class AudioPlayer {
     this.webpageUrl = null;
     this.progress = 0;
     this.accent = [1, 1, 1];
+    this.externalTransport = null;
     this.media.loop = false;
     this.media.addEventListener('ended', ()=>this.rules.dispatch('ended', this));
   }
 
   get hasSource() {
+    if(this.externalTransport?.isActive) return !!this.externalTransport.hasSource;
     return !!this.media.src;
   }
 
   get isPlaying() {
+    if(this.externalTransport?.isActive) return !!this.externalTransport.isPlaying;
     return this.hasSource && !this.media.paused && !this.media.ended;
   }
 
   get currentTime() {
+    if(this.externalTransport?.isActive) return this.externalTransport.currentTime || 0;
     return this.media.currentTime || 0;
+  }
+
+  get playbackDuration() {
+    if(this.externalTransport?.isActive){
+      return this.externalTransport.duration || this.duration || 0;
+    }
+    return this.media.duration || this.duration || 0;
+  }
+
+  setExternalTransport(transport = null) {
+    this.externalTransport = transport;
+    return transport;
   }
 
   setTrack(track) {
@@ -103,12 +119,19 @@ class AudioPlayer {
   }
 
   play() {
+    if(this.externalTransport?.isActive){
+      return Promise.resolve(this.externalTransport.play());
+    }
     if(!this.hasSource) return Promise.resolve();
     const result = this.media.play();
     return result && typeof result.catch === 'function' ? result : Promise.resolve();
   }
 
   pause() {
+    if(this.externalTransport?.isActive){
+      this.externalTransport.pause();
+      return;
+    }
     this.media.pause();
   }
 
@@ -121,26 +144,29 @@ class AudioPlayer {
   }
 
   seekTo(seconds) {
-    const duration = this.media.duration || this.duration || 0;
+    const duration = this.playbackDuration;
     if(!duration) return;
-    this.media.currentTime = Math.max(0, Math.min(duration, seconds));
+    const target = Math.max(0, Math.min(duration, seconds));
+    if(this.externalTransport?.isActive)this.externalTransport.seekTo(target);
+    else this.media.currentTime = target;
     this.updateProgress();
   }
 
   seekToRatio(ratio) {
-    const duration = this.media.duration || this.duration || 0;
+    const duration = this.playbackDuration;
     if(!duration) return;
     this.seekTo(Math.max(0, Math.min(1, ratio)) * duration);
   }
 
   restart() {
-    this.media.currentTime = 0;
+    if(this.externalTransport?.isActive)this.externalTransport.seekTo(0);
+    else this.media.currentTime = 0;
     this.progress = 0;
     this.play().catch(()=>{});
   }
 
   updateProgress() {
-    const duration = this.media.duration || this.duration || 0;
+    const duration = this.playbackDuration;
     this.progress = duration ? this.currentTime / duration : 0;
     return this.progress;
   }
@@ -187,6 +213,26 @@ class PlayerControls {
       if(!rect.width) return;
       this.player.seekToRatio((event.clientX - rect.left) / rect.width);
     });
+    e.scrubber?.addEventListener('keydown', event=>{
+      const duration = this.player.playbackDuration;
+      if(!duration) return;
+      let delta = 0;
+      if(event.key === 'ArrowRight' || event.key === 'ArrowUp') delta = 5;
+      else if(event.key === 'ArrowLeft' || event.key === 'ArrowDown') delta = -5;
+      else if(event.key === 'Home'){
+        event.preventDefault();
+        this.player.seekTo(0);
+        return;
+      } else if(event.key === 'End'){
+        event.preventDefault();
+        this.player.seekTo(duration);
+        return;
+      } else {
+        return;
+      }
+      event.preventDefault();
+      this.player.seekTo(this.player.currentTime + delta);
+    });
     return this;
   }
 
@@ -214,8 +260,16 @@ class PlayerControls {
     const e = this.elements;
     const progress = this.player.updateProgress();
     if(e.playIcon) e.playIcon.innerHTML = this.player.isPlaying ? this.pauseIcon : this.playIcon;
+    if(e.playButton) e.playButton.setAttribute('aria-pressed', this.player.isPlaying ? 'true' : 'false');
     if(e.fill) e.fill.style.width = `${(progress * 100).toFixed(1)}%`;
     if(e.time) e.time.textContent = PlayerControls.formatTime(this.player.currentTime);
+    if(e.scrubber){
+      const duration = this.player.playbackDuration;
+      const current = this.player.currentTime;
+      e.scrubber.setAttribute('aria-valuemax', String(Math.max(0, duration | 0)));
+      e.scrubber.setAttribute('aria-valuenow', String(Math.max(0, current | 0)));
+      e.scrubber.setAttribute('aria-valuetext', `${PlayerControls.formatTime(current)} of ${PlayerControls.formatTime(duration)}`);
+    }
     return progress;
   }
 
