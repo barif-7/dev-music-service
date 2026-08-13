@@ -281,6 +281,28 @@ class TestMusicServiceHelpers:
         entry = {}
         assert MusicService._album_from_entry(entry) is None
 
+    @pytest.mark.parametrize(
+        ("entry", "expected"),
+        [
+            ({"ext": "m4a", "acodec": "mp4a.40.2"}, "audio/mp4"),
+            ({"ext": "webm", "acodec": "opus"}, "audio/webm"),
+            ({"ext": "mp3", "acodec": "mp3"}, "audio/mpeg"),
+            ({"ext": "flac", "acodec": "flac"}, "audio/flac"),
+        ],
+    )
+    def test_audio_content_type_for_cast(self, entry, expected):
+        assert MusicService._audio_content_type(entry) == expected
+
+    def test_cast_format_prefers_audio_only_before_combined_video(self):
+        choices = MusicService._BROWSER_AUDIO_FORMAT.split("/")
+        assert choices[:3] == [
+            "bestaudio[ext=m4a]",
+            "bestaudio[ext=webm]",
+            "bestaudio",
+        ]
+        assert choices.index("bestaudio") < choices.index("best[ext=mp4]")
+        assert MusicService._YOUTUBE_EXTRACTOR_ARGS["youtube"]["player_client"][0] == "android_vr"
+
 
 class TestVideoService:
     def test_build_query_for_supported_kinds(self):

@@ -31,6 +31,7 @@ class SongSearchResult(BaseModel):
     artwork_source: Optional[str] = None
     artwork_confidence: Optional[str] = None
     release_year: Optional[int] = None
+    content_type: str = "audio/mp4"
 
 
 class VideoSearchResult(BaseModel):
@@ -56,6 +57,7 @@ class TrackMetadata(BaseModel):
     artwork_source: Optional[str] = None
     artwork_confidence: Optional[str] = None
     release_year: Optional[int] = None
+    content_type: str = "audio/mp4"
     source: str = "youtube"
 
 

@@ -37,7 +37,11 @@ class MusicService:
         maxsize=128,
         ttl=_STREAM_TTL_SECONDS,
     )
-    _BROWSER_AUDIO_FORMAT = "bestaudio[ext=m4a]/best[ext=mp4]/bestaudio/best"
+    # Exhaust audio-only variants before falling back to a combined MP4. This
+    # matters for Cast-for-audio devices, which must not receive a video stream.
+    _BROWSER_AUDIO_FORMAT = (
+        "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best[ext=mp4]/best"
+    )
 
     @staticmethod
     def _normalize_query(query: str) -> str:
@@ -87,7 +91,9 @@ class MusicService:
 
     _YOUTUBE_EXTRACTOR_ARGS = {
         "youtube": {
-            "player_client": ["android", "web"],
+            # android_vr currently exposes token-free DASH audio-only formats;
+            # the other clients remain fallbacks for videos it cannot access.
+            "player_client": ["android_vr", "android", "web"],
         }
     }
 
@@ -277,6 +283,7 @@ class MusicService:
                     artwork_source="youtube" if entry.get("thumbnail") else None,
                     artwork_confidence="video" if entry.get("thumbnail") else None,
                     release_year=MusicService._extract_year(entry),
+                    content_type=MusicService._audio_content_type(entry),
                 )
             )
 
@@ -299,6 +306,7 @@ class MusicService:
             artwork_source="youtube" if entry.get("thumbnail") else None,
             artwork_confidence="video" if entry.get("thumbnail") else None,
             release_year=MusicService._extract_year(entry),
+            content_type=MusicService._audio_content_type(entry),
             source="youtube",
         )
 
@@ -427,3 +435,20 @@ class MusicService:
         This is used for proxying audio through the server to avoid CORS issues.
         """
         return MusicService._extract_audio_source(webpage_url)
+
+    @staticmethod
+    def _audio_content_type(entry: dict) -> str:
+        """Return a Cast-compatible MIME type for a yt-dlp audio candidate."""
+        ext = str(entry.get("ext") or "").lower()
+        codec = str(entry.get("acodec") or "").lower()
+        if ext in {"webm"}:
+            return "audio/webm"
+        if ext in {"ogg", "oga", "opus"}:
+            return "audio/ogg"
+        if ext in {"mp3"} or codec.startswith("mp3"):
+            return "audio/mpeg"
+        if ext in {"wav"}:
+            return "audio/wav"
+        if ext in {"flac"}:
+            return "audio/flac"
+        return "audio/mp4"

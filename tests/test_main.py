@@ -21,6 +21,7 @@ class TestHealthEndpoint:
         assert "local_integration" in data
         assert "spotify_import" in data
         assert "caption_localizer_url" in data
+        assert data["chromecast"] == "default-media-receiver"
 
     def test_health_spotify_not_configured(self, client: TestClient, monkeypatch: pytest.MonkeyPatch):
         """Health should show spotify_import as missing-client-id when not configured."""
