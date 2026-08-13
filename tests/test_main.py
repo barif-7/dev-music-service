@@ -60,8 +60,73 @@ class TestFrontendAssets:
 
         assert response.status_code == 200
         assert "Phase · Field" in response.text
-        assert 'src="/static/gallery/app.js"' in response.text
+        assert 'src="/static/gallery/app.js' in response.text
         assert 'id="streamEl"' in response.text
+        assert 'id="appleMusicPanel"' in response.text
+        assert 'id="appleMusicImport"' in response.text
+        assert 'id="castLauncher"' in response.text
+        assert 'src="/static/gallery/cast.js"' in response.text
+        assert "cast_sender.js?loadCastFramework=1" in response.text
+        assert 'src="/static/gallery/apple-music.js"' in response.text
+        assert 'src="/static/gallery/share.js' in response.text
+        assert 'id="omniShare"' in response.text
+        assert 'id="nbShare"' in response.text
+        assert 'id="shareBanner"' in response.text
+        share_response = client.get("/static/gallery/share.js")
+        assert share_response.status_code == 200
+        assert "packagedLyrics" in share_response.text
+        assert "url.searchParams.set('lyrics'" in share_response.text
+        assert "packagedStream" in share_response.text
+        assert "url.searchParams.set('stream'" in share_response.text
+
+    def test_share_entry_serves_static_frontend(self, client: TestClient):
+        response = client.get("/share?share=song&title=Fixture%20Song&artist=Fixture%20Artist")
+
+        assert response.status_code == 200
+        assert "Phase · Field" in response.text
+        assert 'id="shareBanner"' in response.text
+
+    def test_live_translation_language_modal_is_served(self, client: TestClient):
+        page = client.get("/")
+        gallery = client.get("/static/gallery/app.js")
+
+        assert page.status_code == 200
+        assert gallery.status_code == 200
+        assert 'id="translationSettingsBtn"' in page.text
+        assert 'id="translationSettingsPanel"' in page.text
+        assert 'id="translationTargetLocale"' in page.text
+        for locale in ("es-MX", "ar", "ur", "hi", "zh-CN", "sw"):
+            assert f'value="{locale}"' in page.text
+        assert "applyLyricLocaleChoice" in gallery.text
+        assert "translationLocaleSel.innerHTML = lyricLocaleSel.innerHTML" in gallery.text
+        assert "Current and upcoming lyrics will refresh automatically" in gallery.text
+
+    def test_shader_gallery_exposes_live_api_and_visual_fallback(self, client: TestClient):
+        page = client.get("/")
+        gallery = client.get("/static/gallery/app.js")
+        engine = client.get("/static/gallery/engine.js")
+        shaders = client.get("/static/gallery/shaders.js")
+
+        assert page.status_code == gallery.status_code == engine.status_code == shaders.status_code == 200
+        assert 'id="shaderApiStatus"' in page.text
+        assert 'data-label="Shaders"' in page.text
+        assert "live from API" in gallery.text
+        assert "ensureApiShader" in gallery.text
+        assert "One shared live canvas" in gallery.text
+        assert "get('view') === 'shaders'" in gallery.text
+        assert "dataset.shaderState = 'fallback'" in engine.text
+        assert "standalone ? fragSrc" in engine.text
+        assert "const API_FRAGS" in shaders.text
+        assert "30 living shaders" in page.text
+        assert "uniform float iFlux" in shaders.text
+        assert "uniform float iCentroid" in shaders.text
+        for shader_id in ("codex", "qwen", "grok", "base44", "replit"):
+            assert f"{shader_id}: `" in shaders.text
+            assert f"id:'{shader_id}'" in client.get("/static/gallery/data.js").text
+        assert "mat2 rotG" in shaders.text
+        assert "float sdSegR" in shaders.text
+        assert "event horizon" in shaders.text
+        assert "scrolling buffer" in client.get("/static/gallery/data.js").text
 
     def test_static_assets_served(self, client: TestClient):
         """Static CSS and JS assets should be mounted."""
@@ -73,6 +138,108 @@ class TestFrontendAssets:
         assert ".themeModal" in css_response.text
         assert "initThemePicker" in js_response.text
 
+    def test_spectrum_view_controls_and_preferences_are_served(self, client: TestClient):
+        """The gallery should expose the expanded, persistent spectrum controls."""
+        page = client.get("/")
+        spectrum = client.get("/static/gallery/eq.js")
+
+        assert page.status_code == 200
+        assert spectrum.status_code == 200
+        for key in ("frequency", "direction", "spacing", "opacity"):
+            assert f'data-key="{key}"' in page.text
+        assert 'id="eqReset"' in page.text
+        assert "phase-field-spectrum-view-v1" in spectrum.text
+        assert "localStorage.setItem" in spectrum.text
+        assert "this.opts.frequency==='linear'" in spectrum.text
+        for view in ("skyline", "needles", "prism", "halo"):
+            assert f'data-v="{view}"' in page.text
+            assert f"style==='{view}'" in spectrum.text
+
+
+class TestPersonalizationEndpoints:
+    def test_apple_music_xml_import(self, client: TestClient):
+        import plistlib
+
+        payload = plistlib.dumps(
+            {
+                "Tracks": {
+                    "1": {
+                        "Name": "Fixture Song",
+                        "Artist": "Fixture Artist",
+                        "Album": "Fixture Album",
+                        "Play Count": 9,
+                    }
+                }
+            }
+        )
+
+        response = client.post(
+            "/api/import/apple-music/xml",
+            content=payload,
+            headers={"Content-Type": "application/xml"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["library"]["track_count"] == 1
+        assert response.json()["albums"][0]["tracks"][0]["plays"] == 9
+
+    def test_apple_music_xml_import_rejects_invalid_file(self, client: TestClient):
+        response = client.post(
+            "/api/import/apple-music/xml",
+            content=b"not xml",
+            headers={"Content-Type": "application/xml"},
+        )
+
+        assert response.status_code == 400
+
+    def test_apple_music_config_is_safe_when_unconfigured(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setenv("APPLE_MUSIC_DEVELOPER_TOKEN", "")
+
+        response = client.get("/api/apple-music/config")
+
+        assert response.status_code == 200
+        assert response.json()["configured"] is False
+        assert "developerToken" not in response.json()
+        assert response.headers["cache-control"] == "no-store"
+
+    def test_apple_music_config_exposes_origin_bound_client_token(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setenv("APPLE_MUSIC_DEVELOPER_TOKEN", "test-origin-bound-token")
+        monkeypatch.setenv("APPLE_MUSIC_STOREFRONT", "ca")
+
+        response = client.get("/api/apple-music/config")
+
+        assert response.status_code == 200
+        assert response.json()["configured"] is True
+        assert response.json()["developerToken"] == "test-origin-bound-token"
+        assert response.json()["storefront"] == "ca"
+
+    def test_persistent_apple_music_library(self, client: TestClient, tmp_path, monkeypatch):
+        import json
+
+        path = tmp_path / "apple_music_import.json"
+        path.write_text(json.dumps({
+            "provider": "apple_music",
+            "albums": [{
+                "id": "album-1", "name": "Fixture Album", "artist": "Fixture Artist",
+                "tracks": [{
+                    "provider": "apple_music", "provider_track_id": "TRACK1",
+                    "title": "Fixture Song", "artist_names": ["Fixture Artist"],
+                }],
+            }],
+        }))
+        monkeypatch.setenv("APPLE_MUSIC_IMPORT_PATH", str(path))
+
+        config = client.get("/api/apple-music/config")
+        library = client.get("/api/import/apple-music/library")
+
+        assert config.json()["importAvailable"] is True
+        assert library.status_code == 200
+        assert library.json()["library"]["track_count"] == 1
+        assert library.headers["cache-control"] == "no-store"
 
 class TestSearchEndpoint:
     """Tests for /api/search and /search endpoints."""
