@@ -27,6 +27,8 @@ example is safe to copy verbatim. `.env` is gitignored; never commit secrets.
 | `SPOTIFY_REDIRECT_URI` | – | OAuth callback; must match the Spotify dashboard exactly |
 | `CAPTION_LOCALIZER_URL` | `http://127.0.0.1:8001` | Separate CaptionLocalizer service used for lyric translation and transcription |
 | `PHASE_FIELD_API_BASE_URL` | `http://localhost:8787` | Upstream for the `/api/shaders` proxy |
+| `APPLE_MUSIC_DEVELOPER_TOKEN` | – | Origin-bound ES256 token used by MusicKit on the Web |
+| `APPLE_MUSIC_STOREFRONT` | `ca` | Apple Music catalog storefront |
 | `STREAM_ALLOWED_HOSTS` | media host allowlist | Comma-separated suffix allowlist for `/stream` targets (whitespace trimmed) |
 | `STREAM_DELIVERY_MODE` | `proxy` | `proxy` streams bytes; `redirect` returns a 302 |
 | `DMS_CONTROL_AUTH_TOKEN` | – | Bearer/`X-Dev-Music-Token` required for process-affecting routes |
@@ -64,6 +66,20 @@ unreachable. Responses cache for 5 minutes. Start the worker with
 - `POST /api/lyrics/localize-window` — localize a small lyric window just in time.
 - `GET /api/metadata?url=` — track metadata for a webpage URL.
 
+### Google Cast
+
+The native player loads Google's Cast Web Sender Framework and uses the Default
+Media Receiver, so a custom receiver application ID is not required. When a Cast
+session is active, the existing player controls operate the remote session:
+play/pause, seeking, progress, title/artist/album metadata, artwork, and transfer
+back to local playback on disconnect.
+
+Open the app from its HTTPS Funnel origin before casting. A Chromecast cannot
+fetch a stream URL whose hostname is `localhost` or `127.0.0.1`; the sender
+therefore refuses that transfer with a clear status message. The receiver pulls
+the range-enabled `/api/stream` URL from the Funnel, and the sender supplies the
+audio MIME type resolved from yt-dlp metadata.
+
 Lyric localization requires CaptionLocalizer to run separately from this app.
 For local development, keep dev-music-service on `127.0.0.1:8000`, start
 CaptionLocalizer on `127.0.0.1:8001`, and set
@@ -72,6 +88,14 @@ CaptionLocalizer's lyrics-native `/tools/localize_lyrics/run` tool. If both
 apps point at `:8000`, dev-music-service would call its own tool path and get
 `404 Not Found`, so the bridge guards against that self-reference and falls
 back to the default local CaptionLocalizer port.
+
+When LRCLIB has no timed lyrics, the browser opens
+`GET /api/lyrics/transcribe/events`. dev-music-service starts a private
+CaptionLocalizer `/live-sessions` job, supplies its loopback `/api/stream` URL,
+and proxies finalized source lines plus optional translations as SSE. The
+browser never connects to CaptionLocalizer directly. Set
+`CAPTION_AUDIO_SOURCE_BASE_URL=http://127.0.0.1:8000` even when the public app
+origin is a Tailscale Funnel URL.
 
 ### Spotify import (see below)
 
