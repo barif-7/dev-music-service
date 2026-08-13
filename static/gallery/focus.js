@@ -74,6 +74,8 @@
     }
     list.forEach(t=>{
       const row = document.createElement('button'); row.className = 'fc-track';
+      row.type = 'button';
+      row.setAttribute('aria-label', `Play ${t.title || 'track'}`);
       const art = t.thumbnail ? `<img src="${esc(t.thumbnail)}" alt="" loading="lazy">` : `<span class="r-ph">♪</span>`;
       const score = hasFeat && t.focus_score!=null
         ? `<span class="fc-score">${t.focus_score.toFixed(0)}<span class="fc-bar"><i style="width:${Math.max(0,Math.min(100,Math.round(t.focus_score)))}%"></i></span></span>`
@@ -103,8 +105,25 @@
   $('#timeTabs')?.addEventListener('click', e=>{
     const b = e.target.closest('.time-tab'); if(!b) return;
     timeRange = b.dataset.range;
-    [...$('#timeTabs').children].forEach(x=> x.classList.toggle('active', x===b));
+    [...$('#timeTabs').children].forEach(x=>{
+      const active = x===b;
+      x.classList.toggle('active', active);
+      x.setAttribute('aria-selected', String(active));
+    });
     analyse();
+  });
+  [...document.querySelectorAll('#timeTabs .time-tab')].forEach((btn, index, tabs)=>{
+    btn.addEventListener('keydown', e=>{
+      if(!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+      e.preventDefault();
+      const nextIndex = e.key === 'Home'
+        ? 0
+        : e.key === 'End'
+          ? tabs.length - 1
+          : (index + (e.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+      tabs[nextIndex].focus();
+      tabs[nextIndex].click();
+    });
   });
 
   // app.js calls this when the panel opens
