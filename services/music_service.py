@@ -437,6 +437,20 @@ class MusicService:
         return MusicService._extract_audio_source(webpage_url)
 
     @staticmethod
+    def remember_stream_source(
+        webpage_url: str,
+        direct_url: str,
+        headers: dict[str, str],
+    ) -> None:
+        """Replace a rejected cached source with a verified playback fallback."""
+        MusicService._cache_set(
+            MusicService._stream_cache,
+            webpage_url,
+            (direct_url, dict(headers)),
+            MusicService._STREAM_TTL_SECONDS,
+        )
+
+    @staticmethod
     def _audio_content_type(entry: dict) -> str:
         """Return a Cast-compatible MIME type for a yt-dlp audio candidate."""
         ext = str(entry.get("ext") or "").lower()

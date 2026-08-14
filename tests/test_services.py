@@ -239,6 +239,19 @@ class TestMusicServiceStream:
         assert headers1 == headers2
         assert calls["count"] == 1
 
+    def test_remember_stream_source_replaces_rejected_cached_url(self, sample_youtube_url):
+        MusicService._stream_cache.clear()
+        MusicService.remember_stream_source(
+            sample_youtube_url,
+            "https://rr2---sn.googlevideo.com/videoplayback",
+            {"User-Agent": "fallback"},
+        )
+
+        direct_url, headers = MusicService.get_stream_source(sample_youtube_url)
+
+        assert direct_url == "https://rr2---sn.googlevideo.com/videoplayback"
+        assert headers == {"User-Agent": "fallback"}
+
 
 class TestMusicServiceHelpers:
     """Tests for MusicService helper methods."""

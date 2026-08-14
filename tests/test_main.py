@@ -456,6 +456,60 @@ class TestStreamEndpoint:
         assert response.status_code == 200
         assert response.content == b"audio"
 
+    def test_stream_retries_rejected_audio_source_with_progressive_fallback(
+        self,
+        client: TestClient,
+    ):
+        """A rejected audio-only CDN URL should fall back to a playable MP4."""
+
+        class FakeStream:
+            def __init__(self, status_code, content_type, body=b""):
+                self.status_code = status_code
+                self.headers = {
+                    "content-type": content_type,
+                    "accept-ranges": "bytes",
+                    "content-length": str(len(body)),
+                }
+                self.body = body
+
+            async def aiter_bytes(self, chunk_size=8192):
+                yield self.body
+
+            async def aclose(self):
+                return None
+
+        attempts = [
+            FakeStream(403, "text/plain", b"rejected"),
+            FakeStream(206, "video/mp4", b"playable"),
+        ]
+
+        async def fake_open_stream(client, url, headers):
+            return attempts.pop(0)
+
+        with patch("main.MusicService.get_stream_source") as audio_source:
+            with patch("main.VideoService.get_video_stream_source") as fallback_source:
+                with patch("main.MusicService.remember_stream_source") as remember_source:
+                    with patch("main.open_validated_stream", side_effect=fake_open_stream):
+                        audio_source.return_value = (
+                            "https://rr1---sn.googlevideo.com/videoplayback",
+                            {},
+                        )
+                        fallback_source.return_value = (
+                            "https://rr2---sn.googlevideo.com/videoplayback",
+                            {"User-Agent": "fixture"},
+                        )
+                        response = client.get(
+                            "/stream",
+                            params={"url": "https://youtube.com/watch?v=test"},
+                            headers={"Range": "bytes=0-7"},
+                        )
+
+        assert response.status_code == 206
+        assert response.content == b"playable"
+        assert response.headers["content-type"].startswith("audio/mp4")
+        fallback_source.assert_called_once_with("https://youtube.com/watch?v=test")
+        remember_source.assert_called_once()
+
     def test_stream_redirect_mode_returns_validated_location(self, client: TestClient, monkeypatch):
         """Redirect mode should 302 to an allowed resolved media URL."""
         monkeypatch.setenv("STREAM_DELIVERY_MODE", "redirect")
