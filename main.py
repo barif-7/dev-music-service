@@ -31,6 +31,7 @@ from models import (
     AppleMusicImportAlbum,
     ImportedPlaylistTrack,
     LocalizeWindowRequest,
+    LyricVisualAnalysisRequest,
     SpotifySaveTrackRequest,
     TranslatedVocalRequest,
 )
@@ -58,6 +59,7 @@ from services.local_playback_service import LocalPlaybackService
 from services.metadata_service import MetadataService, MetadataServiceError
 from services.live_transcription_service import LiveTranscriptionService
 from services.lyrics_service import LyricsNotFoundError, LyricsRequestError, LyricsService
+from services.lyric_visual_service import LyricVisualService
 from services.music_service import MusicService, MusicServiceError
 from services.spotify_import_service import SpotifyImportError, SpotifyImportService
 from services.translated_vocals_service import (
@@ -657,6 +659,14 @@ def localize_lyrics_window(request: Request, body: LocalizeWindowRequest):
     except Exception as exc:
         logger.error("lyrics_localize_window_failed", title=body.title, error=str(exc))
         fail_with_http_error(exc)
+
+
+@app.post("/api/visuals/llm-analyze")
+@app.post("/visuals/llm-analyze")
+@limiter.limit("120 per minute")
+def analyze_lyric_visuals(request: Request, body: LyricVisualAnalysisRequest):
+    """Return deterministic visual direction for one active lyric line."""
+    return JSONResponse(content=LyricVisualService.analyze_lyric(body))
 
 
 @app.post("/api/vocals/translated")
