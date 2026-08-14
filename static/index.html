@@ -105,6 +105,7 @@
   #eqCanvas{position:fixed;left:0;right:0;bottom:0;width:100%;height:80px;z-index:7;
     pointer-events:none;opacity:0;transition:opacity .8s var(--ease)}
   #eqCanvas.live{opacity:var(--spectrum-opacity,.55)}
+  body.lyrics-spectrum-hidden #eqCanvas{display:none!important;opacity:0!important}
 
   /* spectrum edit controls popover */
   #eqControls{top:74px;right:28px;z-index:22;width:min(340px,calc(100vw - 32px));max-height:calc(100dvh - 112px);overflow-y:auto;padding:14px;border-radius:14px;
@@ -905,16 +906,70 @@
     #appleMusicPanel{left:12px;right:12px;width:auto;translate:0 -47%}#appleMusicPanel.show{translate:0 -50%}
   }
 
-  #lyricsShaderReaderFrame{display:none;width:100%;flex:1;min-height:0;border:0;background:#000}
-  #lyricReader.lab-ready{display:flex;flex-direction:column;width:min(1080px,94vw);height:min(680px,76dvh);
-    padding:0;overflow:hidden}
-  #lyricReader.lab-ready .lyric-reader-head{flex:none;margin:0;padding:12px 16px;border-bottom:1px solid var(--hair)}
+  #lyricStage{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px}
+  #lyricLanguageBar{width:min(1080px,94vw);display:flex;align-items:center;justify-content:space-between;
+    gap:16px;pointer-events:auto;padding:0 6px}
+  #lyricLanguageBar .lyric-reader-title{padding-left:4px;color:rgba(255,255,255,.42);text-shadow:0 2px 18px rgba(0,0,0,.7)}
+  #lyricLanguageBar #lyricLocaleWrap{min-height:46px;padding:4px 5px 4px 14px;border:1px solid rgba(255,255,255,.14);
+    border-radius:999px;corner-shape:squircle;background:rgba(7,8,12,.34);
+    backdrop-filter:blur(22px) saturate(1.15);-webkit-backdrop-filter:blur(22px) saturate(1.15);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.11),0 12px 36px rgba(0,0,0,.18)}
+  #lyricLanguageBar #lyricLocale{min-height:36px;padding:5px 32px 5px 11px;border:0;border-radius:999px;
+    background:rgba(255,255,255,.07);font-size:13px}
+  #lyricsShaderReaderFrame{display:none;width:100%;flex:1;min-height:0;border:0;border-radius:inherit;
+    background:var(--lyrics-reader-soft-gradient,linear-gradient(145deg,#101a1b,#11100f))!important;color-scheme:dark}
+  #lyricReader.lab-ready{display:flex;flex-direction:column;width:min(1080px,94vw);height:min(650px,72dvh);
+    padding:0;overflow:visible;border:0;border-radius:28px;corner-shape:squircle;
+    background:transparent;
+    backdrop-filter:none;-webkit-backdrop-filter:none;
+    box-shadow:0 22px 70px rgba(0,0,0,.22)}
+  #lyricReader.lab-ready.background-hidden #lyricsShaderReaderFrame{
+    background:var(--lyrics-reader-soft-gradient,linear-gradient(145deg,#101a1b,#11100f))!important}
+  #lyricReader.lab-ready.background-hidden{background:transparent!important;box-shadow:none}
+  #lyricReader.lab-ready.reader-text-only,
+  #lyricReader.lab-ready.reader-text-only #lyricsShaderReaderFrame{
+    background:transparent!important;border-color:transparent!important;box-shadow:none!important;
+    backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+  body.lyrics-share-sheet #lyricStage{isolation:isolate}
+  body.lyrics-share-sheet #lyricStage::before{content:'';position:fixed;inset:0;z-index:0;
+    background:rgba(3,5,8,.28);backdrop-filter:blur(7px) saturate(.9);-webkit-backdrop-filter:blur(7px) saturate(.9);
+    animation:lyrics-share-scrim-in .42s ease-out both;pointer-events:none}
+  body.lyrics-share-sheet #lyricLanguageBar,
+  body.lyrics-share-sheet #lyricReader{position:relative;z-index:1}
+  #lyricReader.lab-ready.reader-share-sheet{width:min(900px,calc(100vw - 32px));height:min(620px,calc(100dvh - 138px));
+    border:1px solid rgba(255,255,255,.18);border-radius:34px;
+    background:var(--lyrics-reader-soft-gradient,linear-gradient(145deg,#101a1b,#11100f));
+    backdrop-filter:blur(30px) saturate(1.3);-webkit-backdrop-filter:blur(30px) saturate(1.3);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 36px 110px rgba(0,0,0,.52);
+    transform-origin:center bottom;animation:lyrics-share-sheet-in .58s cubic-bezier(.22,1,.36,1) both}
+  #lyricReader.lab-ready.reader-share-sheet #lyricsShaderReaderFrame{border-radius:inherit}
+  @keyframes lyrics-share-sheet-in{
+    from{opacity:0;transform:translateY(64px) scale(.94)}
+    62%{opacity:1;transform:translateY(-4px) scale(1.008)}
+    to{opacity:1;transform:translateY(0) scale(1)}}
+  @keyframes lyrics-share-scrim-in{from{opacity:0}to{opacity:1}}
+  @media (prefers-reduced-motion:reduce){
+    #lyricReader.lab-ready.reader-share-sheet,body.lyrics-share-sheet #lyricStage::before{animation:none}}
+  #lyricReader.lab-ready.reader-shape-circle{
+    width:min(650px,72dvh,92vw);height:min(650px,72dvh,92vw);border-radius:50%}
+  #lyricReader.lab-ready.reader-shape-square{
+    width:min(720px,72dvh,92vw);height:min(720px,72dvh,92vw);border-radius:6px}
+  #lyricReader.lab-ready.reader-shape-rounded{border-radius:28px}
   #lyricReader.lab-ready #lyricStack{display:none}
   #lyricReader.lab-ready #lyricsShaderReaderFrame{display:block}
 
   @media (max-width:700px){
-    #lyricReader.lab-ready{width:calc(100vw - 24px);height:calc(100dvh - 126px)}
-    #lyricReader.lab-ready .lyric-reader-head{padding:10px 12px;align-items:center;margin:0}
+    #lyricStage{gap:8px}
+    #lyricLanguageBar{width:calc(100vw - 24px);padding:0 2px}
+    #lyricLanguageBar .lyric-reader-title{display:none}
+    #lyricLanguageBar #lyricLocaleWrap{margin-left:auto;flex-direction:row;align-items:center;gap:7px}
+    #lyricLanguageBar #lyricLocale{max-width:178px}
+    #lyricReader.lab-ready{width:calc(100vw - 24px);height:calc(100dvh - 174px);border-radius:22px}
+    #lyricReader.lab-ready.reader-shape-circle,
+    #lyricReader.lab-ready.reader-shape-square{
+      width:min(calc(100vw - 24px),calc(100dvh - 174px));height:min(calc(100vw - 24px),calc(100dvh - 174px))}
+    #lyricReader.lab-ready.reader-shape-circle{border-radius:50%}
+    #lyricReader.lab-ready.reader-shape-square{border-radius:4px}
   }
 </style>
 </head>
@@ -934,47 +989,48 @@
 
   <!-- accessible read-along: one source line with its translation directly below -->
   <div id="lyricStage" aria-hidden="true">
-    <section id="lyricReader" aria-label="Live read-along lyrics">
-      <div class="lyric-reader-head">
-        <span class="lyric-reader-title">Lyrics · Shader Lab</span>
-        <div id="lyricLocaleWrap">
-          <label for="lyricLocale">Translation</label>
-          <select id="lyricLocale" aria-label="Lyric translation language">
-            <option value="">Original only</option>
-            <optgroup label="Common choices">
-              <option value="en-US" data-stack-label="English">English</option>
-              <option value="es-MX" data-stack-label="Español">Español</option>
-              <option value="fr-CA" data-stack-label="Français">Français</option>
-              <option value="pt-BR" data-stack-label="Português">Português</option>
-              <option value="ar" data-stack-label="العربية">العربية</option>
-              <option value="ur" data-stack-label="اردو">اردو</option>
-              <option value="hi" data-stack-label="हिन्दी">हिन्दी</option>
-            </optgroup>
-            <optgroup label="More languages">
-              <option value="bn" data-stack-label="বাংলা">বাংলা</option>
-              <option value="pa" data-stack-label="ਪੰਜਾਬੀ">ਪੰਜਾਬੀ</option>
-              <option value="fa" data-stack-label="فارسی">فارسی</option>
-              <option value="he" data-stack-label="עברית">עברית</option>
-              <option value="tr" data-stack-label="Türkçe">Türkçe</option>
-              <option value="id" data-stack-label="Bahasa Indonesia">Bahasa Indonesia</option>
-              <option value="ms" data-stack-label="Bahasa Melayu">Bahasa Melayu</option>
-              <option value="sw" data-stack-label="Kiswahili">Kiswahili</option>
-              <option value="zh-CN" data-stack-label="中文（简体）">中文（简体）</option>
-              <option value="zh-TW" data-stack-label="中文（繁體）">中文（繁體）</option>
-              <option value="ja-JP" data-stack-label="日本語">日本語</option>
-              <option value="ko-KR" data-stack-label="한국어">한국어</option>
-              <option value="de" data-stack-label="Deutsch">Deutsch</option>
-              <option value="it" data-stack-label="Italiano">Italiano</option>
-              <option value="nl" data-stack-label="Nederlands">Nederlands</option>
-              <option value="pl" data-stack-label="Polski">Polski</option>
-              <option value="ru" data-stack-label="Русский">Русский</option>
-              <option value="uk" data-stack-label="Українська">Українська</option>
-              <option value="ta" data-stack-label="தமிழ்">தமிழ்</option>
-              <option value="te" data-stack-label="తెలుగు">తెలుగు</option>
-            </optgroup>
-          </select>
-        </div>
+    <div id="lyricLanguageBar" aria-label="Lyric language controls">
+      <span class="lyric-reader-title">Synchronized lyrics</span>
+      <div id="lyricLocaleWrap">
+        <label for="lyricLocale">Translation</label>
+        <select id="lyricLocale" aria-label="Lyric translation language">
+          <option value="">Original only</option>
+          <optgroup label="Common choices">
+            <option value="en-US" data-stack-label="English">English</option>
+            <option value="es-MX" data-stack-label="Español">Español</option>
+            <option value="fr-CA" data-stack-label="Français">Français</option>
+            <option value="pt-BR" data-stack-label="Português">Português</option>
+            <option value="ar" data-stack-label="العربية">العربية</option>
+            <option value="ur" data-stack-label="اردو">اردو</option>
+            <option value="hi" data-stack-label="हिन्दी">हिन्दी</option>
+          </optgroup>
+          <optgroup label="More languages">
+            <option value="bn" data-stack-label="বাংলা">বাংলা</option>
+            <option value="pa" data-stack-label="ਪੰਜਾਬੀ">ਪੰਜਾਬੀ</option>
+            <option value="fa" data-stack-label="فارسی">فارسی</option>
+            <option value="he" data-stack-label="עברית">עברית</option>
+            <option value="tr" data-stack-label="Türkçe">Türkçe</option>
+            <option value="id" data-stack-label="Bahasa Indonesia">Bahasa Indonesia</option>
+            <option value="ms" data-stack-label="Bahasa Melayu">Bahasa Melayu</option>
+            <option value="sw" data-stack-label="Kiswahili">Kiswahili</option>
+            <option value="zh-CN" data-stack-label="中文（简体）">中文（简体）</option>
+            <option value="zh-TW" data-stack-label="中文（繁體）">中文（繁體）</option>
+            <option value="ja-JP" data-stack-label="日本語">日本語</option>
+            <option value="ko-KR" data-stack-label="한국어">한국어</option>
+            <option value="de" data-stack-label="Deutsch">Deutsch</option>
+            <option value="it" data-stack-label="Italiano">Italiano</option>
+            <option value="nl" data-stack-label="Nederlands">Nederlands</option>
+            <option value="pl" data-stack-label="Polski">Polski</option>
+            <option value="ru" data-stack-label="Русский">Русский</option>
+            <option value="uk" data-stack-label="Українська">Українська</option>
+            <option value="ta" data-stack-label="தமிழ்">தமிழ்</option>
+            <option value="te" data-stack-label="తెలుగు">తెలుగు</option>
+          </optgroup>
+        </select>
       </div>
+    </div>
+    <section id="lyricReader" aria-label="Live read-along lyrics">
+      <iframe id="lyricsShaderReaderFrame" src="/lyrics-shader-lab?surface=reader" title="Shader Lab synchronized lyrics" loading="eager" allowtransparency="true" style="background:transparent"></iframe>
       <div id="lyricStack" data-mode="single">
         <div class="lyric-stack-item">
           <div class="lyric-stack-label">Original</div>
@@ -1441,6 +1497,11 @@
 <script src="/static/gallery/focus.js"></script>
 <script src="/static/gallery/search.js"></script>
 <script src="/static/gallery/clock-modal.js"></script>
+<script src="/static/gallery/wallpaper-palette.js?v=20260814-plugin1"></script>
+<script src="/static/gallery/reader-preferences.js?v=20260814-plugin1"></script>
+<script src="/static/gallery/lyric-scene.js?v=20260814-plugin1"></script>
+<script src="/static/gallery/base44-plugin.js?v=20260814-plugin1"></script>
+<script src="/static/gallery/lyrics-shader-reader.js?v=20260814-plugin1"></script>
 <script src="/static/gallery/apple-music.js"></script>
 <script src="/static/gallery/share.js?v=20260812-language1"></script>
 </body>

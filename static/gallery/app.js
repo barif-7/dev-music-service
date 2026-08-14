@@ -1048,7 +1048,7 @@ function frame(now){
     lastLocalizeAhead = now;
     localizeAhead(player.currentTime*1000);
   }
-  if(typeof EQ==='object'){ EQ.update(); EQ.draw(eqCanvas); }
+  if(typeof EQ==='object' && !document.body.classList.contains('lyrics-spectrum-hidden')){ EQ.update(); EQ.draw(eqCanvas); }
   // ambient centered lyric — persists over the shader while a track streams in
   // the immersive view; hidden in grid/search/spotify or when not streaming.
   if(lyricsVisible && nowPlaying && AUDIO.mode==='stream' && state.mode==='immersive'

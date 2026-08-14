@@ -6,6 +6,177 @@ from fastapi.testclient import TestClient
 from models import LyricVisualAnalysisRequest
 from services.lyric_visual_service import LyricVisualService
 
+def test_phase_shell_uses_lab_as_the_primary_center_lyrics_reader(client: TestClient):
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert response.headers["x-frame-options"] == "DENY"
+    assert 'id="lyricsShaderReaderFrame"' in response.text
+    assert 'src="/lyrics-shader-lab?surface=reader"' in response.text
+    assert 'allowtransparency="true"' in response.text
+    assert 'style="background:transparent"' in response.text
+    assert 'id="lyricLanguageBar"' in response.text
+    assert response.text.index('id="lyricLanguageBar"') < response.text.index('id="lyricReader"')
+    assert '/static/gallery/lyrics-shader-reader.js' in response.text
+    assert 'id="lyricsShaderLabModal"' not in response.text
+    assert 'id="lyricsShaderLabLink"' not in response.text
+
+    assert "/static/gallery/base44-plugin.js" in response.text
+    assert "/static/gallery/reader-preferences.js" in response.text
+
+    bridge = client.get("/static/gallery/lyrics-shader-reader.js")
+    assert bridge.status_code == 200
+    assert "Base44AppPlugin.create" in bridge.text
+    assert "Wallpaper.subscribe" in bridge.text
+    assert "const paper = wallpaper();" in bridge.text
+    assert "wallpaper:paper," in bridge.text
+    assert "translationLocale" in bridge.text
+    # The reader reports requests as named intents; the shell decides.
+    for handler in ("seek(", "rate(", "translate(", "view(", "background(", "preference("):
+        assert handler in bridge.text
+
+    # Shell-owned styling that the surface used to drive from inside the frame.
+    prefs = client.get("/static/gallery/reader-preferences.js")
+    assert prefs.status_code == 200
+    assert "phaseField.lyricReaderPreferences" in prefs.text
+    assert "phaseField.lyricReaderBackground" in prefs.text
+    assert "background-hidden" in prefs.text
+    assert "reader-text-only" in prefs.text
+    assert "reader-share-sheet" in prefs.text
+    assert "lyrics-share-sheet" in prefs.text
+    assert "lyrics-spectrum-hidden" in prefs.text
+    assert "layout:'stacked'" in prefs.text
+
+    # Palette maths has exactly one implementation, shared by both sides.
+    palette = client.get("/static/gallery/wallpaper-palette.js")
+    assert palette.status_code == 200
+    assert "soften(" in palette.text
+    assert "gradient(" in palette.text
+
+def test_reader_composites_the_animated_shader_over_the_wallpaper():
+    repo = Path(__file__).resolve().parents[1]
+    shell = (repo / "static/index.html").read_text()
+    reader = (repo / "lyrics-shader-lab/src/pages/LyricsReaderSurface.jsx").read_text()
+    panel = (repo / "lyrics-shader-lab/src/components/shader-lab/VisualizerPanel.jsx").read_text()
+    bilingual_reader = (repo / "lyrics-shader-lab/src/components/bilingual/BilingualReader.jsx").read_text()
+    bilingual_timeline = (repo / "lyrics-shader-lab/src/components/bilingual/BilingualTimeline.jsx").read_text()
+    localizer_provider = (repo / "lyrics-shader-lab/src/lib/bilingual/captionLocalizerProvider.js").read_text()
+    options = (repo / "lyrics-shader-lab/src/components/shader-lab/ReaderOptions.jsx").read_text()
+    word_timing = (repo / "lyrics-shader-lab/src/lib/bilingual/wordTiming.js").read_text()
+    styles = (repo / "lyrics-shader-lab/src/index.css").read_text()
+    preferences = (repo / "static/gallery/reader-preferences.js").read_text()
+
+    assert 'backgroundMode="wallpaper"' in reader
+    assert 'backgroundMode="passthrough"' not in reader
+    assert "reader-wallpaper-canvas" in panel
+    assert "reader-visualizer-window" in panel
+    assert 'data-reader-view={wallpaperComposite ? "visual" : undefined}' in panel
+    assert "BilingualTimeline" in reader
+    assert 'data-reader-view="timeline"' in bilingual_timeline
+    assert "reader-timeline-window" in bilingual_timeline
+    assert "reader-glass-surface relative h-screen overflow-visible text-white" in reader
+    assert "reader-shape-${prefs.windowShape}" in reader
+    assert "ReaderOptions" in reader
+    assert "LearnControls" in reader
+    assert '{ id: "learn"' in reader
+    assert 'intent("view", { view: id })' in reader
+    assert "VocabularyCard" in reader
+    assert "LiveAnnouncer" in reader
+    assert "min-h-11" in reader
+    assert 'aria-haspopup="dialog"' in reader
+    assert 'style={{ "--reader-soft-gradient": scene.gradient }}' in reader
+    assert "Hide lyric window background" in reader
+    assert "Show lyric window background" in reader
+    assert 'backgroundVisible={prefs.windowAppearance === "textOnly" ? false : backgroundVisible}' in reader
+
+    # The surface is a view: it derives nothing and owns no persistence.
+    assert "localStorage" not in reader
+    assert "phaseField." not in reader
+    assert "getActiveLyricIndex" not in reader
+    assert "analyzeLyricLocal" not in reader
+    assert "shaderRecordToPreset" not in reader
+    assert "getDefaultUniforms" not in reader
+    assert "data-reader-chrome" in reader
+    assert 'reader-timeline-window flex h-full flex-col border border-white/10 bg-black/35' not in bilingual_timeline
+    assert ".reader-timeline-window" in styles
+    assert "--reader-soft-gradient" in styles
+    assert ".reader-timeline-window.reader-background-hidden" in styles
+    assert ".reader-glass-surface.reader-shape-circle" in styles
+    assert ".reader-glass-surface.reader-shape-square" in styles
+    assert ".reader-reduced-motion" in styles
+    assert ".reader-glass-surface.reader-background-hidden [data-reader-chrome]" in styles
+    assert "linear-gradient(145deg, #101a1b, #11100f)" in styles
+    assert "opacity: 1" in styles
+    assert ".reader-glass-surface" in styles
+    assert "background: transparent" in styles
+    assert "border-radius: 28px" in styles
+    assert "padding:0;overflow:visible" in shell
+    assert "padding:0;overflow:visible;border:0" in shell
+    assert "border-radius:28px" in shell
+    assert "box-shadow:inset 0 1px 0 rgba(255,255,255,.1)" not in shell
+    assert "corner-shape:squircle;\n    background:transparent;" in shell
+    assert "background-hidden{background:transparent!important;box-shadow:none}" in shell
+    assert "border-radius:inherit" in shell
+    assert "background-hidden #lyricsShaderReaderFrame" in shell
+    assert "--lyrics-reader-soft-gradient" in shell
+    assert "reader-shape-circle" in shell
+    assert "reader-shape-square" in shell
+    assert "#lyricReader.lab-ready.reader-text-only" in shell
+    assert "#lyricReader.lab-ready.reader-share-sheet" in shell
+    assert "@keyframes lyrics-share-sheet-in" in shell
+    assert "BilingualReader" in panel
+    assert "TRANSLATION_STATES.LOADING" in bilingual_reader
+    assert "learnMode" in bilingual_reader
+    assert "wordJitter" in bilingual_reader
+    assert 'aria-label="Original lyric"' in bilingual_reader
+    assert 'fetch("/api/lyrics/localize-window"' in localizer_provider
+    assert 'name: "caption-localizer"' in localizer_provider
+    assert 'role="switch"' in options
+    assert "min-h-12" in options
+    assert "High contrast" in options
+    assert "Reduce motion" in options
+    assert "Dyslexia-friendly text" in options
+    assert "Screen-reader updates" in options
+    assert "Focus" in options
+    assert "Spectrum bars" in options
+    assert 'onChange("spectrumVisible", value)' in options
+    assert "Word-by-word glow" in options
+    assert 'onChange("wordGlow", value)' in options
+    assert "Pin behind shader" in options
+    assert 'onChange("lyricsBehindShader", value)' in options
+    assert "Window appearance" in options
+    assert "Text only" in options
+    assert "Share sheet" in options
+    assert 'onChange("windowAppearance", value)' in options
+    assert "brighter text with stronger edge shadows" in options
+    assert "language" in options.lower()
+    # Preference defaults and the DOM they drive are shell-owned now.
+    assert "spectrumVisible:true" in preferences
+    assert "wordGlow:false" in preferences
+    assert "lyricsBehindShader:false" in preferences
+    assert "windowAppearance:'window'" in preferences
+    assert "lyrics-spectrum-hidden" in preferences
+    assert "reader-share-sheet" in preferences
+    assert "data-window-appearance={prefs.windowAppearance}" in reader
+    assert 'prefs.windowAppearance === "shareSheet"' in reader
+    assert "lyricsBehindShader={prefs.lyricsBehindShader}" in reader
+    assert 'data-lyrics-layer={pinnedLyrics ? "underlay" : "overlay"}' in panel
+    assert "reader-shader-foreground" in panel
+    assert "reader-lyrics-underlay" in bilingual_reader
+    assert '[data-lyrics-layer="underlay"] .reader-shader-foreground' in styles
+    assert ".reader-glass-surface.reader-text-only" in styles
+    assert ".reader-glass-surface.reader-share-sheet" in styles
+    assert 'prefs.textPlate && prefs.windowAppearance !== "textOnly"' in bilingual_reader
+    assert "prefs.textPlate || prefs.highContrast" not in bilingual_reader
+    assert ".reader-high-contrast .reader-plate" not in styles
+    assert "getActiveLyricWordIndex" in bilingual_reader
+    assert "wordGlowState" in bilingual_timeline
+    assert "lyricWordMetrics" in word_timing
+    assert ".reader-word-active" in styles
+    assert "body.lyrics-spectrum-hidden #eqCanvas" in shell
+    app = (repo / "static/gallery/app.js").read_text()
+    assert "!document.body.classList.contains('lyrics-spectrum-hidden')" in app
+
 def test_standalone_lab_localizes_the_latest_base44_reader_and_sequencer():
     repo = Path(__file__).resolve().parents[1]
     lab = (repo / "lyrics-shader-lab/src/pages/LyricShaderLab.jsx").read_text()
