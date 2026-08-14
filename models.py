@@ -1,6 +1,6 @@
 from typing import Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class AutocompleteSuggestion(BaseModel):
@@ -266,3 +266,14 @@ class LyricsResponse(BaseModel):
     target_locale: Optional[str] = Field(
         default=None, description="Target locale the lines were localized into, if any"
     )
+
+
+class LyricVisualAnalysisRequest(BaseModel):
+    """One timed lyric line to translate into portable visual parameters."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    song_title: str = Field(alias="songTitle", min_length=1, max_length=500)
+    artist: str = Field(min_length=1, max_length=500)
+    lyric_line: str = Field(alias="lyricLine", min_length=1, max_length=1000)
+    section: Literal["intro", "verse", "chorus", "bridge", "outro"] = "verse"
