@@ -73,6 +73,10 @@ class Tile {
     this.idlePhase = 0;
     this.click = 0;
     this.start = performance.now();
+    /* The shader clock is accumulated rather than read from the wall clock, so
+       its rate can be damped for reduced motion without the visual jumping. */
+    this.tSec = 0;
+    this._lastFrame = this.start;
     this.load(fragId, presetBPM);
 
     canvas.addEventListener('pointermove', (e)=>{
@@ -144,7 +148,14 @@ class Tile {
     if(!this.gl || !this.prog) return;
     this.resize();
     const gl = this.gl;
-    const tSec = (performance.now() - this.start)/1000;
+    /* Advance the clock by real elapsed time scaled by the wallpaper's motion
+       rate. dt is clamped so a tile that was hidden or backgrounded resumes
+       instead of lurching forward by however long it was away. */
+    const now = performance.now();
+    const rate = typeof MotionSafety !== 'undefined' ? MotionSafety.rateFor(this.fragId) : 1;
+    this.tSec += Math.min(0.1, (now - this._lastFrame)/1000) * rate;
+    this._lastFrame = now;
+    const tSec = this.tSec;
 
     /* Combine the live AudioAnalyzer frame with the track-level prior into the
        shader uniform set. Live FFT dominates; the profile only biases it. */
