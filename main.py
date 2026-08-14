@@ -946,8 +946,38 @@ async def stream_song(
             verify=certifi.where(),
             timeout=httpx.Timeout(30.0, read=None),
         )
+        fallback_used = False
         try:
             upstream = await open_validated_stream(client, direct_url, headers_copy)
+            # YouTube occasionally exposes an audio-only URL that yt-dlp can
+            # resolve but its CDN rejects (usually 403/SABR client drift). The
+            # progressive MP4 resolver uses a different client/format strategy
+            # and remains playable by an <audio> element. Retry only explicit
+            # source rejections, then remember the verified replacement so
+            # subsequent browser range requests do not hit the bad URL again.
+            if upstream.status_code in {401, 403, 410}:
+                rejected_status = upstream.status_code
+                await upstream.aclose()
+                logger.warning(
+                    "stream_source_rejected_retrying_progressive",
+                    upstream_status=rejected_status,
+                )
+                fallback_url, fallback_headers = await run_in_threadpool(
+                    VideoService.get_video_stream_source,
+                    webpage_url,
+                )
+                fallback_url = validate_stream_url(fallback_url)
+                headers_copy = dict(fallback_headers)
+                if range_header:
+                    headers_copy["Range"] = range_header
+                upstream = await open_validated_stream(client, fallback_url, headers_copy)
+                fallback_used = upstream.status_code < 400
+                if fallback_used:
+                    MusicService.remember_stream_source(
+                        webpage_url,
+                        fallback_url,
+                        fallback_headers,
+                    )
         except Exception:
             await client.aclose()
             raise
@@ -963,6 +993,8 @@ async def stream_song(
         # Mirror upstream status + the headers a media element needs; let
         # media_type drive Content-Type so it isn't duplicated.
         media_type = upstream.headers.get("content-type", "audio/mp4")
+        if fallback_used and media_type.startswith("video/"):
+            media_type = "audio/mp4"
         passthrough = {
             "Cache-Control": "no-store",
             "Access-Control-Allow-Origin": settings.dev_music_frontend_origin,
@@ -978,6 +1010,7 @@ async def stream_song(
             content_type=media_type,
             upstream_status=upstream.status_code,
             partial=upstream.status_code == 206,
+            fallback_used=fallback_used,
         )
         return StreamingResponse(
             stream_audio(),
