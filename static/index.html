@@ -102,6 +102,18 @@
     text-shadow:0 2px 28px rgba(0,0,0,.7),0 0 18px rgba(255,255,255,.72),0 0 44px rgba(141,221,255,.42)}
 
   /* ambient FFT spectrum strip along the bottom edge */
+  /* Notes editor panel. Docked right, above the gallery but below modals. */
+  #canvasEditor{position:fixed;right:0;top:0;bottom:0;width:min(520px,42vw);z-index:24;
+    display:flex;flex-direction:column;border-left:1px solid rgba(255,255,255,.09);
+    background:rgba(6,8,11,.82);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);
+    box-shadow:-24px 0 60px rgba(0,0,0,.45);
+    transform:translateX(100%);transition:transform .32s cubic-bezier(.22,1,.36,1)}
+  #canvasEditor.open{transform:translateX(0)}
+  #canvasEditor[hidden]{display:none}
+  #canvasEditorFrame{flex:1;width:100%;min-height:0;border:0;background:transparent}
+  @media (prefers-reduced-motion: reduce){ #canvasEditor{transition:none} }
+  @media (max-width:720px){ #canvasEditor{width:100vw} }
+
   #eqCanvas{position:fixed;left:0;right:0;bottom:0;width:100%;height:80px;z-index:7;
     pointer-events:none;opacity:0;transition:opacity .8s var(--ease)}
   #eqCanvas.live{opacity:var(--spectrum-opacity,.55)}
@@ -1051,6 +1063,12 @@
     </section>
   </div>
 
+  <!-- Canvas editor surface, mounted as a Base44 plugin. Hidden until toggled. -->
+  <aside id="canvasEditor" aria-label="Notes editor" hidden>
+    <iframe id="canvasEditorFrame" src="/canvas?surface=editor" title="Notes editor"
+            loading="lazy" allowtransparency="true" style="background:transparent"></iframe>
+  </aside>
+
   <!-- ambient FFT spectrum (bottom edge, flanks the player) -->
   <canvas id="eqCanvas" aria-hidden="true"></canvas>
 
@@ -1197,6 +1215,9 @@
     </button>
     <button id="clockOpenBtn" type="button" class="tool" aria-label="Toggle solar clock" data-label="Clock" aria-expanded="false">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>
+    </button>
+    <button id="canvasToggle" type="button" class="tool" aria-label="Toggle notes editor" data-label="Notes" aria-pressed="false" aria-expanded="false" aria-controls="canvasEditor">
+      <svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z"/><path d="M9 10h6M9 14h6"/></svg>
     </button>
     <div class="sep"></div>
     <div id="audio">
@@ -1510,6 +1531,7 @@
 <script src="/static/gallery/lyric-scene.js?v=20260814-plugin1"></script>
 <script src="/static/gallery/base44-plugin.js?v=20260814-plugin1"></script>
 <script src="/static/gallery/lyrics-shader-reader.js?v=20260814-plugin1"></script>
+<script src="/static/gallery/canvas-plugin.js?v=20260814-canvas1"></script>
 <script src="/static/gallery/apple-music.js"></script>
 <script src="/static/gallery/share.js?v=20260812-language1"></script>
 </body>

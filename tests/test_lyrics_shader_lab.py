@@ -338,3 +338,39 @@ def test_wallpapers_carry_motion_risk_and_the_engine_honours_it(client: TestClie
 
     served = client.get("/static/gallery/motion-safety.js")
     assert served.status_code == 200
+
+
+def test_canvas_editor_is_embedded_as_a_plugin(client: TestClient):
+    """The Canvas editor mounts on the same plugin contract as the reader.
+
+    The shell owns the note; the surface is a view that emits save intents.
+    """
+    repo = Path(__file__).resolve().parents[1]
+    shell = (repo / "static/index.html").read_text()
+    host = (repo / "static/gallery/canvas-plugin.js").read_text()
+
+    surface = client.get("/canvas")
+    assert surface.status_code == 200
+    # Embeddable, but only this path and the lab may be framed.
+    assert surface.headers["x-frame-options"] == "SAMEORIGIN"
+    assert client.get("/").headers["x-frame-options"] == "DENY"
+
+    assert 'id="canvasEditorFrame"' in shell
+    assert 'src="/canvas?surface=editor"' in shell
+    assert 'id="canvasToggle"' in shell
+    assert 'aria-controls="canvasEditor"' in shell
+    assert "/static/gallery/canvas-plugin.js" in shell
+    # The panel is deferred: it must not cost anything until opened.
+    assert 'loading="lazy"' in shell
+
+    assert "Base44AppPlugin.create" in host
+    assert "surface:'editor'" in host
+    # A text editor has no per-frame channel; it must not be given one.
+    assert "frameFloats:0" in host
+    assert "uniformKeys:[]" in host
+    # The shell owns the note.
+    assert "phaseField.canvasNote" in host
+    assert "save(payload)" in host
+
+    served = client.get("/static/gallery/canvas-plugin.js")
+    assert served.status_code == 200

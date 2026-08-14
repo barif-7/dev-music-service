@@ -162,7 +162,8 @@ async def beta_auth_gate(request: Request, call_next):
     response = await call_next(request)
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("Referrer-Policy", "same-origin")
-    frame_policy = "SAMEORIGIN" if request.url.path == "/lyrics-shader-lab" else "DENY"
+    embeddable = request.url.path in ("/lyrics-shader-lab", "/canvas")
+    frame_policy = "SAMEORIGIN" if embeddable else "DENY"
     response.headers.setdefault("X-Frame-Options", frame_policy)
     return response
 
@@ -202,6 +203,23 @@ def lyrics_shader_lab():
         raise HTTPException(
             status_code=503,
             detail="Lyrics Shader Lab is not built. Run: npm run build:lyrics-shader-lab",
+        )
+    return FileResponse(index_path)
+
+
+@app.get("/canvas")
+def canvas_editor_surface():
+    """Serve the embedded Canvas editor surface.
+
+    Built from the separate base44-canvas project and vendored into static/,
+    the same arrangement as the Lyrics Shader Lab: this app has no Node build
+    step in its deploy path, so the bundle ships with it.
+    """
+    index_path = STATIC_DIR / "canvas" / "index.html"
+    if not index_path.is_file():
+        raise HTTPException(
+            status_code=503,
+            detail="Canvas editor is not built. Run: npm run build:canvas",
         )
     return FileResponse(index_path)
 
