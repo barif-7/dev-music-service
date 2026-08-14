@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -299,3 +300,41 @@ def test_visual_service_is_deterministic():
     )
 
     assert LyricVisualService.analyze_lyric(request) == LyricVisualService.analyze_lyric(request)
+
+
+def test_wallpapers_carry_motion_risk_and_the_engine_honours_it(client: TestClient):
+    """Every wallpaper declares a motion risk, and reduced motion damps the clock.
+
+    Risk metadata on its own is only advice. The engine has to act on it, or a
+    reduced-motion user still gets the same strobing backdrop.
+    """
+    repo = Path(__file__).resolve().parents[1]
+    data = (repo / "static/gallery/data.js").read_text()
+    safety = (repo / "static/gallery/motion-safety.js").read_text()
+    engine = (repo / "static/gallery/engine.js").read_text()
+    shell = (repo / "static/index.html").read_text()
+
+    # Every wallpaper is classified, with no unknown values.
+    ids = re.findall(r"id:'([a-z0-9-]+)', name:", data)
+    risks = re.findall(r"a11y:'([a-z]+)'", data)
+    assert len(risks) == len(ids), "every wallpaper needs an a11y risk"
+    assert set(risks) <= {"none", "low", "medium", "high"}
+    assert "high" in risks and "low" in risks
+
+    # The risk is turned into a shader-clock rate, not just a label.
+    assert "rates: { none: 1, low: 1, medium: .6, high: .35 }" in safety
+    assert "prefers-reduced-motion: reduce" in safety
+    assert "rateFor(id)" in safety
+
+    # The engine accumulates time at that rate instead of reading the wall clock,
+    # so toggling reduced motion cannot make the visual jump.
+    assert "MotionSafety.rateFor(this.fragId)" in engine
+    assert "this.tSec +=" in engine
+    assert "Math.min(0.1," in engine, "dt must be clamped for backgrounded tiles"
+    assert "(performance.now() - this.start)/1000" not in engine
+
+    assert "/static/gallery/motion-safety.js" in shell
+    assert shell.index("motion-safety.js") < shell.index("engine.js")
+
+    served = client.get("/static/gallery/motion-safety.js")
+    assert served.status_code == 200

@@ -837,14 +837,18 @@ function buildGrid(){
     const cell = document.createElement('button');
     cell.type = 'button';
     cell.className = 'cell';
-    cell.setAttribute('aria-label', `Open ${w.name} wallpaper`);
+    const highMotion = typeof MotionSafety !== 'undefined' && MotionSafety.isHighMotion(w.id);
+    cell.setAttribute('aria-label',
+      `Open ${w.name} wallpaper${highMotion ? ', high motion' : ''}`);
     cell.setAttribute('aria-current', i===state.index ? 'true' : 'false');
     cell.dataset.api = String(!!w.apiAvailable);
+    cell.dataset.motion = w.a11y || 'low';
     cell.style.background = wallpaperFallback(w);
     cell.style.setProperty('--d', (i*42)+'ms');
     cell.innerHTML =
       `<span class="cell-source">${w.apiAvailable ? 'API' : 'Bundled'}</span>`+
-      `<div class="cell-tag"><span class="c-num">${w.n}</span><span class="c-name">${w.name}</span></div>`;
+      `<div class="cell-tag"><span class="c-num">${w.n}</span><span class="c-name">${w.name}</span>`+
+      `${highMotion ? '<span class="c-motion" title="High motion">motion</span>' : ''}</div>`;
     cell.addEventListener('click', ()=> Wallpaper.openImmersive(i, cell));
     cell.addEventListener('pointerenter', ()=>activateGridPreview(i, cell));
     cell.addEventListener('focus', ()=>activateGridPreview(i, cell));
