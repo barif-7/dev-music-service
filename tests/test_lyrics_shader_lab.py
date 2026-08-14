@@ -6,6 +6,16 @@ from fastapi.testclient import TestClient
 from models import LyricVisualAnalysisRequest
 from services.lyric_visual_service import LyricVisualService
 
+
+def test_embedded_lab_entrypoint_is_served(client: TestClient):
+    response = client.get("/lyrics-shader-lab")
+
+    assert response.status_code == 200
+    assert "Lyrics Shader Lab · Phase" in response.text
+    assert "/static/lyrics-shader-lab/assets/" in response.text
+    assert response.headers["x-frame-options"] == "SAMEORIGIN"
+
+
 def test_phase_shell_uses_lab_as_the_primary_center_lyrics_reader(client: TestClient):
     response = client.get("/")
 
@@ -52,6 +62,7 @@ def test_phase_shell_uses_lab_as_the_primary_center_lyrics_reader(client: TestCl
     assert palette.status_code == 200
     assert "soften(" in palette.text
     assert "gradient(" in palette.text
+
 
 def test_reader_composites_the_animated_shader_over_the_wallpaper():
     repo = Path(__file__).resolve().parents[1]
@@ -177,6 +188,7 @@ def test_reader_composites_the_animated_shader_over_the_wallpaper():
     app = (repo / "static/gallery/app.js").read_text()
     assert "!document.body.classList.contains('lyrics-spectrum-hidden')" in app
 
+
 def test_standalone_lab_localizes_the_latest_base44_reader_and_sequencer():
     repo = Path(__file__).resolve().parents[1]
     lab = (repo / "lyrics-shader-lab/src/pages/LyricShaderLab.jsx").read_text()
@@ -203,6 +215,7 @@ def test_standalone_lab_localizes_the_latest_base44_reader_and_sequencer():
     assert "enterMotion" in reader
     assert "exitMotion" in reader
     assert "positionClass" in reader
+
 
 def test_audio_features_returns_explicit_neutral_fallback(client: TestClient):
     response = client.get(
@@ -233,6 +246,7 @@ def test_audio_features_returns_explicit_neutral_fallback(client: TestClient):
         "duration_ms": 180000,
     }
 
+
 def test_audio_features_uses_authenticated_spotify_priors(client: TestClient):
     feature = MagicMock()
     feature.to_dict.return_value = {
@@ -255,6 +269,7 @@ def test_audio_features_uses_authenticated_spotify_priors(client: TestClient):
     assert response.json()["providerTrackId"] == "abc123"
     assert response.json()["tempo"] == 128.0
 
+
 def test_visual_analysis_contract_matches_embedded_client(client: TestClient):
     response = client.post(
         "/api/visuals/llm-analyze",
@@ -273,6 +288,7 @@ def test_visual_analysis_contract_matches_embedded_client(client: TestClient):
     assert payload["energy"] > 0.5
     assert payload["colorA"].startswith("#")
     assert payload["visualPrompt"]
+
 
 def test_visual_service_is_deterministic():
     request = LyricVisualAnalysisRequest(
