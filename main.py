@@ -162,7 +162,8 @@ async def beta_auth_gate(request: Request, call_next):
     response = await call_next(request)
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("Referrer-Policy", "same-origin")
-    response.headers.setdefault("X-Frame-Options", "DENY")
+    frame_policy = "SAMEORIGIN" if request.url.path == "/lyrics-shader-lab" else "DENY"
+    response.headers.setdefault("X-Frame-Options", frame_policy)
     return response
 
 
@@ -191,6 +192,18 @@ def fail_with_http_error(exc: Exception) -> None:
 @app.get("/")
 def root():
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/lyrics-shader-lab")
+def lyrics_shader_lab():
+    """Serve the independently built Lyrics Shader Lab embedded app."""
+    index_path = STATIC_DIR / "lyrics-shader-lab" / "index.html"
+    if not index_path.is_file():
+        raise HTTPException(
+            status_code=503,
+            detail="Lyrics Shader Lab is not built. Run: npm run build:lyrics-shader-lab",
+        )
+    return FileResponse(index_path)
 
 
 class BetaLoginRequest(BaseModel):
