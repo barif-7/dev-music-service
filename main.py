@@ -669,6 +669,47 @@ def analyze_lyric_visuals(request: Request, body: LyricVisualAnalysisRequest):
     return JSONResponse(content=LyricVisualService.analyze_lyric(body))
 
 
+@app.get("/api/audio-features")
+@app.get("/audio-features")
+@limiter.limit("60 per minute")
+async def get_audio_features(
+    request: Request,
+    title: str = Query(..., min_length=1, max_length=500),
+    artist: str = Query(..., min_length=1, max_length=500),
+    spotify_id: Optional[str] = Query(default=None, min_length=1, max_length=100, pattern=r"^[A-Za-z0-9]+$"),
+    duration_ms: Optional[int] = Query(default=None, ge=0, le=86_400_000),
+):
+    """Return canonical track priors while leaving live motion to Web Audio.
+
+    Spotify's legacy audio-features endpoint is used only when the caller has a
+    Spotify track id and an authenticated Spotify session.  Every other case is
+    a successful neutral response so shader playback never blocks on metadata.
+    """
+    if spotify_id:
+        try:
+            token = SpotifyImportService._access_token(request)
+            features = await FocusService.get_track_features(token, spotify_id)
+            if features is not None:
+                return JSONResponse(
+                    content=LyricVisualService.provider_audio_features(
+                        features.to_dict(), title=title, artist=artist
+                    ),
+                    headers={"Cache-Control": "private, max-age=3600"},
+                )
+        except SpotifyImportError:
+            pass
+
+    return JSONResponse(
+        content=LyricVisualService.neutral_audio_features(
+            title=title,
+            artist=artist,
+            duration_ms=duration_ms,
+            reason="missing_spotify_id" if not spotify_id else "spotify_features_unavailable",
+        ),
+        headers={"Cache-Control": "private, max-age=300"},
+    )
+
+
 @app.post("/api/vocals/translated")
 @app.post("/vocals/translated")
 @limiter.limit("30 per minute")
