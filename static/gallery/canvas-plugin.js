@@ -1,13 +1,13 @@
 /* The Canvas editor, mounted as a Base44 plugin.
 
    Same contract as the lyric reader: the shell owns the state and the surface
-   is a view. Here the state is the note itself — the editor holds only the
+   is a view. Here the state is the notes themselves — the editor holds only the
    text being typed between saves, and the shell decides where it lives.
 
    Storage is the shell's localStorage rather than a Canvas backend. The editor
    is a scratchpad that sits beside playback, so it should not require a second
-   server to be running, and a note written here should survive the surface
-   being unloaded, rebuilt or replaced.
+   server to be running, and notes written here should survive the surface being
+   unloaded, rebuilt or replaced.
 
    The surface has no per-frame needs, so the plugin declares no uniforms and
    the frame channel stays idle. */
@@ -17,24 +17,45 @@
   const toggle  = document.getElementById('canvasToggle');
   if(!frameEl || !panel || !toggle) return;
 
-  const DOC_KEY  = 'phaseField.canvasNote';
-  const OPEN_KEY = 'phaseField.canvasOpen';
+  const DOCS_KEY   = 'phaseField.canvasNotes';
+  const ACTIVE_KEY = 'phaseField.canvasActiveNote';
+  const OPEN_KEY   = 'phaseField.canvasOpen';
+  const LEGACY_KEY = 'phaseField.canvasNote';    // single-note format
 
-  function loadDoc(){
-    try{
-      const stored = JSON.parse(localStorage.getItem(DOC_KEY) || 'null');
-      if(stored && typeof stored === 'object') return stored;
-    }catch(e){ /* fall through to a fresh note */ }
-    return { id:'note-1', title:'Untitled note', body:'', tags:[] };
+  function newDoc(index){
+    return {
+      id:`note-${Date.now().toString(36)}-${index}`,
+      title:'Untitled note',
+      body:'',
+      tags:[],
+      updatedAt:new Date().toISOString(),
+    };
   }
 
-  let doc = loadDoc();
+  function loadDocs(){
+    try{
+      const stored = JSON.parse(localStorage.getItem(DOCS_KEY) || 'null');
+      if(Array.isArray(stored) && stored.length) return stored;
+      /* Carry over a note written before the editor held more than one. */
+      const legacy = JSON.parse(localStorage.getItem(LEGACY_KEY) || 'null');
+      if(legacy && typeof legacy === 'object') return [{ ...newDoc(0), ...legacy }];
+    }catch(e){ /* fall through to a fresh note */ }
+    return [newDoc(0)];
+  }
+
+  let docs = loadDocs();
+  let activeId = '';
+  try{ activeId = localStorage.getItem(ACTIVE_KEY) || ''; }catch(e){ /* ignore */ }
+  if(!docs.some(d => d.id === activeId)) activeId = docs[0].id;
+
   let open = false;
   try{ open = localStorage.getItem(OPEN_KEY) === 'true'; }catch(e){ /* default closed */ }
 
   function persist(){
-    try{ localStorage.setItem(DOC_KEY, JSON.stringify(doc)); }
-    catch(e){ /* storage unavailable — the note stays in memory */ }
+    try{
+      localStorage.setItem(DOCS_KEY, JSON.stringify(docs));
+      localStorage.setItem(ACTIVE_KEY, activeId);
+    }catch(e){ /* storage unavailable — notes stay in memory */ }
   }
 
   function applyOpen(){
@@ -53,30 +74,54 @@
     frame:frameEl,
     frameFloats:0,          /* a text editor needs no per-frame channel */
     uniformKeys:[],
-    scene(){ return { doc }; },
+    scene(){ return { docs, activeId }; },
     /* Nothing to push per frame; returning null idles that channel. */
     frame_(){ return null; },
     paused(){ return !open; },
     intents:{
       save(payload){
         if(!payload || typeof payload !== 'object') return;
-        doc = {
-          id:String(payload.id || doc.id),
-          title:String(payload.title ?? doc.title),
-          body:String(payload.body ?? doc.body),
-          tags:Array.isArray(payload.tags) ? payload.tags : doc.tags,
+        const index = docs.findIndex(d => d.id === payload.id);
+        if(index < 0) return;
+        docs[index] = {
+          ...docs[index],
+          title:String(payload.title ?? docs[index].title),
+          body:String(payload.body ?? docs[index].body),
+          tags:Array.isArray(payload.tags) ? payload.tags : docs[index].tags,
+          updatedAt:new Date().toISOString(),
         };
         persist();
         /* Deliberately no invalidate(): echoing the note back while it is being
-           typed would re-seed the editor and fight the caret. */
+           typed would re-seed the editor and fight the caret. The list rerenders
+           on the next scene push, which any other intent triggers. */
       },
+      select(payload){
+        if(!payload?.id || payload.id === activeId) return;
+        if(!docs.some(d => d.id === payload.id)) return;
+        activeId = payload.id;
+        persist(); plugin.invalidate();
+      },
+      create(){
+        const doc = newDoc(docs.length);
+        docs = [doc, ...docs];
+        activeId = doc.id;
+        persist(); plugin.invalidate();
+      },
+      remove(payload){
+        if(!payload?.id || docs.length <= 1) return;   // always keep one note
+        docs = docs.filter(d => d.id !== payload.id);
+        if(activeId === payload.id) activeId = docs[0].id;
+        persist(); plugin.invalidate();
+      },
+      /* The surface asks for the current notes after a reload or a rebuild. */
+      sync(){ plugin.invalidate(); },
     },
   });
 
   function setOpen(next){
     open = !!next;
     applyOpen();
-    if(open) plugin.invalidate();      // re-push the note when reopened
+    if(open) plugin.invalidate();      // re-push notes when reopened
   }
 
   toggle.addEventListener('click', ()=>setOpen(!open));

@@ -368,9 +368,32 @@ def test_canvas_editor_is_embedded_as_a_plugin(client: TestClient):
     # A text editor has no per-frame channel; it must not be given one.
     assert "frameFloats:0" in host
     assert "uniformKeys:[]" in host
-    # The shell owns the note.
-    assert "phaseField.canvasNote" in host
-    assert "save(payload)" in host
+    # The shell owns the notes, including which one is active.
+    assert "phaseField.canvasNotes" in host
+    assert "phaseField.canvasActiveNote" in host
+    for handler in ("save(payload)", "select(payload)", "create()", "remove(payload)"):
+        assert handler in host
+    # A save must not re-push the scene, or it re-seeds the editor mid-keystroke.
+    assert "Deliberately no invalidate()" in host
+
+    # Ported Canvas components that stand on their own.
+    surface_src = (
+        repo.parent / "Documents/GitHub/base44-canvas/src/pages/EditorSurface.jsx"
+    )
+    if surface_src.is_file():
+        surface_code = surface_src.read_text()
+        for component in ("DocItem", "EditorToolbar", "StatusBar", "TagFilterBar",
+                          "CommandPalette", "MarkdownPreview", "EditorArea"):
+            assert component in surface_code
+        # Excluded on purpose — checked as imports, since the module comment
+        # names them to explain why they are absent.
+        imports = [ln for ln in surface_code.splitlines() if ln.startswith("import ")]
+        joined = "\n".join(imports)
+        # AIWorkshop and OSSearchBar need an LLM and filesystem-indexer.
+        assert "AIWorkshop" not in joined
+        assert "OSSearchBar" not in joined
+        # DocList drags in @hello-pangea/dnd for reordering this surface lacks.
+        assert "canvas/DocList" not in joined
 
     served = client.get("/static/gallery/canvas-plugin.js")
     assert served.status_code == 200
