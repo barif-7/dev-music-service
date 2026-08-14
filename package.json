@@ -4,6 +4,7 @@
   "scripts": {
     "build:lyrics-shader-lab": "npm --prefix lyrics-shader-lab run build",
     "dev:lyrics-shader-lab": "npm --prefix lyrics-shader-lab run dev",
-    "install:lyrics-shader-lab": "npm --prefix lyrics-shader-lab install"
+    "install:lyrics-shader-lab": "npm --prefix lyrics-shader-lab install",
+    "build:canvas": "node scripts/build-canvas-surface.mjs"
   }
 }
