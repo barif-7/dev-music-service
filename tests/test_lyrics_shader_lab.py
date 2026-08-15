@@ -397,3 +397,48 @@ def test_canvas_editor_is_embedded_as_a_plugin(client: TestClient):
 
     served = client.get("/static/gallery/canvas-plugin.js")
     assert served.status_code == 200
+
+
+def test_dock_panels_share_one_geometry_and_stack_horizontally(client: TestClient):
+    """Every dock toggle produces a panel in the same place, at the same size.
+
+    Panels used to invent their own placement — the notes editor was a
+    full-height right dock and the clock was centred on the viewport — so two
+    open at once meant one covering the other.
+    """
+    repo = Path(__file__).resolve().parents[1]
+    shell = (repo / "static/index.html").read_text()
+    dock = (repo / "static/gallery/plugin-dock.js").read_text()
+    canvas = (repo / "static/gallery/canvas-plugin.js").read_text()
+    clock = (repo / "static/gallery/clock-modal.js").read_text()
+
+    # One origin and one size, expressed as tokens.
+    for token in ("--dock-x:", "--dock-y:", "--dock-w:", "--dock-h:", "--dock-gap:"):
+        assert token in shell
+    # Horizontal stacking is the slot offset; animating right makes it reflow.
+    assert "var(--dock-x) + var(--dock-slot,0) * (var(--dock-w) + var(--dock-gap))" in shell
+    assert "transition:right" in shell
+
+    # Both toggles are registered with the dock rather than placing themselves.
+    assert "PluginDock.register" in canvas
+    assert "PluginDock.register" in clock
+    assert "id:'notes'" in canvas
+    assert "id:'clock'" in clock
+
+    # Panels no longer carry their own geometry.
+    assert "#clockModal{position:fixed" not in shell
+    assert "#canvasEditor{position:fixed" not in shell
+    # hidden would beat the dock's opacity handling via the UA stylesheet.
+    assert 'id="canvasEditor" aria-label="Notes editor" hidden' not in shell
+
+    # Slots follow registration order, so an open panel never jumps sideways.
+    assert "this.order.filter" in dock
+    # A finite row must evict rather than push a panel off-screen.
+    assert "capacity()" in dock
+    assert "evict least recent" in dock
+
+    # The dock has to be defined before anything registers with it.
+    assert shell.index("plugin-dock.js") < shell.index("clock-modal.js")
+    assert shell.index("plugin-dock.js") < shell.index("canvas-plugin.js")
+
+    assert client.get("/static/gallery/plugin-dock.js").status_code == 200

@@ -48,8 +48,8 @@
   try{ activeId = localStorage.getItem(ACTIVE_KEY) || ''; }catch(e){ /* ignore */ }
   if(!docs.some(d => d.id === activeId)) activeId = docs[0].id;
 
-  let open = false;
-  try{ open = localStorage.getItem(OPEN_KEY) === 'true'; }catch(e){ /* default closed */ }
+  let wasOpen = false;
+  try{ wasOpen = localStorage.getItem(OPEN_KEY) === 'true'; }catch(e){ /* default closed */ }
 
   function persist(){
     try{
@@ -58,15 +58,20 @@
     }catch(e){ /* storage unavailable — notes stay in memory */ }
   }
 
-  function applyOpen(){
-    panel.hidden = !open;
-    panel.classList.toggle('open', open);
-    toggle.classList.toggle('on', open);
-    toggle.setAttribute('aria-pressed', open ? 'true' : 'false');
-    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-    document.body.classList.toggle('canvas-open', open);
-    try{ localStorage.setItem(OPEN_KEY, String(open)); }catch(e){ /* ignore */ }
-  }
+  /* Placement, sizing, stacking and the toggle's pressed state belong to the
+     dock; this file only cares whether the panel is open. */
+  const dock = PluginDock.register({
+    id:'notes',
+    el:panel,
+    toggle,
+    onOpen(){
+      try{ localStorage.setItem(OPEN_KEY, 'true'); }catch(e){ /* ignore */ }
+      plugin.invalidate();              // re-push notes when reopened
+    },
+    onClose(){
+      try{ localStorage.setItem(OPEN_KEY, 'false'); }catch(e){ /* ignore */ }
+    },
+  });
 
   const plugin = Base44AppPlugin.create({
     id:'base44-canvas',
@@ -77,7 +82,7 @@
     scene(){ return { docs, activeId }; },
     /* Nothing to push per frame; returning null idles that channel. */
     frame_(){ return null; },
-    paused(){ return !open; },
+    paused(){ return !dock.isOpen(); },
     intents:{
       save(payload){
         if(!payload || typeof payload !== 'object') return;
@@ -118,18 +123,7 @@
     },
   });
 
-  function setOpen(next){
-    open = !!next;
-    applyOpen();
-    if(open) plugin.invalidate();      // re-push notes when reopened
-  }
-
-  toggle.addEventListener('click', ()=>setOpen(!open));
-  document.addEventListener('keydown', event=>{
-    /* Escape closes the panel, but not while the editor has focus — there it
-       belongs to the editor's own dismissables. */
-    if(event.key === 'Escape' && open && document.activeElement !== frameEl) setOpen(false);
-  });
-
-  applyOpen();
+  /* Escape and the toggle's pressed state are handled by the dock. */
+  toggle.addEventListener('click', ()=>dock.toggle());
+  if(wasOpen) dock.open();
 })();
