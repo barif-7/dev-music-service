@@ -129,6 +129,14 @@
     transition:right .34s var(--ease),opacity .26s var(--ease),translate .34s var(--ease)}
   .dock-panel.open{opacity:1;pointer-events:auto;translate:0 0}
   .dock-panel > iframe{flex:1;width:100%;min-height:0;border:0;background:transparent}
+  /* A panel that used to be a modal keeps its old full-viewport wrapper in the
+     DOM. Neutralise it so the card inside can dock, and drop the scrim — a
+     click-outside affordance only makes sense for something modal. */
+  .dock-host{position:static!important;inset:auto!important;display:contents;
+    background:none!important;opacity:1!important;pointer-events:none}
+  .dock-host > .sp-scrim{display:none!important}
+  /* Docked cards fill the panel rather than sizing to their content. */
+  .dock-panel.service-modal-card{max-height:none;margin:0;overflow:auto}
   /* One panel at a time on narrow screens: the row cannot stack. */
   @media (max-width:720px){
     :root{--dock-x:0px;--dock-y:0px;--dock-w:100vw;--dock-h:100dvh}
@@ -1009,6 +1017,25 @@
     #lyricReader.lab-ready.reader-shape-circle{border-radius:50%}
     #lyricReader.lab-ready.reader-shape-square{border-radius:4px}
   }
+
+  /* ---- panels folded onto the dock ----------------------------------------
+     These four were centred modals with ID-specificity geometry spread across
+     several media queries. Rather than unpick each rule, this block restates
+     the dock geometry at matching specificity and is placed last, so it wins
+     wherever the old centring still applies. Their look is untouched; only
+     placement and sizing change. */
+  #eqControls.dock-panel,
+  #appleMusicPanel.dock-panel,
+  #spotifyPanel .service-modal-card.dock-panel,
+  #focusPanel .service-modal-card.dock-panel{
+    position:fixed;top:var(--dock-y);left:auto;bottom:auto;
+    right:calc(var(--dock-x) + var(--dock-slot,0) * (var(--dock-w) + var(--dock-gap)));
+    width:var(--dock-w);height:var(--dock-h);max-height:none;
+    translate:none;transform:none;z-index:26}
+  #eqControls.dock-panel.open,
+  #appleMusicPanel.dock-panel.open,
+  #spotifyPanel .service-modal-card.dock-panel.open,
+  #focusPanel .service-modal-card.dock-panel.open{translate:none;transform:none;opacity:1}
 </style>
 </head>
 <body>
@@ -1092,7 +1119,7 @@
   <canvas id="eqCanvas" aria-hidden="true"></canvas>
 
   <!-- spectrum edit controls (popover) -->
-  <div class="chrome" id="eqControls" role="dialog" aria-label="Spectrum settings" aria-hidden="true" inert>
+  <div class="chrome" id="eqControls" role="region" aria-label="Spectrum settings" aria-hidden="true" inert>
     <div class="eqHead"><span class="eqTitle">Spectrum view</span><button type="button" class="eqReset" id="eqReset">Reset</button></div>
     <div class="eqRow"><span class="eqLbl" id="eqStyleLabel">View</span>
       <div class="eqChips" data-key="style" role="group" aria-labelledby="eqStyleLabel">
@@ -1285,7 +1312,7 @@
   </div>
 
   <!-- Apple Music uses MusicKit on the Web once a developer token is configured -->
-  <div id="appleMusicPanel" role="dialog" aria-modal="true" aria-label="Apple Music" aria-hidden="true" inert>
+  <div id="appleMusicPanel" role="region" aria-label="Apple Music" aria-hidden="true" inert>
     <div class="am-head">
       <div class="am-mark">♪</div>
       <div class="am-title"><b>Apple Music</b><span id="appleMusicIdentity">checking configuration</span></div>
@@ -1387,7 +1414,7 @@
   </div>
 
   <!-- Spotify library modal -->
-  <div id="spotifyPanel" role="dialog" aria-modal="true" aria-labelledby="spotifyAccount" aria-describedby="spotifyScope" aria-hidden="true" inert>
+  <div id="spotifyPanel" role="region" aria-labelledby="spotifyAccount" aria-describedby="spotifyScope" aria-hidden="true" inert>
     <button type="button" class="sp-scrim" id="spotifyClose" aria-label="Close Spotify library" tabindex="-1"></button>
     <section class="service-modal-card" tabindex="-1">
       <div class="sp-head">
@@ -1467,7 +1494,7 @@
   </div>
 
   <!-- Focus mode modal -->
-  <div id="focusPanel" role="dialog" aria-modal="true" aria-labelledby="focusTitle" aria-describedby="focusSpotifyStatus" aria-hidden="true" inert>
+  <div id="focusPanel" role="region" aria-labelledby="focusTitle" aria-describedby="focusSpotifyStatus" aria-hidden="true" inert>
     <button type="button" class="sp-scrim" id="focusClose" aria-label="Close focus mode" tabindex="-1"></button>
     <section class="service-modal-card fc-modal" tabindex="-1">
       <div class="sp-head">
@@ -1539,12 +1566,12 @@
 <script src="/static/gallery/service.js?v=20260806-sharelyrics1"></script>
 <script src="/static/gallery/cast.js"></script>
 <script async src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1"></script>
+<script src="/static/gallery/plugin-dock.js?v=20260814-dock1"></script>
 <script src="/static/gallery/app.js?v=20260812-api2"></script>
 <script src="/static/gallery/eq.js?v=20260806-spectrum2"></script>
 <script src="/static/gallery/spotify.js"></script>
 <script src="/static/gallery/focus.js"></script>
 <script src="/static/gallery/search.js"></script>
-<script src="/static/gallery/plugin-dock.js?v=20260814-dock1"></script>
 <script src="/static/gallery/clock-modal.js?v=20260814-dock1"></script>
 <script src="/static/gallery/wallpaper-palette.js?v=20260814-plugin1"></script>
 <script src="/static/gallery/reader-preferences.js?v=20260814-plugin1"></script>

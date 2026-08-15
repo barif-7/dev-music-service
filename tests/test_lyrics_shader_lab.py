@@ -442,3 +442,44 @@ def test_dock_panels_share_one_geometry_and_stack_horizontally(client: TestClien
     assert shell.index("plugin-dock.js") < shell.index("canvas-plugin.js")
 
     assert client.get("/static/gallery/plugin-dock.js").status_code == 200
+
+
+def test_settings_panels_are_docked_and_no_longer_modal(client: TestClient):
+    """The four settings panels became non-modal dock panels.
+
+    They are worth adjusting while the visuals react, so trapping focus in
+    them was wrong. Video and search stay modal, where exclusivity is right.
+    """
+    repo = Path(__file__).resolve().parents[1]
+    shell = (repo / "static/index.html").read_text()
+    app = (repo / "static/gallery/app.js").read_text()
+    eq = (repo / "static/gallery/eq.js").read_text()
+    apple = (repo / "static/gallery/apple-music.js").read_text()
+
+    for panel_id, source in (("spotify", app), ("focus", app),
+                             ("spectrum", eq), ("apple-music", apple)):
+        assert f"id:'{panel_id}'" in source, panel_id
+
+    # Non-modal: they must stop claiming to be dialogs that trap focus.
+    for panel in ("focusPanel", "spotifyPanel", "appleMusicPanel", "eqControls"):
+        marker = shell[shell.index(f'id="{panel}"'):]
+        marker = marker[:marker.index(">")]
+        assert 'role="region"' in marker, panel
+        assert "aria-modal" not in marker, panel
+
+    # Genuinely modal surfaces keep their semantics.
+    video = shell[shell.index('id="videoModal"'):]
+    assert 'aria-modal="true"' in video[:video.index(">")]
+
+    # The two wrapper panels dock their inner card, and the scrim goes with the
+    # modality it belonged to.
+    assert "$('#spotifyPanel .service-modal-card')" in app
+    assert "$('#focusPanel .service-modal-card')" in app
+    assert ".dock-host > .sp-scrim{display:none" in shell
+
+    # The dock has to exist before app.js registers with it at module level.
+    assert shell.index("plugin-dock.js") < shell.index("gallery/app.js")
+
+    # Old centring is restated at matching specificity, placed last to win.
+    assert "#eqControls.dock-panel" in shell
+    assert "#focusPanel .service-modal-card.dock-panel" in shell

@@ -262,30 +262,19 @@ const EQ = {
     });
     reflect();
     const btn=document.getElementById('btnEq'), pop=root;
-    const setInert = v=>{
-      pop.inert = !!v;
-      if(v) pop.setAttribute('inert', '');
-      else pop.removeAttribute('inert');
-    };
-    const setOpen = v=>{
-      pop.classList.toggle('show', v);
-      pop.setAttribute('aria-hidden', String(!v));
-      setInert(!v);
-      btn?.setAttribute('aria-expanded', String(v));
-      if(typeof state==='object') state.searchOpen=!!v;
-      if(typeof wake==='function') wake();
-      if(v) requestAnimationFrame(()=>pop.querySelector('.eqChip')?.focus({ preventScroll:true }));
-    };
-    btn?.addEventListener('click', e=>{ e.stopPropagation(); setOpen(!pop.classList.contains('show')); });
-    document.addEventListener('click', e=>{
-      if(pop.classList.contains('show') && !pop.contains(e.target) && e.target!==btn) setOpen(false);
+    /* A dock panel: placement, sizing, stacking, Escape and the toggle's
+       pressed state all come from PluginDock. Spectrum settings are worth
+       adjusting while the visuals react, so this is deliberately not modal —
+       no scrim, no focus trap, and no closing on an outside click. */
+    const dock = PluginDock.register({
+      id:'spectrum',
+      el:pop,
+      toggle:btn,
+      showClass:'show',
+      focusFirst:'.eqChip',
+      onOpen(){ if(typeof wake==='function') wake(); },
     });
-    document.addEventListener('keydown', e=>{
-      if(e.key === 'Escape' && pop.classList.contains('show')){
-        setOpen(false);
-        btn?.focus({ preventScroll:true });
-      }
-    });
+    btn?.addEventListener('click', e=>{ e.stopPropagation(); dock.toggle(); });
   },
 };
 EQ.wire();

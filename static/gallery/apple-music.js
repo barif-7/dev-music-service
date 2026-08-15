@@ -13,15 +13,21 @@
   let config=null,music=null,items=[],timer=null,selected=-1,loadingPromise=null;
   let offlineLibrary=null,offlineAlbums=[],offlineMode=false;
 
-  function setPanel(open){
-    panel.classList.toggle('show',open);panel.setAttribute('aria-hidden',String(!open));
-    panel.inert=!open;
-    if(open) panel.removeAttribute('inert'); else panel.setAttribute('inert','');
-    openBtn.setAttribute('aria-expanded',String(open));
-    if(typeof state!=='undefined') state.searchOpen=open;
-    if(open&&(config?.configured||offlineLibrary)) setTimeout(()=>query.focus(),40);
-    if(typeof wake==='function') wake();
-  }
+  /* A dock panel rather than a modal: placement, sizing, stacking, Escape and
+     the toggle's pressed state come from PluginDock. setPanel stays as the
+     local entry point so the existing call sites are unchanged. */
+  const dock=PluginDock.register({
+    id:'apple-music',
+    el:panel,
+    toggle:openBtn,
+    showClass:'show',
+    onOpen(){
+      if(config?.configured||offlineLibrary) setTimeout(()=>query.focus(),40);
+      if(typeof wake==='function') wake();
+    },
+  });
+
+  function setPanel(open){ open?dock.open():dock.close(); }
 
   function loadMusicKit(){
     if(window.MusicKit) return Promise.resolve(window.MusicKit);
