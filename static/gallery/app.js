@@ -937,36 +937,42 @@ window.addEventListener('pointerdown', event=>{
   if(dock?.classList.contains('dock-open') && !dock.contains(event.target)) setDockOpen(false);
 }, { passive:true });
 
-/* ---- Spotify library panel ---- */
-function openSpotifyPanel(){
-  openManagedDialog($('#spotifyPanel'), {
-    trigger:$('#btnSpotify'),
-    bodyClass:'spotify-mode',
-    firstFocus:'#spotifyCloseBtn',
-  });
-}
-function closeSpotifyPanel(){
-  closeManagedDialog($('#spotifyPanel'), { trigger:$('#btnSpotify') });
-}
-$('#btnSpotify').addEventListener('click', openSpotifyPanel);
+/* ---- Spotify library panel ----
+   A dock panel now, not a modal. The old full-viewport wrapper stays in the
+   DOM as a neutralised host; the card inside is what docks. */
+const spotifyDock = PluginDock.register({
+  id:'spotify',
+  el:$('#spotifyPanel .service-modal-card'),
+  host:$('#spotifyPanel'),
+  toggle:$('#btnSpotify'),
+  focusFirst:'#spotifyCloseBtn',
+  onOpen(){ document.body.classList.add('spotify-mode'); },
+  onClose(){ document.body.classList.remove('spotify-mode'); },
+});
+function openSpotifyPanel(){ spotifyDock.open(); }
+function closeSpotifyPanel(){ spotifyDock.close(); }
+$('#btnSpotify').addEventListener('click', ()=>spotifyDock.toggle());
 $('#spotifyClose').addEventListener('click', closeSpotifyPanel);
 $('#spotifyCloseBtn').addEventListener('click', closeSpotifyPanel);
 
 renderRecentlyPlayed();
 
-/* ---- Focus mode panel ---- */
-function openFocusPanel(){
-  openManagedDialog($('#focusPanel'), {
-    trigger:$('#btnFocus'),
-    bodyClass:'focus-mode-panel',
-    firstFocus:'#focusCloseBtn',
-    onOpen:()=>{ if(typeof focusOnOpen === 'function') focusOnOpen(); },
-  });
-}
-function closeFocusPanel(){
-  closeManagedDialog($('#focusPanel'), { trigger:$('#btnFocus') });
-}
-$('#btnFocus').addEventListener('click', openFocusPanel);
+/* ---- Focus mode panel ---- (a dock panel; see Spotify above) */
+const focusDock = PluginDock.register({
+  id:'focus',
+  el:$('#focusPanel .service-modal-card'),
+  host:$('#focusPanel'),
+  toggle:$('#btnFocus'),
+  focusFirst:'#focusCloseBtn',
+  onOpen(){
+    document.body.classList.add('focus-mode-panel');
+    if(typeof focusOnOpen === 'function') focusOnOpen();
+  },
+  onClose(){ document.body.classList.remove('focus-mode-panel'); },
+});
+function openFocusPanel(){ focusDock.open(); }
+function closeFocusPanel(){ focusDock.close(); }
+$('#btnFocus').addEventListener('click', ()=>focusDock.toggle());
 $('#focusClose').addEventListener('click', closeFocusPanel);
 $('#focusCloseBtn').addEventListener('click', closeFocusPanel);
 

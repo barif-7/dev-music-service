@@ -42,12 +42,27 @@ const PluginDock = {
     return Math.max(1, Math.floor(usable / (width + gap)));
   },
 
+  /* spec: { id, el, toggle, host, showClass, focusFirst, onOpen, onClose }
+
+     host      a full-viewport wrapper the panel used to live inside as a modal.
+               It is neutralised so the card itself can dock, and its scrim —
+               a click-outside affordance that only makes sense for something
+               modal — is hidden.
+     showClass a legacy visibility class the panel's existing CSS still keys
+               off, toggled alongside .open so styling keeps working. */
   register(spec){
     if(!spec?.id || !spec.el) return null;
     this.panels.set(spec.id, spec);
     if(!this.order.includes(spec.id)) this.order.push(spec.id);
     spec.el.classList.add('dock-panel');
     spec.el.dataset.dockId = spec.id;
+    if(spec.host){
+      spec.host.classList.add('dock-host');
+      /* A docked panel is not modal, so it must not claim to be. */
+      spec.host.removeAttribute('aria-modal');
+      spec.host.removeAttribute('inert');
+      spec.host.setAttribute('aria-hidden', 'false');
+    }
     this._reflect(spec.id);
     return {
       open:()=>this.open(spec.id),
@@ -89,7 +104,16 @@ const PluginDock = {
     if(!spec) return;
     const open = this.isOpen(id);
     spec.el.classList.toggle('open', open);
+    if(spec.showClass) spec.el.classList.toggle(spec.showClass, open);
     spec.el.setAttribute('aria-hidden', open ? 'false' : 'true');
+    /* Keep a closed panel out of the tab order without display:none, which
+       would defeat the open/close transition. */
+    if(open) spec.el.removeAttribute('inert'); else spec.el.setAttribute('inert', '');
+    if(open && spec.focusFirst){
+      requestAnimationFrame(()=>{
+        spec.el.querySelector(spec.focusFirst)?.focus({ preventScroll:true });
+      });
+    }
     if(spec.toggle){
       spec.toggle.classList.toggle('on', open);
       spec.toggle.setAttribute('aria-pressed', open ? 'true' : 'false');
