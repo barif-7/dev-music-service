@@ -23,15 +23,17 @@
   const src = frame.getAttribute('src');
   frame.removeAttribute('src');
 
-  function setOpen(v){
-    if(v && !frame.getAttribute('src')) frame.setAttribute('src', src);
-    panel.classList.toggle('show', v);
-    btn.setAttribute('aria-expanded', String(v));
-  }
-
-  btn.addEventListener('click', ()=> setOpen(!panel.classList.contains('show')));
-  $('#clockModalCloseBtn').addEventListener('click', ()=> setOpen(false));
-  document.addEventListener('keydown', e=>{
-    if(e.key === 'Escape' && panel.classList.contains('show')) setOpen(false);
+  /* Placement, sizing, stacking, Escape and the toggle's pressed state come
+     from the dock, so this file keeps only the deferred-src behaviour. */
+  const dock = PluginDock.register({
+    id:'clock',
+    el:panel,
+    toggle:btn,
+    onOpen(){
+      if(!frame.getAttribute('src')) frame.setAttribute('src', src);
+    },
   });
+
+  btn.addEventListener('click', ()=> dock.toggle());
+  $('#clockModalCloseBtn').addEventListener('click', ()=> dock.close());
 })();

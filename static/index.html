@@ -102,17 +102,39 @@
     text-shadow:0 2px 28px rgba(0,0,0,.7),0 0 18px rgba(255,255,255,.72),0 0 44px rgba(141,221,255,.42)}
 
   /* ambient FFT spectrum strip along the bottom edge */
-  /* Notes editor panel. Docked right, above the gallery but below modals. */
-  #canvasEditor{position:fixed;right:0;top:0;bottom:0;width:min(520px,42vw);z-index:24;
-    display:flex;flex-direction:column;border-left:1px solid rgba(255,255,255,.09);
-    background:rgba(6,8,11,.82);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);
-    box-shadow:-24px 0 60px rgba(0,0,0,.45);
-    transform:translateX(100%);transition:transform .32s cubic-bezier(.22,1,.36,1)}
-  #canvasEditor.open{transform:translateX(0)}
-  #canvasEditor[hidden]{display:none}
-  #canvasEditorFrame{flex:1;width:100%;min-height:0;border:0;background:transparent}
-  @media (prefers-reduced-motion: reduce){ #canvasEditor{transition:none} }
-  @media (max-width:720px){ #canvasEditor{width:100vw} }
+
+  /* ---- floating dock ----------------------------------------------------
+     One origin and one size for every dock panel, so a toggle in the tool row
+     always produces a panel in the same place. Open panels are laid out in a
+     horizontal stack running right to left from the origin; --dock-slot is
+     assigned by PluginDock. Animating `right` is what makes the row reflow
+     when a panel opens or closes. */
+  :root{
+    --dock-x:24px;                /* inset from the right edge  */
+    --dock-y:88px;                /* inset from the top         */
+    --dock-w:min(520px,42vw);
+    --dock-h:min(720px,calc(100dvh - var(--dock-y) - 112px));
+    --dock-gap:14px;
+    --dock-slot:0;
+  }
+  .dock-panel{position:fixed;top:var(--dock-y);
+    right:calc(var(--dock-x) + var(--dock-slot,0) * (var(--dock-w) + var(--dock-gap)));
+    width:var(--dock-w);height:var(--dock-h);z-index:26;
+    display:flex;flex-direction:column;overflow:hidden;
+    border:1px solid var(--hair);border-radius:var(--squircle);
+    background:var(--glass-strong);
+    backdrop-filter:blur(22px) saturate(1.15);-webkit-backdrop-filter:blur(22px) saturate(1.15);
+    box-shadow:0 26px 64px rgba(0,0,0,.5);
+    opacity:0;pointer-events:none;translate:14px 0;
+    transition:right .34s var(--ease),opacity .26s var(--ease),translate .34s var(--ease)}
+  .dock-panel.open{opacity:1;pointer-events:auto;translate:0 0}
+  .dock-panel > iframe{flex:1;width:100%;min-height:0;border:0;background:transparent}
+  /* One panel at a time on narrow screens: the row cannot stack. */
+  @media (max-width:720px){
+    :root{--dock-x:0px;--dock-y:0px;--dock-w:100vw;--dock-h:100dvh}
+    .dock-panel{border-radius:0;border:0}
+  }
+  @media (prefers-reduced-motion: reduce){ .dock-panel{transition:none} }
 
   #eqCanvas{position:fixed;left:0;right:0;bottom:0;width:100%;height:80px;z-index:7;
     pointer-events:none;opacity:0;transition:opacity .8s var(--ease)}
@@ -298,10 +320,7 @@
     stroke-linecap:round;stroke-linejoin:round}
   /* compact floating clock panel — a .chrome element like the video hero:
      no scrim, transparent background, fades with the rest of the chrome on idle */
-  #clockModal{position:fixed;right:28px;bottom:96px;z-index:26;width:min(320px,64vw);
-    height:min(430px,62vh);opacity:0;pointer-events:none;translate:0 10px;
-    transition:opacity .35s var(--ease),translate .35s var(--ease)}
-  #clockModal.show{opacity:1;pointer-events:auto;translate:0 0}
+  /* Geometry comes from .dock-panel; only the clock's own chrome lives here. */
   #clockModal iframe{width:100%;height:100%;border:0;display:block;background:transparent}
   #clockModal .clock-close{position:absolute;right:4px;top:4px;z-index:2;width:24px;height:24px;
     border-radius:7px;display:grid;place-items:center;color:var(--dim);background:rgba(0,0,0,.35);
@@ -897,8 +916,8 @@
   #eqControls{position:fixed;top:50%;left:50%;right:auto;translate:-50% -47%;z-index:1001;width:min(680px,calc(100vw - 32px));
     max-height:calc(100dvh - 32px);opacity:0;transform:scale(.98)}
   #eqControls.show{translate:-50% -50%;opacity:1;transform:none}
-  #clockModal{right:auto;bottom:auto;left:50%;top:50%;translate:-50% -47%;width:min(560px,calc(100vw - 32px));height:min(620px,calc(100dvh - 32px))}
-  #clockModal.show{translate:-50% -50%}
+  /* The clock is a dock panel now, so it keeps the shared dock geometry here
+     rather than being re-centred on the viewport. */
   #appleMusicPanel{top:50%;left:50%;right:auto;width:min(560px,calc(100vw - 32px));max-height:calc(100dvh - 32px);padding:22px;
     translate:-50% -47%;z-index:1001}
   #appleMusicPanel.show{translate:-50% -50%}
@@ -1064,7 +1083,7 @@
   </div>
 
   <!-- Canvas editor surface, mounted as a Base44 plugin. Hidden until toggled. -->
-  <aside id="canvasEditor" aria-label="Notes editor" hidden>
+  <aside id="canvasEditor" aria-label="Notes editor" aria-hidden="true">
     <iframe id="canvasEditorFrame" src="/canvas?surface=editor" title="Notes editor"
             loading="lazy" allowtransparency="true" style="background:transparent"></iframe>
   </aside>
@@ -1525,13 +1544,14 @@
 <script src="/static/gallery/spotify.js"></script>
 <script src="/static/gallery/focus.js"></script>
 <script src="/static/gallery/search.js"></script>
-<script src="/static/gallery/clock-modal.js"></script>
+<script src="/static/gallery/plugin-dock.js?v=20260814-dock1"></script>
+<script src="/static/gallery/clock-modal.js?v=20260814-dock1"></script>
 <script src="/static/gallery/wallpaper-palette.js?v=20260814-plugin1"></script>
 <script src="/static/gallery/reader-preferences.js?v=20260814-plugin1"></script>
 <script src="/static/gallery/lyric-scene.js?v=20260814-plugin1"></script>
 <script src="/static/gallery/base44-plugin.js?v=20260814-plugin1"></script>
 <script src="/static/gallery/lyrics-shader-reader.js?v=20260814-plugin1"></script>
-<script src="/static/gallery/canvas-plugin.js?v=20260814-canvas1"></script>
+<script src="/static/gallery/canvas-plugin.js?v=20260814-dock1"></script>
 <script src="/static/gallery/apple-music.js"></script>
 <script src="/static/gallery/share.js?v=20260812-language1"></script>
 </body>
