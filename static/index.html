@@ -112,21 +112,32 @@
   :root{
     --dock-x:24px;                /* inset from the right edge  */
     --dock-y:88px;                /* inset from the top         */
-    --dock-w:min(520px,42vw);
+    --dock-w:min(520px,42vw);      /* preferred width, one panel open       */
+    --dock-w-min:320px;            /* below this the row stops shrinking    */
     --dock-h:min(720px,calc(100dvh - var(--dock-y) - 112px));
     --dock-gap:14px;
     --dock-slot:0;
+    --dock-count:1;                /* open panels; set by PluginDock         */
   }
-  .dock-panel{position:fixed;top:var(--dock-y);
-    right:calc(var(--dock-x) + var(--dock-slot,0) * (var(--dock-w) + var(--dock-gap)));
-    width:var(--dock-w);height:var(--dock-h);z-index:26;
+  /* Width is shared, not fixed: the row divides the space it has between the
+     open panels, down to --dock-w-min. Panels get narrower as more open
+     rather than the newest one shoving an older one off the row. */
+  .dock-panel{
+    --dock-w-eff:clamp(
+      var(--dock-w-min),
+      calc((100vw - 2 * var(--dock-x) - (var(--dock-count) - 1) * var(--dock-gap)) / var(--dock-count)),
+      var(--dock-w));
+    position:fixed;top:var(--dock-y);
+    right:calc(var(--dock-x) + var(--dock-slot,0) * (var(--dock-w-eff) + var(--dock-gap)));
+    width:var(--dock-w-eff);height:var(--dock-h);z-index:26;
     display:flex;flex-direction:column;overflow:hidden;
     border:1px solid var(--hair);border-radius:var(--squircle);
     background:var(--glass-strong);
     backdrop-filter:blur(22px) saturate(1.15);-webkit-backdrop-filter:blur(22px) saturate(1.15);
     box-shadow:0 26px 64px rgba(0,0,0,.5);
     opacity:0;pointer-events:none;translate:14px 0;
-    transition:right .34s var(--ease),opacity .26s var(--ease),translate .34s var(--ease)}
+    transition:right .34s var(--ease),width .34s var(--ease),opacity .26s var(--ease),translate .34s var(--ease)}
+  .dock-panel[hidden]{display:none!important}
   .dock-panel.open{opacity:1;pointer-events:auto;translate:0 0}
   .dock-panel > iframe{flex:1;width:100%;min-height:0;border:0;background:transparent}
   /* A panel that used to be a modal keeps its old full-viewport wrapper in the
@@ -1029,8 +1040,8 @@
   #spotifyPanel .service-modal-card.dock-panel,
   #focusPanel .service-modal-card.dock-panel{
     position:fixed;top:var(--dock-y);left:auto;bottom:auto;
-    right:calc(var(--dock-x) + var(--dock-slot,0) * (var(--dock-w) + var(--dock-gap)));
-    width:var(--dock-w);height:var(--dock-h);max-height:none;
+    right:calc(var(--dock-x) + var(--dock-slot,0) * (var(--dock-w-eff) + var(--dock-gap)));
+    width:var(--dock-w-eff);height:var(--dock-h);max-height:none;
     translate:none;transform:none;z-index:26}
   #eqControls.dock-panel.open,
   #appleMusicPanel.dock-panel.open,
@@ -1110,7 +1121,7 @@
   </div>
 
   <!-- Canvas editor surface, mounted as a Base44 plugin. Hidden until toggled. -->
-  <aside id="canvasEditor" aria-label="Notes editor" aria-hidden="true">
+  <aside id="canvasEditor" class="dock-panel" data-dock-id="notes" aria-label="Notes editor" aria-hidden="true">
     <iframe id="canvasEditorFrame" src="/canvas?surface=editor" title="Notes editor"
             loading="lazy" allowtransparency="true" style="background:transparent"></iframe>
   </aside>
@@ -1119,7 +1130,7 @@
   <canvas id="eqCanvas" aria-hidden="true"></canvas>
 
   <!-- spectrum edit controls (popover) -->
-  <div class="chrome" id="eqControls" role="region" aria-label="Spectrum settings" aria-hidden="true" inert>
+  <div class="chrome dock-panel" data-dock-id="spectrum" id="eqControls" role="region" aria-label="Spectrum settings" aria-hidden="true" inert>
     <div class="eqHead"><span class="eqTitle">Spectrum view</span><button type="button" class="eqReset" id="eqReset">Reset</button></div>
     <div class="eqRow"><span class="eqLbl" id="eqStyleLabel">View</span>
       <div class="eqChips" data-key="style" role="group" aria-labelledby="eqStyleLabel">
@@ -1312,7 +1323,7 @@
   </div>
 
   <!-- Apple Music uses MusicKit on the Web once a developer token is configured -->
-  <div id="appleMusicPanel" role="region" aria-label="Apple Music" aria-hidden="true" inert>
+  <div id="appleMusicPanel" class="dock-panel" data-dock-id="apple-music" role="region" aria-label="Apple Music" aria-hidden="true" inert>
     <div class="am-head">
       <div class="am-mark">♪</div>
       <div class="am-title"><b>Apple Music</b><span id="appleMusicIdentity">checking configuration</span></div>
@@ -1414,9 +1425,9 @@
   </div>
 
   <!-- Spotify library modal -->
-  <div id="spotifyPanel" role="region" aria-labelledby="spotifyAccount" aria-describedby="spotifyScope" aria-hidden="true" inert>
+  <div id="spotifyPanel" class="dock-host" role="region" aria-labelledby="spotifyAccount" aria-describedby="spotifyScope" aria-hidden="true" inert>
     <button type="button" class="sp-scrim" id="spotifyClose" aria-label="Close Spotify library" tabindex="-1"></button>
-    <section class="service-modal-card" tabindex="-1">
+    <section data-dock-id="spotify" class="dock-panel service-modal-card" tabindex="-1">
       <div class="sp-head">
         <div class="sp-id">
           <b id="spotifyAccount">Spotify library</b>
@@ -1486,7 +1497,7 @@
     </div>
   </div>
 
-  <div class="chrome" id="clockModal" role="complementary" aria-label="Solar clock">
+  <div class="chrome dock-panel" data-dock-id="clock" id="clockModal" role="complementary" aria-label="Solar clock">
     <button class="clock-close" id="clockModalCloseBtn" type="button" aria-label="Close solar clock">
       <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
     </button>
@@ -1494,9 +1505,9 @@
   </div>
 
   <!-- Focus mode modal -->
-  <div id="focusPanel" role="region" aria-labelledby="focusTitle" aria-describedby="focusSpotifyStatus" aria-hidden="true" inert>
+  <div id="focusPanel" class="dock-host" role="region" aria-labelledby="focusTitle" aria-describedby="focusSpotifyStatus" aria-hidden="true" inert>
     <button type="button" class="sp-scrim" id="focusClose" aria-label="Close focus mode" tabindex="-1"></button>
-    <section class="service-modal-card fc-modal" tabindex="-1">
+    <section data-dock-id="focus" class="dock-panel service-modal-card fc-modal" tabindex="-1">
       <div class="sp-head">
         <div class="sp-id"><b id="focusTitle">Focus mode</b><span id="focusSpotifyStatus">checking…</span></div>
         <button type="button" class="tool" id="focusCloseBtn" aria-label="Close focus mode">

@@ -415,9 +415,23 @@ def test_dock_panels_share_one_geometry_and_stack_horizontally(client: TestClien
     # One origin and one size, expressed as tokens.
     for token in ("--dock-x:", "--dock-y:", "--dock-w:", "--dock-h:", "--dock-gap:"):
         assert token in shell
-    # Horizontal stacking is the slot offset; animating right makes it reflow.
-    assert "var(--dock-x) + var(--dock-slot,0) * (var(--dock-w) + var(--dock-gap))" in shell
-    assert "transition:right" in shell
+    # Stacking is the slot offset; animating right and width makes it reflow.
+    assert "var(--dock-x) + var(--dock-slot,0) * (var(--dock-w-eff) + var(--dock-gap))" in shell
+    assert "transition:right" in shell and "width .34s" in shell
+
+    # Width is shared between open panels rather than fixed, so panels narrow
+    # as more open instead of the newest shoving an older one off the row.
+    assert "--dock-w-min:" in shell
+    assert "--dock-count:" in shell
+    assert "clamp(" in shell and "--dock-w-eff" in shell
+    assert "--dock-count" in dock, "the manager must publish the open count"
+
+    # Placement is declared in markup, so it holds even if no script registers
+    # the panel — that is what left the feature-flagged clock unpositioned.
+    for dock_id in ("clock", "notes", "spectrum", "apple-music", "spotify", "focus"):
+        assert f'data-dock-id="{dock_id}"' in shell, dock_id
+    assert shell.count('class="chrome dock-panel"') >= 1
+    assert ".dock-panel[hidden]{display:none" in shell
 
     # Both toggles are registered with the dock rather than placing themselves.
     assert "PluginDock.register" in canvas
