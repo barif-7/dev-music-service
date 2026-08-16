@@ -78,8 +78,12 @@ def test_reader_composites_the_animated_shader_over_the_wallpaper():
     styles = (repo / "lyrics-shader-lab/src/index.css").read_text()
     preferences = (repo / "static/gallery/reader-preferences.js").read_text()
 
-    assert 'backgroundMode="wallpaper"' in reader
-    assert 'backgroundMode="passthrough"' not in reader
+    # The shader layer is a shell-owned preference, so the reader's own
+    # Canvas2D layer can be judged against the shell's WebGL wallpaper
+    # showing through the transparent frame.
+    assert 'prefs.readerShader === false ? "passthrough" : "wallpaper"' in reader
+    assert "readerShader:true" in preferences
+    assert "'readerShader'" in preferences
     assert "reader-wallpaper-canvas" in panel
     assert "reader-visualizer-window" in panel
     assert 'data-reader-view={wallpaperComposite ? "visual" : undefined}' in panel

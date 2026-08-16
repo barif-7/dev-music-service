@@ -20,6 +20,7 @@ const ReaderPreferences = {
   flags: [
     'highContrast', 'reducedMotion', 'dyslexiaFont', 'srAnnouncements', 'showLabels',
     'showTransliteration', 'textPlate', 'spectrumVisible', 'wordGlow', 'lyricsBehindShader',
+    'readerShader',
   ],
   views: ['visual', 'timeline', 'learn'],
 
@@ -36,6 +37,12 @@ const ReaderPreferences = {
       reducedMotion:window.matchMedia?.('(prefers-reduced-motion: reduce)').matches || false,
       dyslexiaFont:false, srAnnouncements:true, showLabels:true, showTransliteration:true,
       textPlate:false, spectrumVisible:true, wordGlow:false, lyricsBehindShader:false,
+      /* The reader paints its own Canvas2D shader inside the glass panel, on
+         top of the shell's WebGL wallpaper showing through the transparent
+         frame. Off makes the panel pass through to that wallpaper instead.
+         Separate from spectrumVisible/background so the two can be judged
+         independently — the Background toggle also removes the glass. */
+      readerShader:true,
     };
   },
 
