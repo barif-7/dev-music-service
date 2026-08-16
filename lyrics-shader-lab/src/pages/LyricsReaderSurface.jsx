@@ -153,7 +153,11 @@ export default function LyricsReaderSurface() {
             section={activeLine?.section || "intro"}
             showPerf={false}
             shaderPreset={scene.preset}
-            backgroundMode="wallpaper"
+            // The shell already paints an audio-reactive WebGL wallpaper behind
+            // this transparent frame. "wallpaper" composites a second, softer
+            // Canvas2D shader inside the glass panel; "passthrough" drops that
+            // layer and lets the shell's show through unmodified.
+            backgroundMode={prefs.readerShader === false ? "passthrough" : "wallpaper"}
             wallpaperName={scene.wallpaper?.name}
             wallpaperBlend
             backgroundVisible={prefs.windowAppearance === "textOnly" ? false : backgroundVisible}
