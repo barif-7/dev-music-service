@@ -7,6 +7,11 @@
   assets. No build step — modules are plain scripts loaded by the page.
 - `static/gallery/base44-plugin.js`: host runtime that embeds a Base44 export
   as a plugin — scene in, packed uniform frames in, named intents out.
+  `docs/base44-plugin-pipeline.md` is the full contract, with diagrams.
+- `static/gallery/plugin-dock.js`: shared placement for every floating panel,
+  laid out as a horizontal stack that divides its width between them.
+- `static/gallery/canvas-plugin.js`: mounts the Canvas editor as the notes
+  panel; the shell owns the notes.
 - `static/gallery/lyrics-shader-reader.js`: mounts the Shader Lab reader on
   that runtime; the shell stays authoritative for playback, lyrics and FFT.
 - `static/gallery/lyric-scene.js`: resolves lines, sections, the active line,
