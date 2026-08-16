@@ -137,7 +137,7 @@ def test_reader_composites_the_animated_shader_over_the_wallpaper():
     assert "--lyrics-reader-soft-gradient" in shell
     assert "reader-shape-circle" in shell
     assert "reader-shape-square" in shell
-    assert "#lyricReader.lab-ready.reader-text-only" in shell
+    assert "#lyricReader.reader-text-only" in shell
     assert "#lyricReader.lab-ready.reader-share-sheet" in shell
     assert "@keyframes lyrics-share-sheet-in" in shell
     assert "BilingualReader" in panel

@@ -983,8 +983,17 @@
   #lyricReader.lab-ready.background-hidden #lyricsShaderReaderFrame{
     background:var(--lyrics-reader-soft-gradient,linear-gradient(145deg,#101a1b,#11100f))!important}
   #lyricReader.lab-ready.background-hidden{background:transparent!important;box-shadow:none}
-  #lyricReader.lab-ready.reader-text-only,
-  #lyricReader.lab-ready.reader-text-only #lyricsShaderReaderFrame{
+  /* Text-only means no reader chrome at all: no fill, no border, and — the one
+     that actually shows — no backdrop-filter. The shell's glass blurs whatever
+     wallpaper is behind it, and blurring a pale wallpaper produces a bright
+     wash rather than nothing, which reads as an opaque disc in circle shape.
+
+     Deliberately not gated on .lab-ready. The appearance is a shell
+     preference, so it must hold before the embedded reader connects, and if
+     it never connects. Gating it meant the blur survived whenever lab-ready
+     was absent. */
+  #lyricReader.reader-text-only,
+  #lyricReader.reader-text-only #lyricsShaderReaderFrame{
     background:transparent!important;border-color:transparent!important;box-shadow:none!important;
     backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
   body.lyrics-share-sheet #lyricStage{isolation:isolate}
