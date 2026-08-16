@@ -11,9 +11,16 @@
    than open order, so an existing panel never jumps sideways because another
    one opened somewhere else in the row.
 
-   The row is finite. When another panel will not fit, the least recently
-   opened is closed to make space — a stack that silently overflowed the
-   viewport would put a panel off-screen with no way to reach it. */
+   Width is shared rather than fixed. The row divides the space it has between
+   the panels that are open, so each one narrows as more join, down to
+   --dock-w-min. Only when even that minimum will not fit does the row drop the
+   least recently opened — a stack that silently overflowed would put a panel
+   off-screen with no way to reach it.
+
+   Panels declare themselves in the markup with class="dock-panel" and a
+   data-dock-id. Placement is therefore pure CSS and holds whether or not a
+   script has registered them; registering only adds behaviour. A panel behind
+   a feature flag that never registers still sits where it should. */
 const PluginDock = {
   panels: new Map(),        // id -> spec
   order: [],                // registration order — drives slot assignment
@@ -26,20 +33,25 @@ const PluginDock = {
     if(!this._probe){
       const probe = document.createElement('div');
       probe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;'
-        + 'width:var(--dock-w);height:var(--dock-gap)';
+        + 'width:var(--dock-w-min);height:var(--dock-gap);margin-left:var(--dock-x)';
       document.body.appendChild(probe);
       this._probe = probe;
     }
-    const rect = this._probe.getBoundingClientRect();
-    return { width:rect.width || 520, gap:rect.height || 14 };
+    const style = getComputedStyle(this._probe);
+    return {
+      min:parseFloat(style.width) || 320,
+      gap:parseFloat(style.height) || 14,
+      inset:parseFloat(style.marginLeft) || 24,
+    };
   },
 
-  /* How many panels fit side by side at the current viewport width. */
+  /* How many panels the row can hold once they have shrunk as far as they
+     will go. Panels share the width down to --dock-w-min; only past that does
+     the row genuinely run out and have to drop one. */
   capacity(){
-    const { width, gap } = this._metrics();
-    const inset = 48;                                   // both --dock-x margins
-    const usable = window.innerWidth - inset + gap;     // last panel needs no gap
-    return Math.max(1, Math.floor(usable / (width + gap)));
+    const { min, gap, inset } = this._metrics();
+    const usable = window.innerWidth - (inset * 2) + gap;   // last panel needs no gap
+    return Math.max(1, Math.floor(usable / (min + gap)));
   },
 
   /* spec: { id, el, toggle, host, showClass, focusFirst, onOpen, onClose }
@@ -125,6 +137,8 @@ const PluginDock = {
   /* Assign contiguous slots to the open panels, in registration order. */
   _layout(){
     const open = this.order.filter(id => this.isOpen(id));
+    /* Publish the count so the stylesheet can divide the row between them. */
+    document.documentElement.style.setProperty('--dock-count', String(Math.max(1, open.length)));
     open.forEach((id, slot)=>{
       this.panels.get(id).el.style.setProperty('--dock-slot', String(slot));
     });

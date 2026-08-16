@@ -17,6 +17,10 @@
     localStorage.getItem('pf.clock.enabled') === '1';
   if(!CLOCK_ENABLED && !override){
     btn.style.display = 'none';
+    /* Take the panel out of the layout entirely. It carries dock-panel in the
+       markup so it is placed correctly without this script, but a disabled
+       feature should not leave an invisible box sitting in the row. */
+    panel.hidden = true;
     return;
   }
 
