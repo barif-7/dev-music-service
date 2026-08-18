@@ -241,6 +241,7 @@ class TestPersonalizationEndpoints:
         assert library.json()["library"]["track_count"] == 1
         assert library.headers["cache-control"] == "no-store"
 
+
 class TestSearchEndpoint:
     """Tests for /api/search and /search endpoints."""
 
