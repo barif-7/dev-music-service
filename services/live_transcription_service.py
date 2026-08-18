@@ -110,12 +110,13 @@ class LiveTranscriptionService:
             method="POST",
         )
         try:
-            with urlopen(request, timeout=_REQUEST_TIMEOUT_SECONDS) as response:
+            # Scheme is pinned to http(s) by the caption_localizer_url validator.
+            with urlopen(request, timeout=_REQUEST_TIMEOUT_SECONDS) as response:  # nosec B310
                 session = json.loads(response.read().decode("utf-8"))
             status = session.get("status", "pending")
             lines: list[LyricsLine] = []
             if status == "complete":
-                with urlopen(
+                with urlopen(  # nosec B310
                     base + f"/live-sessions/{session['session_id']}/segments",
                     timeout=_REQUEST_TIMEOUT_SECONDS,
                 ) as response:

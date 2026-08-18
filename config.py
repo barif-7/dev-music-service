@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import os
+import tempfile
 from pathlib import Path
 from typing import Annotated
+from urllib.parse import urlparse
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -79,7 +81,9 @@ class Settings(BaseSettings):
     lyrics_transcription_language: str = "auto"
     # Shared with the local CaptionLocalizer process — the resolved audio file is
     # written here and its path is handed to transcribe_video on the same host.
-    lyrics_transcription_temp_dir: str = "/tmp/dev-music-transcribe"
+    lyrics_transcription_temp_dir: str = os.path.join(
+        tempfile.gettempdir(), "dev-music-transcribe"
+    )
     # Optional permitted-voice TTS backend. This is deliberately not an artist
     # voice-clone path; requests are limited to neutral, user-consented, or
     # licensed profiles by the API layer.
@@ -122,6 +126,17 @@ class Settings(BaseSettings):
         normalized = value.strip().lower()
         if normalized not in {"proxy", "redirect"}:
             raise ValueError("STREAM_DELIVERY_MODE must be proxy or redirect")
+        return normalized
+
+    @field_validator("caption_localizer_url")
+    @classmethod
+    def _validate_caption_localizer_url(cls, value: str) -> str:
+        # The services built on this setting hand it straight to urlopen, which
+        # would happily accept file:// or a custom scheme and read local paths.
+        # Pinning it to http(s) here keeps those call sites provably safe.
+        normalized = value.strip()
+        if urlparse(normalized).scheme not in {"http", "https"}:
+            raise ValueError("CAPTION_LOCALIZER_URL must be an http or https URL")
         return normalized
 
     @field_validator("focus_profile_storage_backend")
