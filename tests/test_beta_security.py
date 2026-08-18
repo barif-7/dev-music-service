@@ -56,6 +56,26 @@ def test_beta_gate_and_signed_session(monkeypatch, tmp_path):
         assert client.get("/").status_code == 200
 
 
+def test_stream_routes_stay_reachable_without_a_session(monkeypatch, tmp_path):
+    """Audio is fetched cross-origin with crossorigin="anonymous", so no cookie
+    rides along. The stream routes have to clear the gate on their own while
+    the URL allowlist keeps doing the actual protecting."""
+    _enable_beta(monkeypatch, tmp_path)
+    app.state.limiter.enabled = False
+    with TestClient(app, raise_server_exceptions=False) as client:
+        # The gate is on for everything else.
+        assert client.get("/api/search", params={"query": "test"}).status_code == 401
+
+        # Reachable without a session, but still refused on the merits rather
+        # than waved through.
+        with patch("main.MusicService.get_stream_source") as stream:
+            response = client.get(
+                "/api/stream", params={"url": "http://127.0.0.1:8766/private"}
+            )
+        assert response.status_code == 403
+        stream.assert_not_called()
+
+
 def test_apple_music_export_is_owner_only(monkeypatch, tmp_path):
     _enable_beta(monkeypatch, tmp_path)
     export = tmp_path / "library.json"
