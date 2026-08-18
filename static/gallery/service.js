@@ -237,12 +237,26 @@ async function fetchTrackFeatures(spotifyId){
   }catch(e){ /* network/parse error → stay neutral */ }
 }
 
+/* Audio is fetched straight from the backend so its bytes skip the CDN, while
+   every other call stays same-origin and is proxied there. Empty when unset,
+   which keeps local development and a backend-hosted shell on relative paths. */
+function phaseBackendOrigin(){
+  return (typeof window!=='undefined' && window.__PHASE_BACKEND_ORIGIN__) || '';
+}
+function isPhaseStreamOrigin(origin){
+  return origin === window.location.origin || (!!phaseBackendOrigin() && origin === phaseBackendOrigin());
+}
+function toPhaseStreamUrl(path){
+  const origin = phaseBackendOrigin();
+  return origin && path.startsWith('/') ? `${origin}${path}` : path;
+}
+
 /* resolve a track to a playable source, stream it, and react to it */
 function normalizePackagedStream(stream){
   if(!stream) return '';
   try{
     const parsed=new URL(stream, window.location.origin);
-    if(parsed.origin !== window.location.origin || !['/api/stream','/stream'].includes(parsed.pathname)) return '';
+    if(!isPhaseStreamOrigin(parsed.origin) || !['/api/stream','/stream'].includes(parsed.pathname)) return '';
     if(!parsed.searchParams.get('url')) return '';
     return `${parsed.pathname}${parsed.search}`;
   }catch(_error){ return ''; }
@@ -321,7 +335,7 @@ async function loadTrack(s, { packagedLyrics=null, packagedStream='' } = {}){
     player.setTrack(merged);
     const duration = result.duration || s.duration || 0;
     if(typeof renderNowPlaying === 'function') renderNowPlaying(merged, 'streaming');
-    const playbackUrl=exactStream || `/api/stream?url=${encodeURIComponent(result.webpage_url)}`;
+    const playbackUrl=toPhaseStreamUrl(exactStream || `/api/stream?url=${encodeURIComponent(result.webpage_url)}`);
     player.loadSource(playbackUrl, {
       webpageUrl:result.webpage_url,
       duration,
