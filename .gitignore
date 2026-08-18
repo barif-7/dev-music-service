@@ -23,3 +23,6 @@ focus_profile.json
 .vercel
 mcp-server/dist/
 node_modules/
+
+# Vercel frontend staging output
+dist/
