@@ -98,7 +98,7 @@
       try{
         const source=typeof player!=='undefined' ? (player.media?.currentSrc || player.media?.src || '') : '';
         const parsed=new URL(source,window.location.origin);
-        if(parsed.origin===window.location.origin && ['/api/stream','/stream'].includes(parsed.pathname) && parsed.searchParams.get('url')){
+        if(isPhaseStreamOrigin(parsed.origin) && ['/api/stream','/stream'].includes(parsed.pathname) && parsed.searchParams.get('url')){
           return `${parsed.pathname}${parsed.search}`;
         }
       }catch(_error){}
