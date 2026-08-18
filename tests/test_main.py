@@ -6,6 +6,22 @@ import pytest
 from fastapi.testclient import TestClient
 
 
+def _stub_local_tts_binaries(tmp_path: Path) -> tuple[Path, Path]:
+    """Create stand-ins for the say/ffmpeg binaries the local fallback needs.
+
+    The service only checks that the configured paths exist before shelling
+    out, and the tests already stub subprocess.run, so empty files are enough.
+    Pointing at the real macOS paths made these tests pass only on a Mac.
+    """
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    say_bin = bin_dir / "say"
+    ffmpeg_bin = bin_dir / "ffmpeg"
+    say_bin.touch()
+    ffmpeg_bin.touch()
+    return say_bin, ffmpeg_bin
+
+
 class TestHealthEndpoint:
     """Tests for /health endpoint."""
 
@@ -1253,10 +1269,12 @@ class TestTranslatedVocalEndpoints:
     ):
         from services import translated_vocals_service as vocals_module
 
+        say_bin, ffmpeg_bin = _stub_local_tts_binaries(tmp_path)
+
         monkeypatch.setenv("PIKAPROJBACKEND_URL", "")
         monkeypatch.setenv("TRANSLATED_VOCALS_LOCAL_SAY_FALLBACK", "true")
-        monkeypatch.setenv("TRANSLATED_VOCALS_SAY_COMMAND", "/usr/bin/say")
-        monkeypatch.setenv("TRANSLATED_VOCALS_FFMPEG_COMMAND", "/opt/homebrew/bin/ffmpeg")
+        monkeypatch.setenv("TRANSLATED_VOCALS_SAY_COMMAND", str(say_bin))
+        monkeypatch.setenv("TRANSLATED_VOCALS_FFMPEG_COMMAND", str(ffmpeg_bin))
         monkeypatch.setenv("DMS_DATA_DIR", str(tmp_path))
 
         def fake_run(args, **kwargs):
@@ -1297,11 +1315,13 @@ class TestTranslatedVocalEndpoints:
     ):
         from services import translated_vocals_service as vocals_module
 
+        say_bin, ffmpeg_bin = _stub_local_tts_binaries(tmp_path)
+
         monkeypatch.setenv("PIKAPROJBACKEND_URL", "http://pika.local")
         monkeypatch.setenv("PIKAPROJBACKEND_TTS_PATH", "/tts")
         monkeypatch.setenv("TRANSLATED_VOCALS_LOCAL_SAY_FALLBACK", "true")
-        monkeypatch.setenv("TRANSLATED_VOCALS_SAY_COMMAND", "/usr/bin/say")
-        monkeypatch.setenv("TRANSLATED_VOCALS_FFMPEG_COMMAND", "/opt/homebrew/bin/ffmpeg")
+        monkeypatch.setenv("TRANSLATED_VOCALS_SAY_COMMAND", str(say_bin))
+        monkeypatch.setenv("TRANSLATED_VOCALS_FFMPEG_COMMAND", str(ffmpeg_bin))
         monkeypatch.setenv("TRANSLATED_VOCALS_VOICE_MODE", "user_consent")
         monkeypatch.setenv("TRANSLATED_VOCALS_VOICE_PROFILE_ID", "voice-profile-local")
         monkeypatch.setenv("TRANSLATED_VOCALS_VOICE_CONSENT_TOKEN", "consent")
