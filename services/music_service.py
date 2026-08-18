@@ -27,14 +27,27 @@ class StreamResolutionError(MusicServiceError):
 
 class MusicService:
     _cache_lock = threading.Lock()
-    _SEARCH_TTL_SECONDS = 300
-    _STREAM_TTL_SECONDS = 240
+    # Every miss costs a full yt-dlp extraction against YouTube, and they all
+    # leave from one address, so the extraction rate -- not bandwidth -- is what
+    # limits how many people this can serve before the host starts getting
+    # throttled. Resolved URLs carry `expire` six hours out, so holding them for
+    # three keeps a wide margin against clock skew and early invalidation while
+    # cutting repeat resolutions by orders of magnitude. A URL that goes stale
+    # anyway is not fatal: the stream route re-resolves on a 401/403/410 from
+    # the CDN.
+    #
+    # Both windows are the same on purpose. Search entries embed their own
+    # resolved URLs and only prime the stream cache on a miss, so a search cache
+    # that outlives the stream cache hands back entries whose URLs are already
+    # gone and buys a second extraction.
+    _SEARCH_TTL_SECONDS = 10800
+    _STREAM_TTL_SECONDS = 10800
     _search_cache: TTLCache[str, list[dict]] = TTLCache(
-        maxsize=256,
+        maxsize=1024,
         ttl=_SEARCH_TTL_SECONDS,
     )
     _stream_cache: TTLCache[str, tuple[str, dict[str, str]]] = TTLCache(
-        maxsize=128,
+        maxsize=1024,
         ttl=_STREAM_TTL_SECONDS,
     )
     # Exhaust audio-only variants before falling back to a combined MP4. This
@@ -53,7 +66,9 @@ class MusicService:
             return cache.get(key)
 
     @staticmethod
-    def _cache_set(cache: dict, key, value, ttl_seconds: int):
+    def _cache_set(cache: dict, key, value):
+        # Expiry belongs to the TTLCache the caller passes in; there is no
+        # per-entry window to hand over here.
         with MusicService._cache_lock:
             cache[key] = value
         return value
@@ -139,13 +154,11 @@ class MusicService:
                     MusicService._stream_cache,
                     wp,
                     (direct, dict(entry.get("http_headers") or {})),
-                    MusicService._STREAM_TTL_SECONDS,
                 )
         return MusicService._cache_set(
             MusicService._search_cache,
             cache_key,
             entries,
-            MusicService._SEARCH_TTL_SECONDS,
         )
 
     @staticmethod
@@ -377,7 +390,6 @@ class MusicService:
             MusicService._stream_cache,
             webpage_url,
             cached_value,
-            MusicService._STREAM_TTL_SECONDS,
         )
         logger.debug("audio_stream_extracted", url=webpage_url)
         return direct_url, dict(headers)
@@ -447,7 +459,6 @@ class MusicService:
             MusicService._stream_cache,
             webpage_url,
             (direct_url, dict(headers)),
-            MusicService._STREAM_TTL_SECONDS,
         )
 
     @staticmethod
