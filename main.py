@@ -109,8 +109,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         SpotifyImportService._get_http_client()
         if SpotifyImportService._client_credentials_configured():
             await SpotifyImportService.get_client_credentials_token()
-    except Exception:
-        pass
+    except Exception as exc:
+        # Warm-up is best-effort and must never block startup, but staying silent
+        # hides a misconfigured client until the first real request fails.
+        logger.warning("client_warmup_failed", error=str(exc))
     yield
     # Shutdown
     logger.info("app_shutdown")

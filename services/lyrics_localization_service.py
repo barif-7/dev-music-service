@@ -275,6 +275,7 @@ class LyricsLocalizationService:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urlopen(request, timeout=_REQUEST_TIMEOUT_SECONDS) as response:
+        # Scheme is pinned to http(s) by the caption_localizer_url validator.
+        with urlopen(request, timeout=_REQUEST_TIMEOUT_SECONDS) as response:  # nosec B310
             body = json.loads(response.read().decode("utf-8"))
         return body.get("output", {}).get("segments", [])
