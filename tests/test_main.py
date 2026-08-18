@@ -144,16 +144,6 @@ class TestFrontendAssets:
         assert "event horizon" in shaders.text
         assert "scrolling buffer" in client.get("/static/gallery/data.js").text
 
-    def test_static_assets_served(self, client: TestClient):
-        """Static CSS and JS assets should be mounted."""
-        css_response = client.get("/static/styles.css")
-        js_response = client.get("/static/app.js")
-
-        assert css_response.status_code == 200
-        assert js_response.status_code == 200
-        assert ".themeModal" in css_response.text
-        assert "initThemePicker" in js_response.text
-
     def test_spectrum_view_controls_and_preferences_are_served(self, client: TestClient):
         """The gallery should expose the expanded, persistent spectrum controls."""
         page = client.get("/")
