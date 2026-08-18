@@ -141,6 +141,12 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 _PUBLIC_BETA_PATHS = {"/health", "/login", "/api/auth/login", "/api/auth/status"}
+# Media elements carry crossorigin="anonymous" so the Web Audio analyser can
+# read them, which means the browser sends no cookies once the shell is hosted
+# on a separate origin and fetches audio here directly. These stay reachable
+# without a session; validate_stream_url() still pins them to the upstream host
+# allowlist and rejects private addresses.
+_PUBLIC_STREAM_PATHS = {"/api/stream", "/stream", "/api/video/stream"}
 
 
 @app.middleware("http")
@@ -152,7 +158,11 @@ async def beta_auth_gate(request: Request, call_next):
         user = verify_session(request.cookies.get(SESSION_COOKIE), settings)
         request.state.beta_user = user
         path = request.url.path
-        is_public = path in _PUBLIC_BETA_PATHS or path.startswith("/static/")
+        is_public = (
+            path in _PUBLIC_BETA_PATHS
+            or path in _PUBLIC_STREAM_PATHS
+            or path.startswith("/static/")
+        )
         if not user and not is_public and request.method != "OPTIONS":
             if path.startswith("/api/") or path in {"/search", "/lyrics", "/metadata", "/stream"}:
                 return JSONResponse(
