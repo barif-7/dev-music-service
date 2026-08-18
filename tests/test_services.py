@@ -239,6 +239,22 @@ class TestMusicServiceStream:
         assert headers1 == headers2
         assert calls["count"] == 1
 
+    def test_search_cache_does_not_outlive_the_stream_cache(self):
+        """Search entries carry their own resolved URLs and only prime the stream
+        cache on a miss. If the search window were the longer of the two, a
+        search hit would hand back entries whose URLs had already expired and
+        cost a second extraction -- the thing the cache exists to avoid."""
+        assert MusicService._SEARCH_TTL_SECONDS <= MusicService._STREAM_TTL_SECONDS
+        assert MusicService._search_cache.ttl == MusicService._SEARCH_TTL_SECONDS
+        assert MusicService._stream_cache.ttl == MusicService._STREAM_TTL_SECONDS
+
+    def test_stream_cache_window_stays_inside_the_signed_url_lifetime(self):
+        """Resolved URLs carry `expire` six hours out. Caching them for longer
+        than that guarantees stale hits; this pins the margin deliberately."""
+        six_hours = 6 * 60 * 60
+        assert MusicService._STREAM_TTL_SECONDS < six_hours
+        assert MusicService._STREAM_TTL_SECONDS <= six_hours // 2
+
     def test_remember_stream_source_replaces_rejected_cached_url(self, sample_youtube_url):
         MusicService._stream_cache.clear()
         MusicService.remember_stream_source(
