@@ -371,7 +371,7 @@ class LyricsService:
             chunk = max(1, get_settings().lyrics_localize_window)
             pending = [i for i in range(len(lines)) if i not in already]
             for start in range(0, len(pending), chunk):
-                indices = pending[start : start + chunk]
+                indices = pending[start:start + chunk]
                 mapping = LyricsLocalizationService.localize_subset(
                     lines, indices, locale, song_context=song_context
                 )

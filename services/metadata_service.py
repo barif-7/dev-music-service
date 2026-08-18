@@ -10,7 +10,7 @@ import certifi
 import httpx
 
 from models import AutocompleteSuggestion
-from services.text_match import combined_score, fuzzy_score, normalize
+from services.text_match import combined_score, normalize
 
 
 class MetadataServiceError(Exception):
