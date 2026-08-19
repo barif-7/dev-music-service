@@ -27,5 +27,16 @@ export default {
     // served from here would never see the session.
     routes.rewrite("/login", `${backendOrigin}/login`),
     routes.rewrite("/api/(.*)", `${backendOrigin}/api/$1`),
+
+    // The shell frames its plugin surfaces by route, not by file --
+    // `/canvas?surface=editor`, `/lyrics-shader-lab?surface=reader` -- because
+    // the backend serves them from those paths and the surface name has to
+    // survive in the query string. Nothing serves those paths here, so map
+    // them onto the vendored index.html; the query string carries through.
+    routes.rewrite("/canvas", "/static/canvas/index.html"),
+    routes.rewrite("/lyrics-shader-lab", "/static/lyrics-shader-lab/index.html"),
+
+    // Share links land on /share and are resolved client-side from the query.
+    routes.rewrite("/share", "/index.html"),
   ],
 };
