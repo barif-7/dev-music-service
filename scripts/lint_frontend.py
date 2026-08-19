@@ -57,6 +57,7 @@ def main() -> None:
             fail(f"{name} uses eval")
 
     check_framed_routes(index_html)
+    check_plugin_surfaces()
 
 
 def check_framed_routes(index_html: str) -> None:
@@ -86,6 +87,25 @@ def check_framed_routes(index_html: str) -> None:
                 f"index.html frames {reference}, but vercel.ts declares no rewrite for {route} "
                 f"— it will 404 once deployed"
             )
+
+
+def check_plugin_surfaces() -> None:
+    """Vendored Base44 surfaces must not carry their standalone scaffolding.
+
+    An export is built to be hosted on its own, so its index.html pulls a
+    favicon from base44.com and links a manifest at the origin root that 404s
+    here. `npm run sanitize:plugins` strips both; this keeps a re-vendored
+    surface from quietly putting them back.
+    """
+    for index in sorted(STATIC_DIR.glob("*/index.html")):
+        surface = index.parent.name
+        html = index.read_text(encoding="utf-8")
+        if "base44.com" in html:
+            fail(f"{surface}/index.html still loads from base44.com — run npm run sanitize:plugins")
+        if 'rel="manifest"' in html:
+            fail(f"{surface}/index.html links a manifest that 404s — run npm run sanitize:plugins")
+        if "app-logs" in html:
+            fail(f"{surface}/index.html still carries the Base44 beacon — run npm run sanitize:plugins")
 
 
 if __name__ == "__main__":

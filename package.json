@@ -6,6 +6,7 @@
     "dev:lyrics-shader-lab": "npm --prefix lyrics-shader-lab run dev",
     "install:lyrics-shader-lab": "npm --prefix lyrics-shader-lab install",
     "build:canvas": "node scripts/build-canvas-surface.mjs",
+    "sanitize:plugins": "node scripts/sanitize-plugin-surface.mjs",
     "build:vercel": "node scripts/build-vercel-frontend.mjs"
   },
   "dependencies": {
