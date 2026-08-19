@@ -36,3 +36,13 @@ rmSync(outDir, { recursive: true, force: true });
 mkdirSync(outDir, { recursive: true });
 cpSync(join(canvasRepo, "dist-surface"), outDir, { recursive: true });
 console.log(`Vendored into ${outDir}`);
+
+// The export is built for standalone hosting, so its index.html carries a
+// base44.com favicon, a manifest link that 404s against our origin, and a
+// page-view beacon. Strip them here rather than by hand, or the next vendor
+// puts them straight back.
+execFileSync(
+  "node",
+  [join(appRoot, "scripts", "sanitize-plugin-surface.mjs"), "canvas"],
+  { stdio: "inherit" },
+);
