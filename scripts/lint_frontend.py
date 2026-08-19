@@ -18,6 +18,9 @@ GALLERY_DIR = STATIC_DIR / "gallery"
 # src="..." / href="..." pointing at our own /static tree.
 LOCAL_REF = re.compile(r'(?:src|href)="(/static/[^"]+)"')
 
+# Any same-origin src the shell frames, including routes outside /static.
+FRAMED_REF = re.compile(r'<iframe[^>]*\ssrc="(/[^"]*)"')
+
 
 def fail(message: str) -> None:
     print(f"frontend lint: {message}", file=sys.stderr)
@@ -52,6 +55,37 @@ def main() -> None:
             fail(f"{name} uses document.write")
         if "eval(" in source:
             fail(f"{name} uses eval")
+
+    check_framed_routes(index_html)
+
+
+def check_framed_routes(index_html: str) -> None:
+    """Every route the shell frames must be served once deployed.
+
+    The plugin surfaces are framed by route rather than by file --
+    `/canvas?surface=editor` -- because the surface name has to survive in the
+    query string. FastAPI serves those paths directly, so they resolve in local
+    development whether or not the CDN knows about them; the mismatch only
+    appears in production. Requiring a matching rewrite here keeps a route the
+    shell depends on from 404ing after deploy.
+    """
+    vercel_config = ROOT / "vercel.ts"
+    if not vercel_config.is_file():
+        return
+
+    declared = set(re.findall(r'routes\.rewrite\(\s*"([^"]+)"', vercel_config.read_text(encoding="utf-8")))
+
+    for reference in set(FRAMED_REF.findall(index_html)):
+        route = reference.split("?", 1)[0]
+        if route.startswith("/static/"):
+            continue
+        if (ROOT / route.lstrip("/")).is_file():
+            continue
+        if route not in declared:
+            fail(
+                f"index.html frames {reference}, but vercel.ts declares no rewrite for {route} "
+                f"— it will 404 once deployed"
+            )
 
 
 if __name__ == "__main__":
