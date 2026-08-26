@@ -42,7 +42,7 @@ Set in Vercel Dashboard → Settings → Environment Variables:
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
-| `PHASE_BACKEND_ORIGIN` | yes | Backend's public origin, e.g. `https://host.tailnet.ts.net`. Drives both the rewrites and the direct audio URL. No trailing slash needed — one is stripped. |
+| `PHASE_BACKEND_ORIGIN` | yes | Backend's public origin. Production currently uses `https://phase.tail4752f5.ts.net:8443`. Drives both the rewrites and the direct audio URL. No trailing slash needed — one is stripped. |
 | `PHASE_BETA_AUTH_ENABLED` | no | Set `true` to mirror `BETA_AUTH_ENABLED` on the backend so `middleware.ts` gates the shell. Left unset, the shell is public and only the API is protected. |
 
 ### Build
@@ -84,10 +84,20 @@ rejects private addresses.
 ## Local testing
 
 ```bash
-PHASE_BACKEND_ORIGIN=https://host.tailnet.ts.net npm run build:vercel
+PHASE_BACKEND_ORIGIN=https://phase.tail4752f5.ts.net:8443 npm run build:vercel
 npx @vercel/config compile     # print the routing config the platform will use
 npx @vercel/config validate
 ```
+
+Production verification:
+
+```bash
+curl -i https://phase.tail4752f5.ts.net:8443/health
+curl -i https://dev-music-service.vercel.app/api/health
+```
+
+The first request should return `200`. With beta auth enabled, the Vercel
+request should reach the backend and return `401` until the caller signs in.
 
 `vercel.ts` is recent, so local `vercel build` / `vercel dev` want an up-to-date
 CLI (`npm i -g vercel@latest`). Git-triggered deploys build on Vercel's side and
