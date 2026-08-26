@@ -9,7 +9,6 @@ import structlog
 from cachetools import TTLCache
 
 from config import get_settings
-from services.audio_feature_provider import AudioFeatureProvider
 from services.focus_service import AudioFeatures
 
 logger = structlog.get_logger()
@@ -183,7 +182,7 @@ class ReccoBeatsProvider:
 _provider: ReccoBeatsProvider | None = None
 
 
-def get_audio_feature_provider() -> AudioFeatureProvider:
+def get_audio_feature_provider() -> ReccoBeatsProvider:
     global _provider
     if _provider is None:
         _provider = ReccoBeatsProvider()

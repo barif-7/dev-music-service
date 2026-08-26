@@ -51,7 +51,11 @@ class AudioFeatures:
     __slots__ = (
         "track_id", "tempo", "energy", "valence",
         "instrumentalness", "acousticness", "speechiness",
-        "liveness", "danceability", "loudness", "source",
+        "liveness", "danceability", "loudness",
+        "source",
+        # musical-identity / structural fields — used as visual priors by the
+        # frontend TrackVisualProfile (key/mode → colour, time_signature → grid).
+        "key", "mode", "time_signature", "duration_ms",
     )
 
     def __init__(self, raw: dict) -> None:
@@ -68,6 +72,13 @@ class AudioFeatures:
         # Which provider produced this record ("reccobeats" today, "essentia"
         # later). Tagged so a low-quality source can be re-analysed in future.
         self.source: str = raw.get("source") or "reccobeats"
+        # Optional fields: Spotify provides these in audio-features, but they may be
+        # absent from other providers — default to "unknown" sentinels (-1) so the
+        # frontend stays neutral rather than guessing.
+        self.key: int = int(raw["key"]) if raw.get("key") is not None else -1
+        self.mode: int = int(raw["mode"]) if raw.get("mode") is not None else -1
+        self.time_signature: int = int(raw.get("time_signature") or 4)
+        self.duration_ms: int = int(raw.get("duration_ms") or 0)
 
     def matches_profile(self, profile: dict) -> bool:
         if not (profile["bpm_min"] <= self.tempo <= profile["bpm_max"]):
@@ -113,6 +124,10 @@ class AudioFeatures:
             "danceability": round(self.danceability, 3),
             "loudness": round(self.loudness, 1),
             "source": self.source,
+            "key": self.key,
+            "mode": self.mode,
+            "time_signature": self.time_signature,
+            "duration_ms": self.duration_ms,
         }
 
 
@@ -144,13 +159,13 @@ def _resolve_provider(provider: "AudioFeatureProvider | None") -> "AudioFeatureP
 class FocusProfile:
 
     @staticmethod
-    def load() -> dict:
+    def load(user_id: str | None = None) -> dict:
         with _PROFILE_LOCK:
-            profile = build_focus_profile_storage(get_settings()).load()
+            profile = build_focus_profile_storage(get_settings(), user_id).load()
             return {**DEFAULT_PROFILE, **profile} if profile else dict(DEFAULT_PROFILE)
 
     @staticmethod
-    def save(profile: dict) -> dict:
+    def save(profile: dict, user_id: str | None = None) -> dict:
         merged = {**DEFAULT_PROFILE, **profile}
         # clamp values
         merged["bpm_min"] = max(40, min(220, int(merged["bpm_min"])))
@@ -161,13 +176,13 @@ class FocusProfile:
         merged["valence_min"] = max(0.0, min(1.0, float(merged["valence_min"])))
         merged["valence_max"] = max(merged["valence_min"], min(1.0, float(merged["valence_max"])))
         with _PROFILE_LOCK:
-            build_focus_profile_storage(get_settings()).save(merged)
+            build_focus_profile_storage(get_settings(), user_id).save(merged)
         return merged
 
     @staticmethod
-    def reset() -> dict:
+    def reset(user_id: str | None = None) -> dict:
         with _PROFILE_LOCK:
-            build_focus_profile_storage(get_settings()).reset()
+            build_focus_profile_storage(get_settings(), user_id).reset()
         return dict(DEFAULT_PROFILE)
 
 

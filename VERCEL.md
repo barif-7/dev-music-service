@@ -1,121 +1,112 @@
 # Vercel Deployment Guide
 
-## Quick Deploy
+Vercel hosts **the frontend only**. The FastAPI backend runs on its own
+long-running host: it shells out to `yt-dlp`, proxies range requests for audio,
+and holds SSE connections open for live transcription — none of which suit a
+serverless function.
 
-```bash
-# Install Vercel CLI
-npm i -g vercel
+Earlier revisions of this file described deploying FastAPI itself to Vercel via
+`app.py` / `api/index.py`. That is no longer how this project deploys. Those two
+files are still in the tree but are unused by this project.
 
-# Login to Vercel
-vercel login
+## How it fits together
 
-# Deploy
-vercel --prod
 ```
+Browser  ──►  Vercel (CDN + middleware)
+              ├─ /                      dist/index.html
+              ├─ /static/**             dist/static/**            CDN
+              ├─ /api/**   ── rewrite ──►  backend
+              └─ /login    ── rewrite ──►  backend
+Browser  ──────────────── direct ───────►  backend  /api/stream
+```
+
+Because `/api` is rewritten rather than called cross-origin, the browser sees a
+single origin: no CORS preflights, and `Set-Cookie` from sign-in scopes to the
+Vercel domain. Audio is the exception — it is fetched straight from the backend
+so those bytes never cross Vercel.
 
 ## Configuration
 
-### requirements.txt
-Contains **production dependencies only**. Vercel runs:
+### vercel.ts
+
+Routing lives in `vercel.ts`, not `vercel.json` (only one may exist). It is
+TypeScript because the backend origin comes from an environment variable, which
+`vercel.json` cannot interpolate.
+
+The build fails loudly if `PHASE_BACKEND_ORIGIN` is unset rather than deploying
+a broken rewrite.
+
+### Environment variables
+
+Set in Vercel Dashboard → Settings → Environment Variables:
+
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `PHASE_BACKEND_ORIGIN` | yes | Backend's public origin, e.g. `https://host.tailnet.ts.net`. Drives both the rewrites and the direct audio URL. No trailing slash needed — one is stripped. |
+| `PHASE_BETA_AUTH_ENABLED` | no | Set `true` to mirror `BETA_AUTH_ENABLED` on the backend so `middleware.ts` gates the shell. Left unset, the shell is public and only the API is protected. |
+
+### Build
+
+`scripts/build-vercel-frontend.mjs` stages `dist/` and nothing else — every
+plugin bundle under `static/` is committed build output, so Vercel compiles
+nothing. The shell addresses assets as absolute `/static/...` paths, so the
+staged tree keeps `index.html` at the root with `static/` beneath it; serving
+`static/` directly would resolve `/static/gallery/app.js` to
+`static/static/gallery/app.js`.
+
+Rebuild the plugin bundles locally and commit them before deploying:
+
 ```bash
-pip install -r requirements.txt
+npm run build:lyrics-shader-lab
+npm run build:canvas          # needs a base44-canvas checkout; see the script
+npm run build:vercel          # stage dist/ locally to inspect it
 ```
 
-Test dependencies (pytest, etc.) are in `pyproject.toml` under `[project.optional-dependencies]`.
+## Backend settings for a split deployment
 
-### vercel.json
-```json
-{
-  "installCommand": "apt-get update && apt-get install -y ffmpeg && pip install -r requirements.txt",
-  "functions": {
-    "app.py": {
-      "maxDuration": 60
-    }
-  },
-  "rewrites": [
-    { "source": "/(.*)", "destination": "/app" }
-  ]
-}
+On the backend host:
+
+```dotenv
+DEV_MUSIC_FRONTEND_ORIGIN=https://<your-vercel-domain>
+BETA_COOKIE_SECURE=true
 ```
 
-**Why app.py?** This is Vercel's standard Python entry point. The rewrites route all traffic to `/app` which loads `app.py`.
+`DEV_MUSIC_FRONTEND_ORIGIN` pins the `Access-Control-Allow-Origin` header on the
+stream routes. That header is load-bearing: the audio elements are
+`crossorigin="anonymous"` so the Web Audio analyser can read them, and without
+it the analyser is CORS-tainted and the audio-reactive visuals go still.
 
-**Why ffmpeg?** yt-dlp requires ffmpeg for audio extraction and format conversion.
+Because no cookie rides along on those cross-origin media requests, the stream
+routes are exempt from the beta gate (`_PUBLIC_STREAM_PATHS` in `main.py`).
+`validate_stream_url()` still restricts them to the upstream host allowlist and
+rejects private addresses.
 
-### api/index.py
-Vercel's entry point. Must exist and import your FastAPI app:
-```python
-from main import app
+## Local testing
+
+```bash
+PHASE_BACKEND_ORIGIN=https://host.tailnet.ts.net npm run build:vercel
+npx @vercel/config compile     # print the routing config the platform will use
+npx @vercel/config validate
 ```
+
+`vercel.ts` is recent, so local `vercel build` / `vercel dev` want an up-to-date
+CLI (`npm i -g vercel@latest`). Git-triggered deploys build on Vercel's side and
+are unaffected.
 
 ## Troubleshooting
 
-### ModuleNotFoundError
-**Error:** `No module named 'structlog'`
-
-**Cause:** Dependencies not installed during build.
-
-**Fix:** 
-1. Ensure `requirements.txt` has all dependencies
-2. Check `installCommand` in vercel.json
-3. Clear build cache in Vercel dashboard
-
-### FUNCTION_INVOCATION_FAILED
-**Error:** `could not import "api/index.py"`
-
-**Cause:** Entry point doesn't exist or import fails.
-
-**Fix:**
-1. Ensure `api/index.py` exists
-2. Check that `main.py` can be imported
-3. Verify all dependencies in requirements.txt
-
-### Timeout Errors
-**Error:** `Function invocation timed out`
-
-**Cause:** Streaming endpoints exceed default 10s timeout.
-
-**Fix:** Set `maxDuration: 60` in vercel.json functions config.
-
-## Environment Variables
-
-Set these in Vercel Dashboard → Settings → Environment Variables:
-
-- `SPOTIFY_CLIENT_ID` - Spotify API client ID
-- `SPOTIFY_REDIRECT_URI` - OAuth callback URL (optional)
-
-## Build Process
-
-1. **Install** - `pip install -r requirements.txt`
-2. **Build** - Python functions compiled
-3. **Deploy** - Uploaded to edge network
-
-## Local Testing
-
-```bash
-# Test Vercel build locally
-vercel dev
-
-# Test production build
-vercel --prod
-```
-
-## Common Issues
-
-| Issue | Solution |
-|-------|----------|
-| Module not found | Check requirements.txt |
-| Import error | Verify api/index.py exists |
-| Timeout | Increase maxDuration |
-| CORS error | Check middleware config |
-| Cold start | Use maxDuration wisely |
-
-## Resources
-
-- [Vercel Python Runtime](https://vercel.com/docs/runtimes/python)
-- [Function Configuration](https://vercel.com/docs/functions/serverless-functions/function-config)
-- [Environment Variables](https://vercel.com/docs/projects/environment-variables)
+| Symptom | Cause |
+|---------|-------|
+| Build fails on `PHASE_BACKEND_ORIGIN must be set` | The env var is missing for that environment. |
+| Assets 404 under `/static/...` | `dist/` was not staged; check `outputDirectory` is `dist`. |
+| API calls 404 | Rewrite not applied — run `npx @vercel/config compile` and confirm the destinations. |
+| Signed in but immediately bounced to `/login` | Sign-in reached the backend origin directly, so the cookie scoped to the wrong domain. `/login` must stay rewritten. |
+| Audio plays but visuals do not react | Analyser is CORS-tainted; check `DEV_MUSIC_FRONTEND_ORIGIN` on the backend matches the Vercel domain. |
+| Audio 401s | Stream routes are no longer exempt from the beta gate on the backend. |
 
 ## Focus profile persistence
 
-The focus profile is stored as a JSON file on local disk (at `$DMS_DATA_DIR/focus_profile.json`, defaulting to the current working directory). On Vercel's serverless filesystem, the working directory is read-only and `/tmp` does not persist between invocations. Setting `DMS_DATA_DIR=/tmp` makes the profile work within a single warm instance, but it will be lost when the function cold-starts. A persistent external store (e.g. a database or KV service) would be needed for durable focus profiles on Vercel.
+The focus profile is stored as JSON on local disk at
+`$DMS_DATA_DIR/focus_profile.json`. That is fine for a single long-running
+backend but is not safe for concurrent multi-user writes; a real store is needed
+before the beta grows.

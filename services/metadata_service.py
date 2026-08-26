@@ -10,7 +10,7 @@ import certifi
 import httpx
 
 from models import AutocompleteSuggestion
-from services.text_match import combined_score, fuzzy_score, normalize
+from services.text_match import combined_score, normalize
 
 
 class MetadataServiceError(Exception):
@@ -385,6 +385,7 @@ class MetadataService:
             duration=duration,
             confidence=confidence,
             source="spotify",
+            spotify_id=item.get("id"),
         )
 
     @staticmethod
@@ -436,6 +437,7 @@ class MetadataService:
                     "thumbnail": base.thumbnail or back.thumbnail,
                     "artwork_source": base.artwork_source or back.artwork_source,
                     "artwork_confidence": base.artwork_confidence or back.artwork_confidence,
+                    "spotify_id": base.spotify_id or back.spotify_id,
                 }
             )
 

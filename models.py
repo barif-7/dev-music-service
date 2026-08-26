@@ -1,6 +1,6 @@
-from typing import List, Optional
+from typing import Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class AutocompleteSuggestion(BaseModel):
@@ -15,6 +15,7 @@ class AutocompleteSuggestion(BaseModel):
     duration: int = Field(default=0, description="Track duration in seconds")
     confidence: int = Field(default=0, description="Metadata match confidence from 0 to 100")
     source: str = "musicbrainz"
+    spotify_id: Optional[str] = None
     recording_mbid: Optional[str] = None
     release_mbid: Optional[str] = None
 
@@ -30,6 +31,19 @@ class SongSearchResult(BaseModel):
     artwork_source: Optional[str] = None
     artwork_confidence: Optional[str] = None
     release_year: Optional[int] = None
+    content_type: str = "audio/mp4"
+
+
+class VideoSearchResult(BaseModel):
+    title: str
+    webpage_url: str
+    video_stream_url: str
+    duration: int = Field(default=0, description="Video duration in seconds")
+    thumbnail: Optional[str] = None
+    channel: Optional[str] = None
+    kind: str = "music_video"
+    width: Optional[int] = None
+    height: Optional[int] = None
 
 
 class TrackMetadata(BaseModel):
@@ -43,6 +57,7 @@ class TrackMetadata(BaseModel):
     artwork_source: Optional[str] = None
     artwork_confidence: Optional[str] = None
     release_year: Optional[int] = None
+    content_type: str = "audio/mp4"
     source: str = "youtube"
 
 
@@ -80,8 +95,19 @@ class ImportedTrack(BaseModel):
     duration_ms: int = 0
     isrc: Optional[str] = None
     release_date: Optional[str] = None
+    release_year: Optional[int] = None
     artwork_url: Optional[str] = None
     provider_url: Optional[str] = None
+    track_number: Optional[int] = None
+    disc_number: Optional[int] = None
+    plays: int = 0
+    skips: int = 0
+    loved: bool = False
+    explicit: bool = False
+    streaming: bool = False
+    genre: Optional[str] = None
+    last_played_at: Optional[str] = None
+    date_added_at: Optional[str] = None
 
 
 class MusicBrainzTrackMatch(BaseModel):
@@ -111,6 +137,25 @@ class ImportedPlaylistPreview(BaseModel):
     unmatched_count: int
 
 
+class AppleMusicImportAlbum(BaseModel):
+    provider: str = "apple_music"
+    id: str
+    name: str
+    artist: str
+    year: Optional[int] = None
+    genre: Optional[str] = None
+    track_count: int = 0
+    duration_ms: int = 0
+    plays: int = 0
+    skips: int = 0
+    loved: bool = False
+    explicit: bool = False
+    streaming: bool = False
+    artwork_url: Optional[str] = None
+    provider_url: Optional[str] = None
+    tracks: List[ImportedTrack] = Field(default_factory=list)
+
+
 class SpotifyLikedTracksPreview(BaseModel):
     provider: str = "spotify"
     title: str = "Liked songs"
@@ -121,6 +166,18 @@ class SpotifyLikedTracksPreview(BaseModel):
     matched_count: int = 0
     low_confidence_count: int = 0
     unmatched_count: int = 0
+
+
+class SpotifySaveTrackRequest(BaseModel):
+    spotify_id: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        max_length=100,
+        pattern=r"^[A-Za-z0-9]+$",
+    )
+    title: str = Field(min_length=1, max_length=300)
+    artist: Optional[str] = Field(default=None, max_length=300)
+    album: Optional[str] = Field(default=None, max_length=300)
 
 
 class LocalPlaybackState(BaseModel):
@@ -143,6 +200,56 @@ class LyricsLine(BaseModel):
     text: str
     start_time_ms: Optional[int] = Field(default=None, description="Line start time in milliseconds")
     end_time_ms: Optional[int] = Field(default=None, description="Line end time in milliseconds")
+    localized_text: Optional[str] = Field(
+        default=None, description="Line translated into the requested target locale"
+    )
+    localization_quality: Optional[Dict[str, object]] = Field(
+        default=None,
+        description="Optional quality metadata from the lyrics localization service",
+    )
+
+
+class LocalizeWindowLine(BaseModel):
+    index: int = Field(ge=0, description="Stable line index within the track's lyric lines")
+    text: str = Field(min_length=1, max_length=1000)
+    start_time_ms: Optional[int] = Field(default=None, ge=0)
+    end_time_ms: Optional[int] = Field(default=None, ge=0)
+
+
+class LocalizeWindowRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=500)
+    artist: str = Field(min_length=1, max_length=500)
+    album: Optional[str] = Field(default=None, max_length=500)
+    duration: Optional[int] = Field(default=None, ge=0)
+    locale: str = Field(min_length=1, max_length=35)
+    bpm: Optional[int] = Field(default=None, ge=1, le=400)
+    mood: List[str] = Field(default_factory=list, max_length=12)
+    section: Optional[str] = Field(default=None, max_length=100)
+    preserve_singability: bool = True
+    preserve_repetition: bool = True
+    lines: List[LocalizeWindowLine] = Field(
+        default_factory=list,
+        max_length=200,
+        description="Lines (index + source text) to localize just-in-time. Carrying "
+        "text lets transcribed tracks be localized too, not just LRCLIB ones.",
+    )
+
+
+class TranslatedVocalLine(BaseModel):
+    index: int = Field(ge=0, description="Stable line index within the track's lyric lines")
+    text: str = Field(min_length=1, max_length=1000, description="Translated lyric text to synthesize")
+    start_time_ms: Optional[int] = Field(default=None, ge=0)
+    end_time_ms: Optional[int] = Field(default=None, ge=0)
+
+
+class TranslatedVocalRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=500)
+    artist: str = Field(min_length=1, max_length=500)
+    locale: str = Field(min_length=1, max_length=35)
+    voice_mode: Literal["neutral", "user_consent", "licensed", "artist_clone"] = "neutral"
+    voice_profile_id: Optional[str] = Field(default=None, max_length=200)
+    voice_consent_token: Optional[str] = Field(default=None, max_length=500)
+    lines: List[TranslatedVocalLine] = Field(default_factory=list, min_length=1, max_length=80)
 
 
 class LyricsResponse(BaseModel):
@@ -156,3 +263,17 @@ class LyricsResponse(BaseModel):
     plain_lyrics: Optional[str] = None
     synced_lyrics: Optional[str] = None
     lines: List[LyricsLine] = Field(default_factory=list)
+    target_locale: Optional[str] = Field(
+        default=None, description="Target locale the lines were localized into, if any"
+    )
+
+
+class LyricVisualAnalysisRequest(BaseModel):
+    """One timed lyric line to translate into portable visual parameters."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    song_title: str = Field(alias="songTitle", min_length=1, max_length=500)
+    artist: str = Field(min_length=1, max_length=500)
+    lyric_line: str = Field(alias="lyricLine", min_length=1, max_length=1000)
+    section: Literal["intro", "verse", "chorus", "bridge", "outro"] = "verse"

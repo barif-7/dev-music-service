@@ -33,7 +33,7 @@ class SpotifyImportService:
     _API_URL = "https://api.spotify.com/v1"
     _SCOPE = (
         "playlist-read-private playlist-read-collaborative "
-        "user-library-read user-top-read user-read-recently-played"
+        "user-library-read user-library-modify user-top-read user-read-recently-played"
     )
     _STATE_COOKIE = "spotify_oauth_state"
     _VERIFIER_COOKIE = "spotify_code_verifier"
@@ -251,6 +251,34 @@ class SpotifyImportService:
             ) from exc
 
     @staticmethod
+    async def _spotify_put(
+        access_token: str,
+        path: str,
+        params: dict[str, str] | None = None,
+    ) -> None:
+        try:
+            client = SpotifyImportService._get_http_client()
+            response = await client.put(
+                f"{SpotifyImportService._API_URL}{path}",
+                params=params,
+                headers={
+                    "Accept": "application/json",
+                    "Authorization": f"Bearer {access_token}",
+                },
+            )
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 403:
+                detail = exc.response.text.lower()
+                if "insufficient" in detail or "scope" in detail:
+                    raise SpotifyImportError(
+                        "Spotify token is missing user-library-modify. Reconnect Spotify to save Liked Songs."
+                    ) from exc
+            raise SpotifyImportError(
+                f"Spotify API request to {path} failed with {exc.response.status_code}: {exc.response.text}"
+            ) from exc
+
+    @staticmethod
     def is_connected(request: FastAPIRequest) -> bool:
         return bool(request.cookies.get(SpotifyImportService._TOKEN_COOKIE))
 
@@ -451,6 +479,48 @@ class SpotifyImportService:
             low_confidence_count=low,
             unmatched_count=unmatched,
         )
+
+    @staticmethod
+    async def save_track(
+        request: FastAPIRequest,
+        title: str,
+        artist: str | None = None,
+        album: str | None = None,
+        spotify_id: str | None = None,
+    ) -> str:
+        token = SpotifyImportService._access_token(request)
+        track_id = spotify_id
+        if not track_id:
+            query_parts = [title, artist, album]
+            query = " ".join(part.strip() for part in query_parts if part and part.strip())
+            matches = await SpotifyImportService.search_tracks(token, query, limit=1)
+            track_id = matches[0].get("id") if matches else None
+        if not track_id:
+            raise SpotifyImportError(f"Spotify could not find '{title}' to save")
+
+        await SpotifyImportService._spotify_put(
+            token,
+            "/me/library",
+            {"uris": f"spotify:track:{track_id}"},
+        )
+        return track_id
+
+    @staticmethod
+    async def is_track_saved(request: FastAPIRequest, spotify_id: str) -> bool:
+        """Whether a track already lives in the user's Liked Songs. Lets the UI
+        lock the like button on tracks that are already saved (not just ones saved
+        this session). Unknown/blank ids resolve to False rather than erroring."""
+        if not spotify_id:
+            return False
+        payload = await SpotifyImportService._spotify_get(
+            SpotifyImportService._access_token(request),
+            "/me/tracks/contains",
+            {"ids": spotify_id},
+        )
+        # /me/tracks/contains answers with a bare JSON array, e.g. [true]
+        if isinstance(payload, list):
+            return bool(payload[0]) if payload else False
+        return False
 
     @staticmethod
     async def _search_playback_candidate(

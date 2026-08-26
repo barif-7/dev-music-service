@@ -27,17 +27,34 @@ class StreamResolutionError(MusicServiceError):
 
 class MusicService:
     _cache_lock = threading.Lock()
-    _SEARCH_TTL_SECONDS = 300
-    _STREAM_TTL_SECONDS = 240
+    # Every miss costs a full yt-dlp extraction against YouTube, and they all
+    # leave from one address, so the extraction rate -- not bandwidth -- is what
+    # limits how many people this can serve before the host starts getting
+    # throttled. Resolved URLs carry `expire` six hours out, so holding them for
+    # three keeps a wide margin against clock skew and early invalidation while
+    # cutting repeat resolutions by orders of magnitude. A URL that goes stale
+    # anyway is not fatal: the stream route re-resolves on a 401/403/410 from
+    # the CDN.
+    #
+    # Both windows are the same on purpose. Search entries embed their own
+    # resolved URLs and only prime the stream cache on a miss, so a search cache
+    # that outlives the stream cache hands back entries whose URLs are already
+    # gone and buys a second extraction.
+    _SEARCH_TTL_SECONDS = 10800
+    _STREAM_TTL_SECONDS = 10800
     _search_cache: TTLCache[str, list[dict]] = TTLCache(
-        maxsize=256,
+        maxsize=1024,
         ttl=_SEARCH_TTL_SECONDS,
     )
     _stream_cache: TTLCache[str, tuple[str, dict[str, str]]] = TTLCache(
-        maxsize=128,
+        maxsize=1024,
         ttl=_STREAM_TTL_SECONDS,
     )
-    _BROWSER_AUDIO_FORMAT = "bestaudio[ext=m4a]/best[ext=mp4]/bestaudio/best"
+    # Exhaust audio-only variants before falling back to a combined MP4. This
+    # matters for Cast-for-audio devices, which must not receive a video stream.
+    _BROWSER_AUDIO_FORMAT = (
+        "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best[ext=mp4]/best"
+    )
 
     @staticmethod
     def _normalize_query(query: str) -> str:
@@ -49,7 +66,9 @@ class MusicService:
             return cache.get(key)
 
     @staticmethod
-    def _cache_set(cache: dict, key, value, ttl_seconds: int):
+    def _cache_set(cache: dict, key, value):
+        # Expiry belongs to the TTLCache the caller passes in; there is no
+        # per-entry window to hand over here.
         with MusicService._cache_lock:
             cache[key] = value
         return value
@@ -87,7 +106,9 @@ class MusicService:
 
     _YOUTUBE_EXTRACTOR_ARGS = {
         "youtube": {
-            "player_client": ["android", "web"],
+            # android_vr currently exposes token-free DASH audio-only formats;
+            # the other clients remain fallbacks for videos it cannot access.
+            "player_client": ["android_vr", "android", "web"],
         }
     }
 
@@ -120,11 +141,24 @@ class MusicService:
 
         entries = [entry for entry in (info.get("entries") or []) if entry]
         logger.debug("youtube_search_completed", query=cache_key, results=len(entries))
+        # The search extraction already resolved each candidate's direct audio URL
+        # and request headers. Prime the stream-source cache so the follow-up
+        # /stream request is a cache hit instead of a second full extraction —
+        # this is the bulk of the click-to-play latency. Only freshly-extracted
+        # entries land here (cache hits above return early), so the URLs are fresh.
+        for entry in entries:
+            wp = entry.get("webpage_url")
+            direct = entry.get("url")
+            if wp and direct:
+                MusicService._cache_set(
+                    MusicService._stream_cache,
+                    wp,
+                    (direct, dict(entry.get("http_headers") or {})),
+                )
         return MusicService._cache_set(
             MusicService._search_cache,
             cache_key,
             entries,
-            MusicService._SEARCH_TTL_SECONDS,
         )
 
     @staticmethod
@@ -262,6 +296,7 @@ class MusicService:
                     artwork_source="youtube" if entry.get("thumbnail") else None,
                     artwork_confidence="video" if entry.get("thumbnail") else None,
                     release_year=MusicService._extract_year(entry),
+                    content_type=MusicService._audio_content_type(entry),
                 )
             )
 
@@ -284,6 +319,7 @@ class MusicService:
             artwork_source="youtube" if entry.get("thumbnail") else None,
             artwork_confidence="video" if entry.get("thumbnail") else None,
             release_year=MusicService._extract_year(entry),
+            content_type=MusicService._audio_content_type(entry),
             source="youtube",
         )
 
@@ -354,7 +390,6 @@ class MusicService:
             MusicService._stream_cache,
             webpage_url,
             cached_value,
-            MusicService._STREAM_TTL_SECONDS,
         )
         logger.debug("audio_stream_extracted", url=webpage_url)
         return direct_url, dict(headers)
@@ -412,3 +447,33 @@ class MusicService:
         This is used for proxying audio through the server to avoid CORS issues.
         """
         return MusicService._extract_audio_source(webpage_url)
+
+    @staticmethod
+    def remember_stream_source(
+        webpage_url: str,
+        direct_url: str,
+        headers: dict[str, str],
+    ) -> None:
+        """Replace a rejected cached source with a verified playback fallback."""
+        MusicService._cache_set(
+            MusicService._stream_cache,
+            webpage_url,
+            (direct_url, dict(headers)),
+        )
+
+    @staticmethod
+    def _audio_content_type(entry: dict) -> str:
+        """Return a Cast-compatible MIME type for a yt-dlp audio candidate."""
+        ext = str(entry.get("ext") or "").lower()
+        codec = str(entry.get("acodec") or "").lower()
+        if ext in {"webm"}:
+            return "audio/webm"
+        if ext in {"ogg", "oga", "opus"}:
+            return "audio/ogg"
+        if ext in {"mp3"} or codec.startswith("mp3"):
+            return "audio/mpeg"
+        if ext in {"wav"}:
+            return "audio/wav"
+        if ext in {"flac"}:
+            return "audio/flac"
+        return "audio/mp4"
