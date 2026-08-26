@@ -56,9 +56,12 @@
   function fail(msg){ $('#focusTracks').innerHTML=''; $('#focusEmpty').style.display=''; $('#focusEmpty').textContent = msg; }
 
   function render(d){
+    const total = d.features_total ?? d.total_top_tracks ?? 0;
+    const covered = d.features_covered ?? (d.audio_features_available===false ? 0 : total);
+    const noData = d.no_data_tracks || [];
     $('#focusStats').style.display = 'flex';
-    $('#statTotal').textContent   = d.total_top_tracks ?? '—';
-    $('#statFocus').textContent   = d.audio_features_available===false ? '—' : (d.focus_tracks_count ?? '—');
+    $('#statTotal').textContent   = total ? `${covered}/${total}` : '—';
+    $('#statFocus').textContent   = d.focus_tracks_count ?? 0;
     $('#statAvgBpm').textContent  = d.bpm_insight ? d.bpm_insight.mean : '—';
     $('#statTopScore').textContent= d.focus_tracks?.[0]?.focus_score!=null ? d.focus_tracks[0].focus_score.toFixed(0) : '—';
     const ins = $('#bpmInsight');
@@ -66,24 +69,26 @@
     else ins.style.display = 'none';
 
     const c = $('#focusTracks'); c.innerHTML = '';
-    const hasFeat = d.audio_features_available !== false;
-    const list = hasFeat ? (d.focus_tracks || []) : (d.top_tracks || []).slice(0,20);
-    if(!list.length){
-      c.innerHTML = `<div class="fc-load">${hasFeat ? 'No tracks matched your focus profile. Widen the BPM range or lower the instrumentalness threshold.' : esc(d.warning||'Spotify audio features are unavailable.')}</div>`;
-      return;
-    }
-    list.forEach(t=>{
+    const source = String(d.source || 'reccobeats').toLowerCase();
+    const sourceLabel = source === 'reccobeats' ? 'ReccoBeats' : source;
+    const coverage = document.createElement('div');
+    coverage.className = 'fc-coverage';
+    coverage.innerHTML = `Audio features for <b>${covered}</b> of <b>${total}</b> tracks · <span class="fc-source">${esc(sourceLabel)}</span>`;
+    c.appendChild(coverage);
+
+    const renderTrack = (t, hasFeatures) => {
       const row = document.createElement('button'); row.className = 'fc-track';
+      if(!hasFeatures) row.classList.add('nodata');
       row.type = 'button';
       row.setAttribute('aria-label', `Play ${t.title || 'track'}`);
       const art = t.thumbnail ? `<img src="${esc(t.thumbnail)}" alt="" loading="lazy">` : `<span class="r-ph">♪</span>`;
-      const score = hasFeat && t.focus_score!=null
+      const score = hasFeatures && t.focus_score!=null
         ? `<span class="fc-score">${t.focus_score.toFixed(0)}<span class="fc-bar"><i style="width:${Math.max(0,Math.min(100,Math.round(t.focus_score)))}%"></i></span></span>`
-        : `<span class="r-conf">${t.tempo? t.tempo+' bpm':'—'}</span>`;
+        : `<span class="fc-nodata">no audio data</span>`;
       row.innerHTML =
         `<span class="r-art">${art}</span>`+
         `<span class="r-body"><span class="r-name">${esc(t.title)}</span>`+
-        `<span class="r-meta">${esc(t.artist)}${t.album?' · '+esc(t.album):''}${hasFeat&&t.tempo?` · ${t.tempo} bpm`:''}</span></span>`+
+        `<span class="r-meta">${esc(t.artist)}${t.album?' · '+esc(t.album):''}${hasFeatures&&t.tempo?` · ${t.tempo} bpm`:''}</span></span>`+
         score;
       row.addEventListener('click', ()=>{
         closeFocusPanel();
@@ -92,7 +97,27 @@
           spotifyId: t.id || t.track_id });
       });
       c.appendChild(row);
-    });
+    };
+
+    const list = d.focus_tracks || [];
+    if(!list.length){
+      const empty = document.createElement('div');
+      empty.className = 'fc-load';
+      empty.textContent = covered
+        ? 'No tracks with audio data matched your focus profile. Widen the BPM range or lower the instrumentalness threshold.'
+        : 'ReccoBeats had no audio data for these tracks. Try a different time range.';
+      c.appendChild(empty);
+    } else {
+      list.forEach(t=>renderTrack(t, true));
+    }
+
+    if(noData.length){
+      const head = document.createElement('div');
+      head.className = 'fc-nodata-head';
+      head.textContent = `No audio data (${d.no_data_count ?? noData.length})`;
+      c.appendChild(head);
+      noData.forEach(t=>renderTrack(t, false));
+    }
   }
 
   // ---- wiring ----

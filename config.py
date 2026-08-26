@@ -55,6 +55,7 @@ class Settings(BaseSettings):
     focus_profile_storage_backend: str = "local-json"
     focus_profile_kv_namespace: str | None = None
     phase_field_api_base_url: str = "http://localhost:8787"
+    reccobeats_api_base_url: str = "https://api.reccobeats.com/v1"
     # MusicKit on the Web embeds a signed developer token in the client. Prefer
     # an origin claim restricted to the app's Funnel and local development URLs.
     apple_music_developer_token: str | None = None

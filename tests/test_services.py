@@ -22,7 +22,7 @@ from services.lyrics_service import LyricsProviderError, LyricsService
 from services.musicbrainz_matcher import MusicBrainzMatcher
 from services.music_service import MusicService, MusicServiceError, SearchServiceError, StreamResolutionError
 from services.metadata_service import MetadataService, MetadataServiceError
-from services.spotify_import_service import SpotifyImportError, SpotifyImportService
+from services.spotify_import_service import SpotifyImportService
 from services.video_service import VideoService, VideoStreamResolutionError
 
 
@@ -943,34 +943,59 @@ class TestFocusScoring:
         assert not features.matches_profile(DEFAULT_PROFILE)
 
     @pytest.mark.asyncio
-    async def test_top_tracks_falls_back_when_audio_features_are_blocked(self, monkeypatch):
+    async def test_top_tracks_reports_coverage_via_injected_provider(self, monkeypatch):
+        # Track list still comes from Spotify; audio features come from an
+        # injected provider (demonstrating FocusService depends only on the
+        # AudioFeatureProvider interface). track-2 has no data and must be
+        # surfaced honestly, not dropped or given a fake zero score.
         async def fake_spotify_get(access_token, path, params=None):
             if path == "/me/top/tracks":
                 return {
                     "items": [
-                        {
-                            "id": "track-1",
-                            "name": "Fixture Song",
-                            "artists": [{"name": "Fixture Artist"}],
-                            "album": {"name": "Fixture Album", "images": [{"url": "https://img.example/cover.jpg"}]},
-                            "popularity": 80,
-                        }
+                        {"id": "track-1", "name": "Has Features",
+                         "artists": [{"name": "A"}],
+                         "album": {"name": "Al", "images": [{"url": "u"}]},
+                         "popularity": 80},
+                        {"id": "track-2", "name": "No Data",
+                         "artists": [{"name": "B"}],
+                         "album": {"name": "Al2", "images": []},
+                         "popularity": 50},
                     ]
                 }
-            if path == "/audio-features":
-                raise SpotifyImportError(
-                    'Spotify API request to /audio-features failed with 403: { "error" : { "status" : 403 } }'
-                )
             raise AssertionError(f"unexpected Spotify path {path}")
 
-        monkeypatch.setattr("services.spotify_import_service.SpotifyImportService._spotify_get", fake_spotify_get)
+        monkeypatch.setattr(
+            "services.spotify_import_service.SpotifyImportService._spotify_get",
+            fake_spotify_get,
+        )
 
-        result = await FocusService.analyse_top_tracks("token", profile=DEFAULT_PROFILE)
+        class FakeProvider:
+            async def get_features(self, sid):
+                return (await self.get_features_bulk([sid])).get(sid)
 
-        assert result["audio_features_available"] is False
-        assert result["bpm_insight"] is None
-        assert result["top_tracks"][0]["title"] == "Fixture Song"
-        assert "audio features" in result["warning"].lower()
+            async def get_features_bulk(self, ids):
+                out = {}
+                if "track-1" in ids:
+                    out["track-1"] = AudioFeatures({
+                        "id": "track-1", "tempo": 90, "energy": 0.5, "valence": 0.5,
+                        "instrumentalness": 0.8, "speechiness": 0.01, "liveness": 0.01,
+                        "source": "fake",
+                    })
+                return out
+
+        result = await FocusService.analyse_top_tracks(
+            "token", profile=DEFAULT_PROFILE, provider=FakeProvider()
+        )
+
+        assert result["audio_features_available"] is True
+        assert result["source"] == "reccobeats"
+        assert result["features_total"] == 2
+        assert result["features_covered"] == 1
+        assert result["no_data_count"] == 1
+        assert result["no_data_tracks"][0]["title"] == "No Data"
+        assert result["no_data_tracks"][0]["has_features"] is False
+        assert result["focus_tracks"][0]["title"] == "Has Features"
+        assert result["bpm_insight"]["mean"] == 90.0
 
 
 class TestFocusProfileStorage:

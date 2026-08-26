@@ -650,6 +650,12 @@
     background:rgba(138,255,196,.06);border:1px solid rgba(138,255,196,.16);margin-bottom:12px}
   .fc-insight b{color:var(--ink);font-weight:500}
   .fc-empty,.fc-load{padding:26px 6px;font-family:var(--mono);font-size:12px;color:var(--dim);line-height:1.5}
+  .fc-coverage{padding:8px 10px;margin-bottom:8px;border:1px solid var(--hair);border-radius:9px;font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:.04em}
+  .fc-coverage b{color:var(--text)}
+  .fc-source{display:inline-block;padding:1px 6px;border-radius:999px;background:#8affc4;color:#08110d;text-transform:lowercase}
+  .fc-nodata-head{padding:14px 2px 4px;font-family:var(--mono);font-size:10px;color:var(--faint);letter-spacing:.08em;text-transform:uppercase}
+  .fc-track.nodata{opacity:.64}
+  .fc-nodata{margin-left:auto;flex:none;padding:2px 7px;border:1px solid var(--hair);border-radius:999px;font-family:var(--mono);font-size:9px;color:var(--faint);white-space:nowrap}
   #focusTracks{flex:1;overflow:auto;display:flex;flex-direction:column;gap:2px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent}
   #focusTracks::-webkit-scrollbar{width:7px}#focusTracks::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16);border-radius:7px}
   .fc-track{display:flex;align-items:center;gap:12px;width:100%;min-height:58px;text-align:left;padding:9px 10px;border-radius:11px;border:1px solid transparent;transition:background .16s,border-color .16s;cursor:pointer}
@@ -1558,7 +1564,7 @@
         <button type="button" class="time-tab" data-range="long_term" role="tab" aria-selected="false">all time</button>
       </div>
       <div class="fc-stats" id="focusStats" style="display:none">
-        <div><b id="statTotal">—</b><span>top</span></div>
+        <div><b id="statTotal">—</b><span>features</span></div>
         <div><b id="statFocus">—</b><span>focus</span></div>
         <div><b id="statAvgBpm">—</b><span>avg bpm</span></div>
         <div><b id="statTopScore">—</b><span>top score</span></div>

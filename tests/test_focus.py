@@ -1,8 +1,8 @@
-"""Tests for services.focus_service — pure logic only, no network calls."""
+"""Tests for services.focus_service — pure logic + injected provider, no network."""
 
 import pytest
 
-from services.focus_service import AudioFeatures, DEFAULT_PROFILE, FocusProfile
+from services.focus_service import AudioFeatures, DEFAULT_PROFILE, FocusProfile, FocusService
 
 
 @pytest.fixture(autouse=True)
@@ -129,3 +129,34 @@ class TestAudioFeaturesFocusScore:
         assert "tempo" in d
         assert "energy" in d
         assert "instrumentalness" in d
+        assert d["source"] == "reccobeats"
+
+
+class _FakeProvider:
+    """In-memory AudioFeatureProvider — proves FocusService is source-agnostic."""
+
+    def __init__(self, features: dict):
+        self._features = features  # spotify_id -> AudioFeatures
+
+    async def get_features(self, spotify_track_id):
+        return self._features.get(spotify_track_id)
+
+    async def get_features_bulk(self, spotify_track_ids):
+        return {sid: self._features[sid] for sid in spotify_track_ids if sid in self._features}
+
+
+class TestAnalysePlaylistWithInjectedProvider:
+    async def test_ranks_covered_tracks_and_skips_no_data(self):
+        provider = _FakeProvider({
+            "a": AudioFeatures({"id": "a", "tempo": 90, "instrumentalness": 0.9,
+                                "energy": 0.5, "valence": 0.5}),
+            "b": AudioFeatures({"id": "b", "tempo": 70, "instrumentalness": 0.7,
+                                "energy": 0.4, "valence": 0.5}),
+        })
+        result = await FocusService.analyse_playlist(
+            ["a", "b", "c"], profile=DEFAULT_PROFILE, provider=provider
+        )
+        ids = [r["track_id"] for r in result]
+        assert ids[0] == "a"          # best focus score first
+        assert "c" not in ids         # no provider data -> not ranked (no fake zero)
+        assert len(result) == 2

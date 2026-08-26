@@ -1,20 +1,22 @@
 from __future__ import annotations
 
 import threading
-import time
+from typing import TYPE_CHECKING
 
 import structlog
 
 from config import get_settings
 from services.focus_storage import build_focus_profile_storage
 from services.spotify_import_service import SpotifyImportService
-from services.spotify_import_service import SpotifyImportError
+
+if TYPE_CHECKING:  # typing only — avoids any import cycle
+    from services.audio_feature_provider import AudioFeatureProvider
 
 logger = structlog.get_logger()
 
 _AUDIO_FEATURES_UNAVAILABLE_MESSAGE = (
-    "Spotify no longer exposes audio features to this app, so BPM and focus scoring are unavailable. "
-    "Showing your top tracks without analysis."
+    "Audio features are sourced from ReccoBeats, which has no data for these "
+    "tracks. They are shown without analysis."
 )
 
 # ---------------------------------------------------------------------------
@@ -36,21 +38,21 @@ _PROFILE_LOCK = threading.Lock()
 
 
 # ---------------------------------------------------------------------------
-# Audio features from Spotify
+# Audio features (provider-agnostic shape)
 # ---------------------------------------------------------------------------
 
 class AudioFeatures:
     """
-    Wraps a single Spotify audio-features object.
-    Spotify returns: tempo, energy, valence, instrumentalness, danceability,
-    acousticness, speechiness, liveness, loudness, key, mode, time_signature.
-    We surface the ones relevant to focus/ADHD use.
+    A single track's audio features. The field set / ranges match what Spotify
+    historically returned (tempo in BPM, most fields 0–1, loudness in dB), which
+    ReccoBeats also returns — so scoring stays unchanged across the source swap.
     """
 
     __slots__ = (
         "track_id", "tempo", "energy", "valence",
         "instrumentalness", "acousticness", "speechiness",
         "liveness", "danceability", "loudness",
+        "source",
         # musical-identity / structural fields — used as visual priors by the
         # frontend TrackVisualProfile (key/mode → colour, time_signature → grid).
         "key", "mode", "time_signature", "duration_ms",
@@ -67,6 +69,9 @@ class AudioFeatures:
         self.liveness: float = float(raw.get("liveness") or 0)
         self.danceability: float = float(raw.get("danceability") or 0)
         self.loudness: float = float(raw.get("loudness") or 0)
+        # Which provider produced this record ("reccobeats" today, "essentia"
+        # later). Tagged so a low-quality source can be re-analysed in future.
+        self.source: str = raw.get("source") or "reccobeats"
         # Optional fields: Spotify provides these in audio-features, but they may be
         # absent from other providers — default to "unknown" sentinels (-1) so the
         # frontend stays neutral rather than guessing.
@@ -118,6 +123,7 @@ class AudioFeatures:
             "liveness": round(self.liveness, 3),
             "danceability": round(self.danceability, 3),
             "loudness": round(self.loudness, 1),
+            "source": self.source,
             "key": self.key,
             "mode": self.mode,
             "time_signature": self.time_signature,
@@ -126,10 +132,24 @@ class AudioFeatures:
 
 
 class AudioFeaturesUnavailableError(Exception):
-    """Raised when Spotify blocks the deprecated audio-features endpoint."""
+    """
+    Reserved error type for "the audio-feature source has no data."
+
+    The failure mode is now partial coverage from ReccoBeats (some tracks have
+    no features), not a hard Spotify block. Normal analysis surfaces coverage
+    instead of raising; this type is kept for callers/back-compat.
+    """
 
     def __init__(self) -> None:
         super().__init__(_AUDIO_FEATURES_UNAVAILABLE_MESSAGE)
+
+
+def _resolve_provider(provider: "AudioFeatureProvider | None") -> "AudioFeatureProvider":
+    if provider is not None:
+        return provider
+    # Lazy import keeps focus_service free of a concrete-provider dependency.
+    from services.reccobeats_service import get_audio_feature_provider
+    return get_audio_feature_provider()
 
 
 # ---------------------------------------------------------------------------
@@ -172,122 +192,55 @@ class FocusProfile:
 
 class FocusService:
     """
-    Fetches Spotify audio features and filters / scores tracks against
-    the user's focus profile.
+    Filters / scores tracks against the user's focus profile using audio
+    features from an :class:`AudioFeatureProvider` (ReccoBeats today).
 
-    Spotify audio-features endpoint:
-      GET /audio-features/{id}             — single track
-      GET /audio-features?ids=id1,id2,...  — batch up to 100
+    FocusService depends only on the provider interface — never on a concrete
+    source — so a different/fallback provider (e.g. a future Essentia analyser)
+    can be injected without touching scoring or routes.
+
+    Track *lists* still come from Spotify (playlists, top tracks); only the
+    audio-feature source moved off Spotify's deprecated endpoint. Tracks the
+    provider has no data for are surfaced honestly as "no data", never as
+    fabricated zero-score rows, and coverage is reported.
     """
-
-    # In-memory cache: track_id -> (AudioFeatures, expires_at)
-    _cache: dict[str, tuple[AudioFeatures, float]] = {}
-    _cache_lock = threading.Lock()
-    _CACHE_TTL = 3600  # audio features don't change; 1 hour is conservative
-
-    # ---------------------------------------------------------------------------
-    # Spotify API helpers (reuse SpotifyImportService._spotify_get pattern)
-    # ---------------------------------------------------------------------------
-
-    @staticmethod
-    async def _get_audio_features_batch(
-        access_token: str,
-        track_ids: list[str],
-    ) -> list[AudioFeatures]:
-        """Batch fetch up to 100 track IDs in a single request."""
-        if not track_ids:
-            return []
-
-        now = time.monotonic()
-        result: list[AudioFeatures | None] = [None] * len(track_ids)
-        missing_indices: list[int] = []
-        missing_ids: list[str] = []
-
-        with FocusService._cache_lock:
-            for i, tid in enumerate(track_ids):
-                entry = FocusService._cache.get(tid)
-                if entry and entry[1] > now:
-                    result[i] = entry[0]
-                else:
-                    missing_indices.append(i)
-                    missing_ids.append(tid)
-
-        if missing_ids:
-            # Spotify allows max 100 per request
-            for chunk_start in range(0, len(missing_ids), 100):
-                chunk_ids = missing_ids[chunk_start:chunk_start + 100]
-                chunk_indices = missing_indices[chunk_start:chunk_start + 100]
-
-                try:
-                    payload = await SpotifyImportService._spotify_get(
-                        access_token,
-                        "/audio-features",
-                        {"ids": ",".join(chunk_ids)},
-                    )
-                except SpotifyImportError as exc:
-                    if _is_audio_features_unavailable_error(exc):
-                        raise AudioFeaturesUnavailableError() from exc
-                    raise
-                features_list = payload.get("audio_features") or []
-
-                with FocusService._cache_lock:
-                    for idx, raw in zip(chunk_indices, features_list):
-                        if not raw:
-                            continue
-                        af = AudioFeatures(raw)
-                        FocusService._cache[af.track_id] = (af, now + FocusService._CACHE_TTL)
-                        result[idx] = af
-
-        return [af for af in result if af is not None]
 
     @staticmethod
     async def get_track_features(
-        access_token: str,
         track_id: str,
+        provider: "AudioFeatureProvider | None" = None,
     ) -> AudioFeatures | None:
-        try:
-            results = await FocusService._get_audio_features_batch(access_token, [track_id])
-        except AudioFeaturesUnavailableError:
-            return None
-        return results[0] if results else None
-
-    # ---------------------------------------------------------------------------
-    # Core: analyse a playlist for focus suitability
-    # ---------------------------------------------------------------------------
+        return await _resolve_provider(provider).get_features(track_id)
 
     @staticmethod
     async def analyse_playlist(
-        access_token: str,
         track_ids: list[str],
         profile: dict | None = None,
+        provider: "AudioFeatureProvider | None" = None,
     ) -> list[dict]:
         """
-        Given a list of Spotify track IDs, return each track's audio features
-        and focus score, sorted best-first.
+        Given Spotify track IDs, return each track *that has features* with its
+        focus score, sorted best-first.
         """
         if profile is None:
             profile = FocusProfile.load()
-
-        try:
-            features = await FocusService._get_audio_features_batch(access_token, track_ids)
-        except AudioFeaturesUnavailableError:
-            return []
+        features_map = await _resolve_provider(provider).get_features_bulk(track_ids)
 
         results = []
-        for af in features:
+        for tid in track_ids:
+            af = features_map.get(tid)
+            if af is None:
+                continue
             results.append({
                 **af.to_dict(),
                 "matches_profile": af.matches_profile(profile),
                 "focus_score": af.focus_score(profile),
             })
-
         results.sort(key=lambda x: x["focus_score"], reverse=True)
         return results
 
     # ---------------------------------------------------------------------------
     # Focus-filtered playlist preview
-    # Enriches the existing ImportedPlaylistPreview tracks with audio features
-    # and filters to only tracks that match the focus profile.
     # ---------------------------------------------------------------------------
 
     @staticmethod
@@ -296,16 +249,15 @@ class FocusService:
         playlist_id: str,
         limit: int = 50,
         profile: dict | None = None,
+        provider: "AudioFeatureProvider | None" = None,
     ) -> dict:
         """
-        Fetches up to `limit` tracks from a playlist, enriches with audio
-        features, and returns only those matching the focus profile, ranked
-        by focus score.
+        Fetch up to `limit` playlist tracks, enrich with audio features, and
+        return matched / rejected / no-data buckets plus coverage.
         """
         if profile is None:
             profile = FocusProfile.load()
 
-        # Fetch playlist tracks from Spotify
         payload = await SpotifyImportService._spotify_get(
             access_token,
             f"/playlists/{playlist_id}/items",
@@ -319,7 +271,6 @@ class FocusService:
         items = payload.get("items") or []
         tracks_meta: list[dict] = []
         track_ids: list[str] = []
-
         for item in items:
             track = (item.get("track") or {})
             if track.get("type") != "track" or not track.get("id"):
@@ -337,53 +288,40 @@ class FocusService:
             })
             track_ids.append(track["id"])
 
-        # Batch fetch audio features
-        features_map: dict[str, AudioFeatures] = {}
-        try:
-            features_list = await FocusService._get_audio_features_batch(access_token, track_ids)
-        except AudioFeaturesUnavailableError:
-            return {
-                "profile": profile,
-                "total_tracks": len(tracks_meta),
-                "focus_tracks": 0,
-                "rejected_tracks": 0,
-                "tracks": [],
-                "rejected": [],
-                "audio_features_available": False,
-                "warning": _AUDIO_FEATURES_UNAVAILABLE_MESSAGE,
-            }
-        for af in features_list:
-            features_map[af.track_id] = af
+        features_map = await _resolve_provider(provider).get_features_bulk(track_ids)
 
-        # Build enriched, filtered results
         matched: list[dict] = []
         rejected: list[dict] = []
-
+        no_data: list[dict] = []
         for meta in tracks_meta:
             af = features_map.get(meta["id"])
             if af is None:
+                no_data.append({**meta, "has_features": False})
                 continue
             entry = {
                 **meta,
                 **af.to_dict(),
+                "has_features": True,
                 "focus_score": af.focus_score(profile),
                 "matches_profile": af.matches_profile(profile),
             }
-            if af.matches_profile(profile):
-                matched.append(entry)
-            else:
-                rejected.append(entry)
+            (matched if af.matches_profile(profile) else rejected).append(entry)
 
         matched.sort(key=lambda x: x["focus_score"], reverse=True)
 
         return {
             "profile": profile,
             "total_tracks": len(tracks_meta),
-            "focus_tracks": len(matched),
+            "features_total": len(track_ids),
+            "features_covered": len(track_ids) - len(no_data),
+            "focus_tracks": matched,
+            "focus_tracks_count": len(matched),
+            "rejected": rejected[:10],
             "rejected_tracks": len(rejected),
-            "tracks": matched,
-            "rejected": rejected[:10],  # first 10 rejected so UI can explain why
+            "no_data_tracks": no_data[:10],
+            "no_data_count": len(no_data),
             "audio_features_available": True,
+            "source": "reccobeats",
         }
 
     # ---------------------------------------------------------------------------
@@ -396,10 +334,11 @@ class FocusService:
         time_range: str = "medium_term",  # short_term | medium_term | long_term
         limit: int = 50,
         profile: dict | None = None,
+        provider: "AudioFeatureProvider | None" = None,
     ) -> dict:
         """
-        Fetch user's top tracks and analyse which ones match their focus profile.
-        Useful for building a personal understanding of what works for them.
+        Fetch the user's top tracks and analyse which match their focus profile.
+        Tracks ReccoBeats has no features for are returned in `no_data_tracks`.
         """
         if profile is None:
             profile = FocusProfile.load()
@@ -427,41 +366,31 @@ class FocusService:
                     "popularity": t.get("popularity") or 0,
                 }
 
-        try:
-            features_list = await FocusService._get_audio_features_batch(access_token, track_ids)
-        except AudioFeaturesUnavailableError:
-            return {
-                "profile": profile,
-                "time_range": time_range,
-                "total_top_tracks": len(track_ids),
-                "focus_tracks_count": 0,
-                "focus_tracks": [],
-                "top_tracks": [meta_map[tid] for tid in track_ids if tid in meta_map],
-                "bpm_insight": None,
-                "audio_features_available": False,
-                "warning": _AUDIO_FEATURES_UNAVAILABLE_MESSAGE,
-            }
-        features_map = {af.track_id: af for af in features_list}
+        features_map = await _resolve_provider(provider).get_features_bulk(track_ids)
 
         focus_tracks = []
-        non_focus = []
+        no_data_tracks = []
         bpm_distribution: list[float] = []
-
         for tid in track_ids:
             meta = meta_map.get(tid, {})
             af = features_map.get(tid)
             if af is None:
+                no_data_tracks.append({**meta, "has_features": False})
                 continue
             bpm_distribution.append(af.tempo)
-            entry = {**meta, **af.to_dict(), "focus_score": af.focus_score(profile), "matches_profile": af.matches_profile(profile)}
+            entry = {
+                **meta,
+                **af.to_dict(),
+                "has_features": True,
+                "focus_score": af.focus_score(profile),
+                "matches_profile": af.matches_profile(profile),
+            }
             if af.matches_profile(profile):
                 focus_tracks.append(entry)
-            else:
-                non_focus.append(entry)
 
         focus_tracks.sort(key=lambda x: x["focus_score"], reverse=True)
 
-        # Simple insight: what BPM range are most of their top tracks in?
+        # Insight: what BPM range are most of their (covered) top tracks in?
         bpm_insight = None
         if bpm_distribution:
             avg_bpm = sum(bpm_distribution) / len(bpm_distribution)
@@ -476,10 +405,15 @@ class FocusService:
             "profile": profile,
             "time_range": time_range,
             "total_top_tracks": len(track_ids),
+            "features_total": len(track_ids),
+            "features_covered": len(track_ids) - len(no_data_tracks),
             "focus_tracks_count": len(focus_tracks),
             "focus_tracks": focus_tracks[:20],
+            "no_data_tracks": no_data_tracks[:20],
+            "no_data_count": len(no_data_tracks),
             "bpm_insight": bpm_insight,
             "audio_features_available": True,
+            "source": "reccobeats",
         }
 
 
@@ -493,8 +427,3 @@ def _bpm_suggestion(avg_bpm: float) -> str:
     if avg_bpm > 140:
         return "Your listening skews fast — a 90–130 BPM focus window may feel more natural than the default."
     return "Your average listening BPM fits well within a standard focus range."
-
-
-def _is_audio_features_unavailable_error(exc: SpotifyImportError) -> bool:
-    message = str(exc)
-    return "/audio-features" in message and "failed with 403" in message

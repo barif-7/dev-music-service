@@ -54,6 +54,7 @@ from services.beta_auth_service import (
     verify_session,
 )
 from services.focus_service import FocusProfile, FocusService
+from services.reccobeats_service import get_audio_feature_provider
 from services.import_preview_service import ImportPreviewError, ImportPreviewService
 from services.local_playback_service import LocalPlaybackService
 from services.metadata_service import MetadataService, MetadataServiceError
@@ -107,6 +108,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     try:
         MetadataService._get_mb_client()
         SpotifyImportService._get_http_client()
+        get_audio_feature_provider().client()
         if SpotifyImportService._client_credentials_configured():
             await SpotifyImportService.get_client_credentials_token()
     except Exception as exc:
@@ -124,6 +126,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await sp.aclose()
     if _phase_field_client and not _phase_field_client.is_closed:
         await _phase_field_client.aclose()
+    await get_audio_feature_provider().aclose()
 
 
 app = FastAPI(
@@ -724,14 +727,14 @@ async def get_audio_features(
 ):
     """Return canonical track priors while leaving live motion to Web Audio.
 
-    Spotify's legacy audio-features endpoint is used only when the caller has a
-    Spotify track id and an authenticated Spotify session.  Every other case is
-    a successful neutral response so shader playback never blocks on metadata.
+    ReccoBeats supplies audio features when the caller has a Spotify track id
+    and an authenticated Spotify session. Every other case is a successful
+    neutral response so shader playback never blocks on metadata.
     """
     if spotify_id:
         try:
-            token = SpotifyImportService._access_token(request)
-            features = await FocusService.get_track_features(token, spotify_id)
+            SpotifyImportService._access_token(request)
+            features = await FocusService.get_track_features(spotify_id)
             if features is not None:
                 return JSONResponse(
                     content=LyricVisualService.provider_audio_features(
@@ -747,7 +750,7 @@ async def get_audio_features(
             title=title,
             artist=artist,
             duration_ms=duration_ms,
-            reason="missing_spotify_id" if not spotify_id else "spotify_features_unavailable",
+            reason="missing_spotify_id" if not spotify_id else "reccobeats_features_unavailable",
         ),
         headers={"Cache-Control": "private, max-age=300"},
     )
@@ -1342,9 +1345,9 @@ async def focus_track_features(track_id: str, request: Request):
     Return audio features + focus score for a single Spotify track ID.
     """
     try:
-        token = SpotifyImportService._access_token(request)
+        SpotifyImportService._access_token(request)  # require an authed session
         profile = FocusProfile.load(request_user(request))
-        af = await FocusService.get_track_features(token, track_id)
+        af = await FocusService.get_track_features(track_id)
         if af is None:
             raise HTTPException(status_code=404, detail="Audio features not available for this track")
         return {**af.to_dict(), "focus_score": af.focus_score(profile), "matches_profile": af.matches_profile(profile)}
