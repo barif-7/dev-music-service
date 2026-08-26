@@ -217,24 +217,25 @@ ID+secret are valid, and `GET /api/import/spotify/start` should 307 to
 
 ## Hosting over Tailscale Funnel
 
-The local service is exposed publicly over HTTPS with Tailscale Funnel on port
-**8443**, leaving any existing funnel on 443 untouched.
+The production backend runs on the Phase Mac mini and is exposed publicly over
+HTTPS with Tailscale Funnel on port **8443**, leaving its existing funnel on
+443 untouched.
 
 ```bash
-# Expose 127.0.0.1:8000 on the funnel at :8443 (background)
-tailscale funnel --bg --yes --https=8443 8000
+# Production: expose 127.0.0.1:8010 on the funnel at :8443 (background)
+tailscale funnel --bg --yes --https=8443 http://127.0.0.1:8010
 
 tailscale funnel status      # inspect
 tailscale funnel --https=8443 off   # stop
 ```
 
-Public URL: `https://basils-macbook-pro.tail4752f5.ts.net:8443`
+Public URL: `https://phase.tail4752f5.ts.net:8443`
 (Funnel ports are limited to 443, 8443, 10000.)
 
 For Spotify login over the funnel, set and register:
 
 ```dotenv
-SPOTIFY_REDIRECT_URI=https://basils-macbook-pro.tail4752f5.ts.net:8443/api/import/spotify/callback
+SPOTIFY_REDIRECT_URI=https://phase.tail4752f5.ts.net:8443/api/import/spotify/callback
 ```
 
 `config.py` re-reads `.env` per request, so a redirect-URI change is picked up
