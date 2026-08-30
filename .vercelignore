@@ -1,0 +1,4 @@
+# The FastAPI backend is deployed to the Mac mini.  Keeping the legacy
+# compatibility entrypoint out of Vercel prevents it from being auto-detected
+# and built as an unused Python serverless function.
+api/

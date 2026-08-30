@@ -29,9 +29,9 @@
     };
   }
 
-  /* Cheap signal for "the lyric scene changed". Localized text streams in a
-     line at a time, so the count of localized lines is part of it. Replaces
-     serializing the whole snapshot every tick just to compare it. */
+  /* Cheap signal for callers that do not already know a player event changed
+     the scene. Player events pass force=true, so an in-place lyric edit is
+     still published even when the line/localization counts stay the same. */
   function sceneSignature(){
     const source = Array.isArray(player?.lyrics) ? player.lyrics : [];
     let localized = 0;
@@ -46,9 +46,9 @@
     ].join('|');
   }
 
-  function syncLines(){
+  function syncLines(force=false){
     const next = sceneSignature();
-    if(next === signature) return;
+    if(!force && next === signature) return;
     signature = next;
     lines = LyricScene.lines(player?.lyrics);
     analysedIndex = -2;
@@ -163,9 +163,17 @@
     },
   });
 
-  /* The frame pump is rAF-driven; only the O(n) staleness check is throttled. */
-  window.setInterval(syncLines, 250);
+  /* Discrete track and lyric changes now invalidate the scene at their source.
+     Continuous time/audio values remain on the shared rAF frame channel. */
+  const unsubscribePlayer = player.subscribe(event=>{
+    if(['track', 'lyrics', 'source', 'transport'].includes(event.type)) syncLines(true);
+    plugin.publish(`player:${event.type}`, {
+      revision:event.revision,
+      ...event.detail,
+    });
+  });
   ReaderPreferences.subscribe(()=>plugin.invalidate());
   if(typeof Wallpaper !== 'undefined') Wallpaper.subscribe(()=>plugin.invalidate());
-  syncLines();
+  window.addEventListener('pagehide', unsubscribePlayer, { once:true });
+  syncLines(true);
 })();

@@ -5,8 +5,9 @@
 - `security.py`: stream URL allowlisting and control-route token checks.
 - `static/index.html` + `static/gallery/`: the browser UI, served as static
   assets. No build step — modules are plain scripts loaded by the page.
-- `static/gallery/base44-plugin.js`: host runtime that embeds a Base44 export
-  as a plugin — scene in, packed uniform frames in, named intents out.
+- `static/gallery/base44-plugin.js`: shared real-time host runtime for embedded
+  exports — scene snapshots and packed frames in, named events and intents in
+  either direction, with optional request results.
   `docs/base44-plugin-pipeline.md` is the full contract, with diagrams.
 - `static/gallery/plugin-dock.js`: shared placement for every floating panel,
   laid out as a horizontal stack that divides its width between them.

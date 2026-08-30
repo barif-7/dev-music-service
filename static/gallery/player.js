@@ -65,8 +65,15 @@ class AudioPlayer {
     this.progress = 0;
     this.accent = [1, 1, 1];
     this.externalTransport = null;
+    this.revision = 0;
+    this._subscribers = new Set();
     this.media.loop = false;
-    this.media.addEventListener('ended', ()=>this.rules.dispatch('ended', this));
+    this.media.addEventListener('play', ()=>this.notify('playback', { playing:true }));
+    this.media.addEventListener('pause', ()=>this.notify('playback', { playing:false }));
+    this.media.addEventListener('ended', ()=>{
+      this.notify('playback', { playing:false, ended:true });
+      this.rules.dispatch('ended', this);
+    });
   }
 
   get hasSource() {
@@ -91,23 +98,45 @@ class AudioPlayer {
     return this.media.duration || this.duration || 0;
   }
 
+  /* Discrete player state is observable so plugin scenes can update at the
+     moment track/lyric data changes. Continuous playback values still travel
+     through the shared animation-frame channel. */
+  subscribe(fn) {
+    if(typeof fn !== 'function') return ()=>{};
+    this._subscribers.add(fn);
+    return ()=>this._subscribers.delete(fn);
+  }
+
+  notify(type, detail = {}) {
+    const event = { type, detail, revision:++this.revision };
+    for(const fn of this._subscribers){
+      try{ fn(event); }catch(error){ console.warn('AudioPlayer subscriber', error); }
+    }
+    window.dispatchEvent(new CustomEvent('phase:player', { detail:event }));
+    return event;
+  }
+
   setExternalTransport(transport = null) {
     this.externalTransport = transport;
+    this.notify('transport', { active:Boolean(transport) });
     return transport;
   }
 
   setTrack(track) {
     this.current = track;
+    this.notify('track', { track });
     return this.current;
   }
 
   updateCurrent(patch) {
     this.current = { ...(this.current || {}), ...patch };
+    this.notify('track', { track:this.current, patch });
     return this.current;
   }
 
   setLyrics(lines = []) {
     this.lyrics = lines;
+    this.notify('lyrics', { count:lines.length });
   }
 
   loadSource(url, { webpageUrl = null, duration = 0 } = {}) {
@@ -115,12 +144,15 @@ class AudioPlayer {
     this.duration = duration || 0;
     this.progress = 0;
     this.media.src = url;
+    this.notify('source', { url, webpageUrl, duration:this.duration });
     this.rules.dispatch('source-loaded', this);
   }
 
   play() {
     if(this.externalTransport?.isActive){
-      return Promise.resolve(this.externalTransport.play());
+      const result = Promise.resolve(this.externalTransport.play());
+      this.notify('playback', { playing:true, external:true });
+      return result;
     }
     if(!this.hasSource) return Promise.resolve();
     const result = this.media.play();
@@ -130,6 +162,7 @@ class AudioPlayer {
   pause() {
     if(this.externalTransport?.isActive){
       this.externalTransport.pause();
+      this.notify('playback', { playing:false, external:true });
       return;
     }
     this.media.pause();
@@ -150,6 +183,7 @@ class AudioPlayer {
     if(this.externalTransport?.isActive)this.externalTransport.seekTo(target);
     else this.media.currentTime = target;
     this.updateProgress();
+    this.notify('seek', { time:target });
   }
 
   seekToRatio(ratio) {

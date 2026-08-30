@@ -500,7 +500,10 @@ function ensureTranscript(meta, token){
     let data;
     try{ data = JSON.parse(event.data); }catch(e){ return; }
     const line = player.lyrics.find(item=>item.i === Number(data.segment_id));
-    if(line && data.text) line.localized = data.text;
+    if(line && data.text){
+      line.localized = data.text;
+      player.notify('lyrics', { reason:'translation', index:line.i });
+    }
   });
 
   source.addEventListener('complete', ()=>{
@@ -527,6 +530,7 @@ function setLyricLocale(locale){
   if(typeof stopTranslatedVocals === 'function') stopTranslatedVocals({ clear:true });
   // Drop any already-fetched localizations so the new locale is requested fresh.
   player.lyrics.forEach(l=>{ l.localized = ''; });
+  player.notify('lyrics', { reason:'locale', locale:lyricLocale });
   pendingLocalize.clear();
   return loadLyrics();
 }
@@ -579,10 +583,12 @@ async function localizeAhead(elapsedMs){
     if(!r.ok) return;
     const data = await r.json();
     const map = data.localized || {};
+    let changed = false;
     player.lyrics.forEach(line=>{
       const t = map[String(line.i)];
-      if(t) line.localized = t;
+      if(t && line.localized !== t){ line.localized = t; changed = true; }
     });
+    if(changed) player.notify('lyrics', { reason:'localize-window', locale:lyricLocale });
   }catch(e){ /* leave originals showing */ }
   finally{
     items.forEach(it=> pendingLocalize.delete(it.index));
