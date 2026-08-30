@@ -7,7 +7,9 @@ serverless function.
 
 Earlier revisions of this file described deploying FastAPI itself to Vercel via
 `app.py` / `api/index.py`. That is no longer how this project deploys. Those two
-files are still in the tree but are unused by this project.
+files are still in the tree but are unused by this project; `.vercelignore`
+excludes `api/` so Vercel does not auto-detect and build the legacy Python
+function.
 
 ## How it fits together
 
