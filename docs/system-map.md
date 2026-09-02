@@ -45,3 +45,5 @@
   resolution behind both import paths.
 - `services/beta_auth_service.py`: invite-code sessions for the private beta.
 - `mcp-server/`: TypeScript MCP wrapper around the FastAPI backend.
+- Native clients (macOS, iOS, iPad) are not in this repo. They live in
+  `barif-7/dev-music-clients` and talk to this backend over HTTP.
