@@ -25,13 +25,14 @@ const here = dirname(fileURLToPath(import.meta.url));
 const staticDir = join(resolve(here, ".."), "static");
 
 // Vendored Base44 surfaces. A surface not listed here is simply skipped.
-const SURFACES = ["canvas", "clock", "lyrics-shader-lab"];
+const SURFACES = ["canvas", "clock", "lyrics-shader-lab", "semi"];
 
 // Titles Base44 emits when the app was never renamed in their editor.
 const PLACEHOLDER_TITLES = new Set(["Base44 APP", "Vite + React", "React App"]);
 
 const TITLES = {
   canvas: "Canvas Editor · Phase",
+  semi: "Pika Voice Profile · Semi",
 };
 
 function sanitize(name) {

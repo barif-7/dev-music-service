@@ -138,7 +138,51 @@
     opacity:0;pointer-events:none;translate:14px 0;
     transition:right .34s var(--ease),width .34s var(--ease),opacity .26s var(--ease),translate .34s var(--ease)}
   .dock-panel[hidden]{display:none!important}
+  #pikaVoiceProfileBtn[hidden]{display:none!important}
   .dock-panel.open{opacity:1;pointer-events:auto;translate:0 0}
+  /* An overlay panel leaves the row and takes the whole stage: full-bleed
+     frosted glass, with the writing centred on it. The shader field is not
+     covered — the glass is thin enough that it keeps running underneath.
+
+     It emerges rather than arrives. A dock card slides in from the right, which
+     is right for something that docks; this is a mode the whole stage enters,
+     so it fades up in place while the blur ramps from nothing to full, and the
+     field appears to condense into glass. Deliberately no slide and no shadow:
+     both would read as an object moving over the stage rather than the stage
+     itself changing state.
+
+     inset alone here: the base rule's right/width/height are all overridden by
+     it, and re-stating right:auto would undo the right edge it just set.
+
+     The tool cluster (#topR, z-index 42) stays above it, or opening the overlay
+     would bury its own toggle. */
+  .dock-panel.dock-overlay{
+    inset:0;width:auto;height:auto;
+    border:0;border-radius:0;box-shadow:none;
+    background:rgba(15,16,22,.55);
+    backdrop-filter:blur(28px) saturate(1.5);
+    -webkit-backdrop-filter:blur(28px) saturate(1.5);
+    translate:0 0;scale:1.015;
+    /* Not --ease. That curve is cubic-bezier(.55,0,.1,1), shaped for a panel
+       sliding into place: it front-loads so hard that opacity goes .02 -> .99
+       in 90ms, which snaps rather than emerges. This one ramps evenly, and the
+       glass keeps thickening for a beat after the text has arrived. */
+    transition:opacity .6s cubic-bezier(.32,.08,.24,1),
+               scale .78s cubic-bezier(.32,.08,.24,1),
+               backdrop-filter .78s cubic-bezier(.32,.08,.24,1),
+               -webkit-backdrop-filter .78s cubic-bezier(.32,.08,.24,1)}
+  /* Closed, there is no glass at all — so opening ramps the blur up from clear
+     rather than cross-fading one frosted state into another. */
+  .dock-panel.dock-overlay:not(.open){
+    backdrop-filter:blur(0px) saturate(1);
+    -webkit-backdrop-filter:blur(0px) saturate(1)}
+  .dock-panel.dock-overlay.open{translate:0 0;scale:1}
+  /* Thin lit edge along the top, so the layer reads as having come up over the
+     stage rather than the stage simply having dimmed. */
+  .dock-panel.dock-overlay::before{
+    content:'';position:absolute;left:0;right:0;top:0;height:1px;z-index:1;
+    pointer-events:none;
+    background:linear-gradient(90deg,transparent,rgba(244,244,242,.3),transparent)}
   .dock-panel > iframe{flex:1;width:100%;min-height:0;border:0;background:transparent}
   /* A panel that used to be a modal keeps its old full-viewport wrapper in the
      DOM. Neutralise it so the card inside can dock, and drop the scrim — a
@@ -1121,7 +1165,7 @@
       </div>
     </div>
     <section id="lyricReader" aria-label="Live read-along lyrics">
-      <iframe id="lyricsShaderReaderFrame" src="/lyrics-shader-lab?surface=reader" title="Shader Lab synchronized lyrics" loading="eager" allowtransparency="true" style="background:transparent"></iframe>
+      <iframe id="lyricsShaderReaderFrame" src="/lyrics-shader-lab?surface=reader&amp;v=20260830-wordglow1" title="Shader Lab synchronized lyrics" loading="eager" allowtransparency="true" style="background:transparent"></iframe>
       <div id="lyricStack" data-mode="single">
         <div class="lyric-stack-item">
           <div class="lyric-stack-label">Original</div>
@@ -1137,8 +1181,17 @@
 
   <!-- Canvas editor surface, mounted as a Base44 plugin. Hidden until toggled. -->
   <aside id="canvasEditor" class="dock-panel" data-dock-id="notes" aria-label="Notes editor" aria-hidden="true">
-    <iframe id="canvasEditorFrame" src="/canvas?surface=editor" title="Notes editor"
+    <iframe id="canvasEditorFrame" src="/canvas?surface=editor&amp;chrome=overlay" title="Notes editor"
             loading="lazy" allowtransparency="true" style="background:transparent"></iframe>
+  </aside>
+
+  <!-- Disabled by default. semi-plugin.js only admits this panel to the dock
+       when the backend reports PIKA_VOICE_PROFILE_ENABLED=true. -->
+  <aside id="pikaVoiceProfilePanel" class="dock-panel" data-dock-id="pika-voice-profile"
+         aria-label="Pika voice profile — under development" aria-hidden="true" hidden>
+    <iframe id="pikaVoiceProfileFrame" data-src="/semi?surface=voice-profile"
+            title="Pika voice profile — under development" loading="lazy"
+            allowtransparency="true" style="background:transparent"></iframe>
   </aside>
 
   <!-- ambient FFT spectrum (bottom edge, flanks the player) -->
@@ -1181,7 +1234,8 @@
       </div></div>
     <div class="eqRow"><span class="eqLbl" id="eqColorLabel">Color</span>
       <div class="eqChips" data-key="palette" role="group" aria-labelledby="eqColorLabel">
-        <button type="button" class="eqChip on" data-v="lime" aria-pressed="true"><i style="background:#d7ff3a"></i>Lime</button>
+        <button type="button" class="eqChip on" data-v="shader" aria-pressed="true"><i id="eqShaderSwatch" style="background:linear-gradient(135deg,#10141a,#1d2c35,#7aa091,#f48d68,#1a2227)"></i>Shader</button>
+        <button type="button" class="eqChip" data-v="lime" aria-pressed="false"><i style="background:#d7ff3a"></i>Lime</button>
         <button type="button" class="eqChip" data-v="ice" aria-pressed="false"><i style="background:#7ad9ff"></i>Ice</button>
         <button type="button" class="eqChip" data-v="magma" aria-pressed="false"><i style="background:#ff6a3d"></i>Magma</button>
         <button type="button" class="eqChip" data-v="mono" aria-pressed="false"><i style="background:#f4f4f5"></i>Mono</button>
@@ -1284,6 +1338,12 @@
     </button>
     <button id="translatedVocalsBtn" type="button" class="tool" aria-label="Toggle neutral translated vocals" data-label="Translated vocals" aria-pressed="false">
       <svg viewBox="0 0 24 24"><path d="M4 14v-4M8 17V7M12 20V4M16 17V7M20 14v-4"/></svg>
+    </button>
+    <button id="pikaVoiceProfileBtn" type="button" class="tool"
+            aria-label="Pika voice profile — under development"
+            data-label="Voice profile · under development" aria-pressed="false"
+            aria-expanded="false" aria-controls="pikaVoiceProfilePanel" hidden>
+      <svg viewBox="0 0 24 24"><path d="M12 3a4 4 0 0 0-4 4v5a4 4 0 0 0 8 0V7a4 4 0 0 0-4-4z"/><path d="M5 11v1a7 7 0 0 0 14 0v-1M12 19v2M9 21h6"/></svg>
     </button>
     <button id="clockOpenBtn" type="button" class="tool" aria-label="Toggle solar clock" data-label="Clock" aria-expanded="false">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>
@@ -1428,7 +1488,7 @@
     <div id="gridHead">
       <div>
         <div class="gh-title" id="gridTitle">Shaders</div>
-        <div class="gh-sub" id="shaderApiStatus" role="status" aria-live="polite">30 living shaders · checking API…</div>
+        <div class="gh-sub" id="shaderApiStatus" role="status" aria-live="polite">34 living shaders · checking API…</div>
       </div>
       <div class="gh-actions">
         <button type="button" class="tool over-grid" id="btnClose" aria-label="Close" title="Close  Esc">
@@ -1581,8 +1641,8 @@
 
 </div>
 
-<script src="/static/gallery/shaders.js?v=20260812-agents3"></script>
-<script src="/static/gallery/data.js?v=20260814-a11y1"></script>
+<script src="/static/gallery/shaders.js?v=20260830-tame2"></script>
+<script src="/static/gallery/data.js?v=20260830-tame2"></script>
 <script src="/static/gallery/reactivity.js"></script>
 <script src="/static/gallery/motion-safety.js?v=20260814-a11y1"></script>
 <script src="/static/gallery/mapper.js?v=20260812-agents2"></script>
@@ -1594,7 +1654,7 @@
 <script async src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1"></script>
 <script src="/static/gallery/plugin-dock.js?v=20260814-dock1"></script>
 <script src="/static/gallery/app.js?v=20260812-api2"></script>
-<script src="/static/gallery/eq.js?v=20260806-spectrum2"></script>
+<script src="/static/gallery/eq.js?v=20260830-shaderpalette1"></script>
 <script src="/static/gallery/spotify.js"></script>
 <script src="/static/gallery/focus.js"></script>
 <script src="/static/gallery/search.js"></script>
@@ -1605,6 +1665,7 @@
 <script src="/static/gallery/base44-plugin.js?v=20260814-plugin1"></script>
 <script src="/static/gallery/lyrics-shader-reader.js?v=20260814-plugin1"></script>
 <script src="/static/gallery/canvas-plugin.js?v=20260814-dock1"></script>
+<script src="/static/gallery/semi-plugin.js?v=20260902-under-development1"></script>
 <script src="/static/gallery/apple-music.js"></script>
 <script src="/static/gallery/share.js?v=20260812-language1"></script>
 </body>

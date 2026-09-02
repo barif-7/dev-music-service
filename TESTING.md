@@ -23,6 +23,37 @@ tests/
 └── test_rate_limiting.py # Rate limiting and validation tests
 ```
 
+## Frontend design audit
+
+`pytest` covers the frontend's *wiring* — that a surface is framed, registered
+and served with the right headers. It deliberately does **not** assert CSS
+values against the stylesheet: that broke on every intentional design change
+while missing the bugs that mattered, because `inset:0` followed by `right:auto`
+reads fine as text and renders a 300px-wide "full-viewport" panel.
+
+How it actually renders is measured in a real browser:
+
+```bash
+npm run audit:design
+```
+
+It boots the app on a free port, opens the notes overlay, and asserts computed
+style and measured geometry — the pane is inset rather than full-bleed, the
+glass is thin enough to let the field through, the overlay takes no slot in the
+dock row and survives a narrow-viewport evict, the surface adds no second
+backdrop, and a `/component` embed sizes itself from the vault's reported height
+while staying sandboxed.
+
+Not wired into CI: it needs a browser and a booted app, and a flaky render
+should not block a merge. Run it when the design changes.
+
+- `DESIGN_AUDIT_URL` — audit an already-running app instead of booting one.
+- `DESIGN_AUDIT_CHROMIUM` — path to a Chromium binary, if discovery fails.
+
+It needs a Chromium that `playwright-core` can drive; `npx playwright install
+chromium` provides one. The Component Vault checks skip cleanly when the vault
+is not running.
+
 ## Running Tests
 
 ### All Tests

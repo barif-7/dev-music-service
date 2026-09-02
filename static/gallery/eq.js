@@ -2,7 +2,7 @@
 const SPECTRUM_DEFAULTS = Object.freeze({
   style:'bars',
   bands:48,
-  palette:'lime',
+  palette:'shader',
   scale:'linear',
   frequency:'log',
   direction:'forward',
@@ -29,6 +29,8 @@ const EQ = {
     violet:{base:'rgba(178,132,255,0.12)', mid:'rgba(178,132,255,0.58)', hot:'rgba(255,245,255,0.96)', peak:'rgba(255,245,255,0.84)', sw:'#b284ff'},
     aurora:{base:'rgba(72,220,166,0.12)',  mid:'rgba(72,220,166,0.54)',  hot:'rgba(146,218,255,0.96)', peak:'rgba(236,255,248,0.86)', sw:'#48dca6'},
   },
+  wallpaperTheme:null,
+  wallpaperId:'',
   responseMap: {
     calm: { attack:0.38, release:0.08, peakFall:0.004 },
     balanced: { attack:0.65, release:0.14, peakFall:0.008 },
@@ -41,7 +43,7 @@ const EQ = {
   choices: {
     style:['bars','mirror','wave','dots','ribbon','skyline','needles','prism','halo'],
     bands:[16,32,48,72,96],
-    palette:['lime','ice','magma','mono','violet','aurora'],
+    palette:['shader','lime','ice','magma','mono','violet','aurora'],
     scale:['linear','log'],
     frequency:['log','linear'],
     direction:['forward','reverse'],
@@ -56,6 +58,9 @@ const EQ = {
     let saved=null;
     try{ saved=JSON.parse(localStorage.getItem(this.storageKey)||'null'); }catch(_error){ saved=null; }
     if(!saved || typeof saved!=='object') return;
+    // v1 had no wallpaper-following mode, so its default "lime" should not
+    // prevent the new dynamic theme from taking effect for existing users.
+    if(saved.themeVersion!==2) saved.palette='shader';
     Object.entries(this.choices).forEach(([key, values])=>{
       if(values.includes(saved[key])) this.opts[key]=saved[key];
     });
@@ -63,7 +68,7 @@ const EQ = {
     this.setBands(this.opts.bands);
   },
   save(){
-    try{ localStorage.setItem(this.storageKey, JSON.stringify(this.opts)); }catch(_error){ /* preferences are optional */ }
+    try{ localStorage.setItem(this.storageKey, JSON.stringify({...this.opts,themeVersion:2})); }catch(_error){ /* preferences are optional */ }
   },
   reset(){
     this.opts={...SPECTRUM_DEFAULTS};
@@ -86,6 +91,46 @@ const EQ = {
       return;
     }
     ctx.fillRect(x, y, width, height);
+  },
+  parseHex(value, fallback=[244,244,245]){
+    const match=/^#([0-9a-f]{6})$/i.exec(String(value||''));
+    if(!match) return fallback.slice();
+    const numeric=Number.parseInt(match[1],16);
+    return [(numeric>>16)&255,(numeric>>8)&255,numeric&255];
+  },
+  rgba(rgb, alpha){ return `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${alpha})`; },
+  luminance(rgb){ return rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722; },
+  themeFromWallpaper(wallpaper){
+    const source=Array.isArray(wallpaper?.palette) ? wallpaper.palette.slice(0,5) : [];
+    const colors=source.map(value=>this.parseHex(value));
+    while(colors.length<5) colors.push((colors[colors.length-1]||[122,217,255]).slice());
+    const brightest=colors.reduce((best,color)=>this.luminance(color)>this.luminance(best)?color:best,colors[0]);
+    const base=colors[1]||colors[0], mid=colors[2]||brightest, hot=colors[3]||brightest;
+    return {
+      base:this.rgba(base,.16),
+      mid:this.rgba(mid,.68),
+      hot:this.rgba(hot,.98),
+      peak:this.rgba(brightest,.94),
+      sw:`linear-gradient(135deg,${source.filter(Boolean).join(',')})`,
+      colors:source,
+    };
+  },
+  currentPalette(){
+    if(this.opts.palette==='shader') return this.wallpaperTheme||this.pal.aurora;
+    return this.pal[this.opts.palette]||this.pal.lime;
+  },
+  setWallpaper(_index, wallpaper){
+    if(!wallpaper) return;
+    this.wallpaperId=String(wallpaper.id||'');
+    this.wallpaperTheme=this.themeFromWallpaper(wallpaper);
+    const canvas=document.getElementById('eqCanvas');
+    if(canvas){
+      canvas.dataset.paletteMode=this.opts.palette;
+      canvas.dataset.shaderPalette=this.wallpaperId;
+      canvas.style.setProperty('--spectrum-theme',this.wallpaperTheme.colors.join(','));
+    }
+    const swatch=document.getElementById('eqShaderSwatch');
+    if(swatch) swatch.style.background=this.wallpaperTheme.sw;
   },
 
   update(){
@@ -124,7 +169,9 @@ const EQ = {
     const w=Math.round(canvas.clientWidth*dpr), h=Math.round(canvas.clientHeight*dpr);
     if(canvas.width!==w||canvas.height!==h){ canvas.width=w; canvas.height=h; }
     ctx.clearRect(0,0,w,h);
-    const c=this.pal[o.palette]||this.pal.lime, n=this.levels.length, style=o.style, showPeaks=o.peaks;
+    const c=this.currentPalette(), n=this.levels.length, style=o.style, showPeaks=o.peaks;
+    canvas.dataset.paletteMode=o.palette;
+    canvas.dataset.shaderPalette=this.wallpaperId;
     const lv=this.levels, pk=this.peaks, shp=v=>this.shape(v);
     const requestedGap=Math.max(1*dpr, w*(this.spacingMap[o.spacing] || this.spacingMap.normal));
     const maxGap=Math.max(0,(w-n*dpr)/Math.max(1,n-1));
@@ -237,6 +284,10 @@ const EQ = {
   wire(){
     const root=document.getElementById('eqControls'); if(!root) return;
     this.load();
+    if(typeof Wallpaper==='object' && typeof ALTS!=='undefined'){
+      this.setWallpaper(Wallpaper.index,ALTS[Wallpaper.index]||ALTS[0]);
+      Wallpaper.subscribe((index,wallpaper)=>this.setWallpaper(index,wallpaper));
+    }
     const reflect=()=> root.querySelectorAll('.eqChips').forEach(g=>{
       const key=g.dataset.key;
       g.querySelectorAll('.eqChip').forEach(chip=>{
@@ -257,6 +308,10 @@ const EQ = {
       else if(key==='glow')  this.opts.glow=!this.opts.glow;
       else if(key==='bands'){ this.opts.bands=+v; this.setBands(+v); }
       else                   this.opts[key]=v;
+      if(key==='palette'){
+        const canvas=document.getElementById('eqCanvas');
+        if(canvas) canvas.dataset.paletteMode=this.opts.palette;
+      }
       this.save();
       reflect();
     });

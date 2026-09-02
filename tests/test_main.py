@@ -133,16 +133,32 @@ class TestFrontendAssets:
         assert "dataset.shaderState = 'fallback'" in engine.text
         assert "standalone ? fragSrc" in engine.text
         assert "const API_FRAGS" in shaders.text
-        assert "30 living shaders" in page.text
+        assert "34 living shaders" in page.text
         assert "uniform float iFlux" in shaders.text
         assert "uniform float iCentroid" in shaders.text
-        for shader_id in ("codex", "qwen", "grok", "base44", "replit"):
-            assert f"{shader_id}: `" in shaders.text
+        for shader_id in (
+            "codex",
+            "qwen",
+            "grok",
+            "base44",
+            "replit",
+            "innerspeaker",
+            "redroom-sand",
+            "currents-sphere",
+            "tame-triptych",
+        ):
+            assert (
+                f"{shader_id}: `" in shaders.text
+                or f"'{shader_id}': `" in shaders.text
+            )
             assert f"id:'{shader_id}'" in client.get("/static/gallery/data.js").text
         assert "mat2 rotG" in shaders.text
         assert "float sdSegR" in shaders.text
         assert "event horizon" in shaders.text
         assert "scrolling buffer" in client.get("/static/gallery/data.js").text
+        assert "float tameLiveDrive()" in shaders.text
+        assert "float tameTrackDrive()" in shaders.text
+        assert shaders.text.count("col=tameUniformFinish(") == 4
 
     def test_spectrum_view_controls_and_preferences_are_served(self, client: TestClient):
         """The gallery should expose the expanded, persistent spectrum controls."""
@@ -160,6 +176,12 @@ class TestFrontendAssets:
         for view in ("skyline", "needles", "prism", "halo"):
             assert f'data-v="{view}"' in page.text
             assert f"style==='{view}'" in spectrum.text
+        assert 'data-v="shader"' in page.text
+        assert 'id="eqShaderSwatch"' in page.text
+        assert "palette:'shader'" in spectrum.text
+        assert "themeFromWallpaper" in spectrum.text
+        assert "Wallpaper.subscribe" in spectrum.text
+        assert "dataset.shaderPalette" in spectrum.text
 
 
 class TestPersonalizationEndpoints:
@@ -1429,7 +1451,7 @@ class TestTranslatedVocalEndpoints:
         monkeypatch.setenv("TRANSLATED_VOCALS_VOICE_MODE", "licensed")
         monkeypatch.setenv("TRANSLATED_VOCALS_VOICE_PROFILE_ID", "licensed-voice-1")
         monkeypatch.setenv("TRANSLATED_VOCALS_VOICE_CONSENT_TOKEN", "consent-ok")
-        monkeypatch.setenv("TRANSLATED_VOCALS_VOICE_LABEL", "Licensed demo voice")
+        monkeypatch.setenv("TRANSLATED_VOCALS_VOICE_LABEL", "Private operator label")
 
         response = client.get("/api/vocals/config")
 
@@ -1437,7 +1459,8 @@ class TestTranslatedVocalEndpoints:
         data = response.json()
         assert data["backend_configured"] is True
         assert data["voice_mode"] == "licensed"
-        assert data["voice_label"] == "Licensed demo voice"
+        assert data["voice_label"] == "Shared licensed voice"
+        assert "Private operator label" not in response.text
         assert data["profile_configured"] is True
 
 

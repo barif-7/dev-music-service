@@ -22,10 +22,11 @@ export function createHostSurface() {
     /* Mutated in place every frame; identity is stable so the renderer can hold
        a reference and React never sees a new object. */
     uniforms: {},
-    frame: { time: 0, active: -1, playing: false, mood: "calm", level: 0 },
+    frame: { time: 0, tick: 0, active: -1, playing: false, mood: "calm", level: 0 },
     _keys: [],
     _sceneSubs: new Set(),
     _activeSubs: new Set(),
+    _frameTickSubs: new Set(),
   };
 
   const emit = (subs, value) => {
@@ -70,7 +71,13 @@ export function createHostSurface() {
     }
     if (data.t === "frame") {
       const previousActive = surface.frame.active;
+      const previousTick = surface.frame.tick;
       surface.frame.time = data.time || 0;
+      // Word highlighting needs a playback clock, but promoting the full 60 Hz
+      // frame stream into React would undo the bridge's allocation-free design.
+      // A 20 Hz tick is visually smooth and only has subscribers while a timed
+      // reader feature (word glow or timeline) is visible.
+      surface.frame.tick = Math.floor(surface.frame.time * 20);
       surface.frame.active = data.active ?? -1;
       surface.frame.playing = Boolean(data.playing);
       surface.frame.mood = data.mood || "calm";
@@ -78,6 +85,7 @@ export function createHostSurface() {
       if (data.u) unpack(data.u);
       // Promote to React only when the line actually changes.
       if (surface.frame.active !== previousActive) emit(surface._activeSubs, surface.frame.active);
+      if (surface.frame.tick !== previousTick) emit(surface._frameTickSubs, surface.frame.tick);
     }
   };
 
@@ -89,6 +97,7 @@ export function createHostSurface() {
   };
   surface.onScene = (fn) => { surface._sceneSubs.add(fn); return () => surface._sceneSubs.delete(fn); };
   surface.onActiveChange = (fn) => { surface._activeSubs.add(fn); return () => surface._activeSubs.delete(fn); };
+  surface.onFrameTick = (fn) => { surface._frameTickSubs.add(fn); return () => surface._frameTickSubs.delete(fn); };
   surface.start = () => {
     window.addEventListener("message", receive);
     window.parent.postMessage({ p: NS, v: PROTOCOL, t: "ready" }, window.location.origin);

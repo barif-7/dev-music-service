@@ -54,6 +54,7 @@ from services.beta_auth_service import (
     verify_session,
 )
 from services.focus_service import FocusProfile, FocusService
+from services.component_vault_service import ComponentVaultError, ComponentVaultService
 from services.reccobeats_service import get_audio_feature_provider
 from services.import_preview_service import ImportPreviewError, ImportPreviewService
 from services.local_playback_service import LocalPlaybackService
@@ -127,6 +128,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if _phase_field_client and not _phase_field_client.is_closed:
         await _phase_field_client.aclose()
     await get_audio_feature_provider().aclose()
+    if _component_vault is not None:
+        await _component_vault.aclose()
 
 
 app = FastAPI(
@@ -150,6 +153,15 @@ _PUBLIC_BETA_PATHS = {"/health", "/login", "/api/auth/login", "/api/auth/status"
 # without a session; validate_stream_url() still pins them to the upstream host
 # allowlist and rejects private addresses.
 _PUBLIC_STREAM_PATHS = {"/api/stream", "/stream", "/api/video/stream"}
+# Every surface the shell frames. A path missing from this set is served
+# X-Frame-Options: DENY and its panel comes up empty in Chrome and as a security
+# interstitial in Firefox, which is how the solar clock was broken.
+_FRAMEABLE_PATHS = {
+    "/lyrics-shader-lab",
+    "/canvas",
+    "/semi",
+    "/static/clock/index.html",
+}
 
 
 @app.middleware("http")
@@ -177,8 +189,7 @@ async def beta_auth_gate(request: Request, call_next):
     response = await call_next(request)
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("Referrer-Policy", "same-origin")
-    embeddable = request.url.path in ("/lyrics-shader-lab", "/canvas")
-    frame_policy = "SAMEORIGIN" if embeddable else "DENY"
+    frame_policy = "SAMEORIGIN" if request.url.path in _FRAMEABLE_PATHS else "DENY"
     response.headers.setdefault("X-Frame-Options", frame_policy)
     return response
 
@@ -235,6 +246,25 @@ def canvas_editor_surface():
         raise HTTPException(
             status_code=503,
             detail="Canvas editor is not built. Run: npm run build:canvas",
+        )
+    return FileResponse(index_path)
+
+
+@app.get("/semi")
+def semi_voice_profile_surface():
+    """Serve Semi's user-agnostic Pika voice-profile plugin surface.
+
+    The feature is intentionally absent unless the pre-release flag is set.
+    This keeps both direct navigation and the shell's iframe from exposing the
+    work-in-progress surface on production by accident.
+    """
+    if not get_settings().pika_voice_profile_enabled:
+        raise HTTPException(status_code=404, detail="Pika voice profile is under development")
+    index_path = STATIC_DIR / "semi" / "index.html"
+    if not index_path.is_file():
+        raise HTTPException(
+            status_code=503,
+            detail="Semi voice profile is not built. Run: npm run build:semi",
         )
     return FileResponse(index_path)
 
@@ -998,6 +1028,43 @@ async def get_shader_source(
         media_type=resp.headers.get("content-type", "text/plain"),
         headers=headers,
     )
+
+
+_component_vault: ComponentVaultService | None = None
+
+
+def _get_component_vault() -> ComponentVaultService:
+    global _component_vault
+    if _component_vault is None:
+        settings = get_settings()
+        _component_vault = ComponentVaultService(
+            mcp_url=settings.component_vault_mcp_url,
+            preview_base_url=settings.component_vault_preview_url,
+        )
+    return _component_vault
+
+
+@app.get("/api/components/search")
+@limiter.limit("30 per minute")
+async def search_components(
+    request: Request,
+    q: str = Query(min_length=1, max_length=200),
+    limit: int = Query(default=8, ge=1, le=25),
+):
+    """Search the local HistoryKit Component Vault.
+
+    The Canvas editor surface is served from this origin, so its /component
+    picker reaches the vault through here rather than talking to an MCP server
+    itself: a browser cannot speak MCP, and pointing the surface at a second
+    localhost port would make the editor's reach a property of the guest rather
+    than of its host. The vault is a developer-machine service, so an
+    unreachable one is an ordinary 503, not an error worth logging loudly.
+    """
+    try:
+        payload = await _get_component_vault().search(q.strip(), limit=limit)
+    except ComponentVaultError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return JSONResponse(content=payload, headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/stream")

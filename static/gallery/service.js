@@ -634,18 +634,9 @@ async function loadTranslatedVocalConfig(){
 
 function translatedVocalVoiceRequest(){
   const cfg = translatedVocalConfig || {};
-  const voice = {
+  return {
     voice_mode:cfg.voice_mode || 'neutral',
   };
-  try{
-    const localMode = localStorage.getItem('translatedVocalVoiceMode');
-    const localProfile = localStorage.getItem('translatedVocalVoiceProfileId');
-    const localToken = localStorage.getItem('translatedVocalVoiceConsentToken');
-    if(localMode) voice.voice_mode = localMode;
-    if(localProfile) voice.voice_profile_id = localProfile;
-    if(localToken) voice.voice_consent_token = localToken;
-  }catch(e){ /* ignore local voice overrides */ }
-  return voice;
 }
 
 function translatedVocalVoiceLabel(){

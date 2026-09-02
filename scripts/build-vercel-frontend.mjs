@@ -41,6 +41,15 @@ rmSync(outDir, { recursive: true, force: true });
 mkdirSync(outDir, { recursive: true });
 cpSync(staticDir, join(outDir, "static"), { recursive: true });
 
+// The Pika voice-profile bundle is not a production asset until its explicit
+// pre-release flag is enabled in the Vercel build environment. Keeping the
+// files out of dist means a guessed /static/semi URL cannot bypass the hidden
+// shell toggle or the backend's guarded /semi route.
+const pikaVoiceProfileEnabled = process.env.PIKA_VOICE_PROFILE_ENABLED === "true";
+if (!pikaVoiceProfileEnabled) {
+  rmSync(join(outDir, "static", "semi"), { recursive: true, force: true });
+}
+
 const indexHtml = readFileSync(join(staticDir, "index.html"), "utf8");
 const injected = indexHtml.replace(
   "</head>",
@@ -56,4 +65,7 @@ writeFileSync(join(outDir, "index.html"), injected);
 // The shell is also served at /share, which the router resolves client-side.
 writeFileSync(join(outDir, "static", "index.html"), injected);
 
-console.log(`Staged frontend into ${outDir} (backend origin: ${backendOrigin || "same-origin"})`);
+console.log(
+  `Staged frontend into ${outDir} (backend origin: ${backendOrigin || "same-origin"}; `
+    + `Pika voice profile: ${pikaVoiceProfileEnabled ? "included" : "excluded"})`,
+);

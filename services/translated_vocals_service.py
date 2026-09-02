@@ -327,6 +327,11 @@ class TranslatedVocalsService:
             and settings.translated_vocals_voice_consent_token
         )
         voice_mode = settings.translated_vocals_voice_mode
+        public_voice_label = {
+            "neutral": "Neutral voice",
+            "user_consent": "Shared consented voice",
+            "licensed": "Shared licensed voice",
+        }[voice_mode]
         local_fallback_ready = bool(
             settings.translated_vocals_local_say_fallback
             and (Path(settings.translated_vocals_say_command).exists() or shutil.which("say"))
@@ -336,12 +341,20 @@ class TranslatedVocalsService:
             )
         )
         return {
+            "pika_voice_profile": {
+                "enabled": settings.pika_voice_profile_enabled,
+                "stage": "under_development",
+                "scope": "shared",
+            },
             "backend_configured": bool(settings.pikaprojbackend_url) or local_fallback_ready,
             "pika_backend_configured": bool(settings.pikaprojbackend_url),
             "local_fallback_configured": local_fallback_ready,
             "tts_path": settings.pikaprojbackend_tts_path,
             "voice_mode": voice_mode,
-            "voice_label": settings.translated_vocals_voice_label,
+            # Never reflect an operator/profile name into the browser. The
+            # concrete profile and consent credential remain server-side and
+            # every client sees the same identity-free description.
+            "voice_label": public_voice_label,
             "local_voice": settings.translated_vocals_say_voice,
             "profile_configured": voice_mode == "neutral" or profile_ready,
             "permitted_modes": ["neutral", "user_consent", "licensed"],

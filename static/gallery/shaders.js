@@ -65,6 +65,44 @@ vec3 hueShift(vec3 c, float h){
   yiq.yz = mat2(cos_h,-sin_h,sin_h,cos_h) * yiq.yz;
   return toRGB * yiq;
 }
+
+// Shared response curve for the Tame Impala set. Keeping this in COMMON means
+// each shader consumes the exact uniform contract uploaded by Tile.draw(); the
+// helpers are only retained by GLSL when a fragment calls tameUniformFinish.
+float tameLiveDrive(){
+  return clamp(
+    iPulse*.08 + iEnergy*.09 + iIntensity*.07 + iGrain*.02 +
+    iMid*.07 + iVocal*.07 + iBass*.09 + iTreble*.07 + iSub*.06 +
+    iLowMid*.06 + iHighMid*.06 + iCentroid*.05 + iFlux*.06 +
+    iRms*.05 + iPeak*.05,
+    0.0, 1.25
+  );
+}
+float tameTrackDrive(){
+  float tempoDrive=iTempo>0.0 ? clamp(iTempo/180.0,0.0,1.0) : clamp(iBpm*.72,0.0,1.0);
+  return clamp(
+    iDance*.14 + iValence*.08 + iAcoustic*.09 + iInstrum*.10 +
+    iLive*.08 + iSpeech*.07 + iTrackEnergy*.14 + iLoud*.10 +
+    tempoDrive*.10 + iBeat*.04 + iProgress*.06,
+    0.0, 1.0
+  );
+}
+vec3 tameUniformFinish(vec3 col,vec2 p){
+  float liveDrive=tameLiveDrive();
+  float trackDrive=tameTrackDrive();
+  vec2 mouse=(iMouse-.5)*2.0;
+  mouse.x*=iResolution.x/iResolution.y;
+  float pointer=exp(-length(p-mouse)*(3.2-1.1*iWarp));
+  float clickWave=exp(-pow((length(p-mouse)-(1.0-iClick)*.82)*10.0,2.0))*iClick;
+  float motionLift=pointer*iWarp*.045+clickWave*(.08+.10*liveDrive);
+  vec3 accent=max(iAccent,vec3(.025));
+  col=mix(col,col*accent*(1.05+.18*iValence),.035+.09*trackDrive);
+  col=hueShift(col,iHue*(.06+.08*trackDrive));
+  col*=.90+.16*liveDrive+.08*trackDrive+motionLift;
+  col*=mix(.84,1.0,iPlaying);
+  col+=mix(vec3(.65,.72,.82),accent,.45)*motionLift;
+  return col;
+}
 `;
 
 // API shader sources are populated lazily by app.js. The renderer prefers a
@@ -1407,6 +1445,224 @@ void main(){
   col *= mix(0.84,1.0,iPlaying);
   col *= 0.9+0.1*smoothstep(1.7,0.3,length(p));
   col += iGrain*0.022*grain(gl_FragCoord.xy,iTime);
+  gl_FragColor=vec4(col,1.0);
+}
+`,
+  // Procedural adaptations of the supplied Tame Impala texture shaders. The
+  // originals sample album-cover textures and an iAudio[256] FFT array; these
+  // versions preserve their compositions while using Phase's live uniforms so
+  // they work offline and in every gallery tile without copyrighted bitmaps.
+  innerspeaker: `
+void main(){
+  vec2 uv=gl_FragCoord.xy/iResolution.xy;
+  vec2 p=uv*2.0-1.0;
+  p.x*=iResolution.x/iResolution.y;
+  vec2 m=(iMouse-0.5)*vec2(iResolution.x/iResolution.y,1.0);
+  float t=iTime*(0.16+0.10*iBpm);
+  float downbeat=pow(1.0-iBeat,3.0);
+
+  float horizon=-0.18+0.055*sin(p.x*2.1+t*0.35)+0.035*sin(p.x*5.7-t*0.22);
+  vec3 sky=mix(vec3(0.44,0.59,0.43),vec3(0.58,0.48,0.73),smoothstep(-0.2,1.0,p.y));
+  sky+=vec3(0.20,0.16,0.34)*(0.10+0.34*iTreble+0.20*iCentroid)*smoothstep(0.08,0.82,uv.y);
+  vec3 col=sky;
+
+  float valley=smoothstep(horizon+0.035,horizon-0.025,p.y);
+  float landNoise=fbm(vec2(p.x*2.2+t*0.08,p.y*3.1));
+  col=mix(col,mix(vec3(0.15,0.30,0.14),vec3(0.48,0.61,0.25),landNoise),valley);
+
+  // Mirrored, repeating tree columns recreate the cover's recursive woodland.
+  float bend=sin(p.y*8.0+t*2.0)*(.018+.055*iBass+.028*iMid);
+  float scale=7.0+2.0*iWarp;
+  vec2 forest=vec2((p.x+bend+m.x*.04*iWarp)*scale,p.y);
+  vec2 cell=vec2(fract(forest.x)-0.5,forest.y);
+  float treeId=floor(forest.x);
+  float seed=hash(vec2(treeId,4.7));
+  float trunkWidth=0.035+0.055*seed+0.025*iBass;
+  float trunk=smoothstep(trunkWidth,trunkWidth-0.018,abs(cell.x))
+             *smoothstep(-0.72,-0.46+0.20*seed,cell.y);
+  float crownY=-0.12+0.34*seed;
+  float crown=0.0;
+  for(int k=0;k<4;k++){
+    float fk=float(k);
+    vec2 branch=cell-vec2(sin(seed*19.0+fk*2.4)*0.10,crownY+fk*0.105);
+    crown=max(crown,smoothstep(0.20-fk*.018,0.13-fk*.016,length(branch)));
+  }
+  float echo=0.5+0.5*sin(abs(p.x)*16.0-p.y*7.0+t*1.1+iPulse*2.0);
+  vec3 bark=mix(vec3(0.10,0.17,0.08),vec3(0.29,0.36,0.14),seed);
+  vec3 leaf=mix(vec3(0.20,0.40,0.15),vec3(0.62,0.73,0.30),echo);
+  leaf=mix(leaf,iAccent,0.08+0.12*iValence);
+  col=mix(col,bark,trunk*.88);
+  col=mix(col,leaf,crown*(.62+.22*iEnergy));
+
+  float fold=exp(-abs(abs(p.x)-(0.22+0.12*sin(p.y*5.0+t)))*18.0);
+  col+=vec3(0.62,0.76,0.34)*fold*(0.04+0.13*iFlux+0.10*downbeat);
+  float sun=exp(-length(p-vec2(-.45,.38))*(4.0+2.0*iIntensity));
+  col+=vec3(0.68,0.74,0.38)*sun*(.10+.16*iVocal);
+  col=tameUniformFinish(col,p);
+  col*=.86+.14*smoothstep(1.65,.25,length(p));
+  col+=iGrain*.032*grain(gl_FragCoord.xy,iTime);
+  gl_FragColor=vec4(col,1.0);
+}
+`,
+  'redroom-sand': `
+void main(){
+  vec2 uv=gl_FragCoord.xy/iResolution.xy;
+  vec2 p=uv*2.0-1.0;
+  p.x*=iResolution.x/iResolution.y;
+  vec2 m=(iMouse-0.5)*vec2(iResolution.x/iResolution.y,1.0);
+  float t=iTime*(0.12+0.08*iBpm);
+  float downbeat=pow(1.0-iBeat,3.0);
+  vec3 col=mix(vec3(0.055,0.008,0.008),vec3(0.24,0.025,0.018),uv.y);
+
+  // Far doorway/window: the bright architectural anchor in the red room.
+  vec2 doorP=p-vec2(.40,.16);
+  float door=max(abs(doorP.x)-.19,abs(doorP.y)-.47);
+  float doorway=smoothstep(.025,-.015,door);
+  float doorEdge=exp(-abs(door)*45.0);
+  vec3 doorLight=mix(vec3(.98,.23,.06),vec3(1.0,.72,.30),uv.y+.25*iTreble);
+  col=mix(col,doorLight,doorway*(.34+.24*iBass+.16*iVocal));
+  col+=vec3(1.0,.31,.07)*doorEdge*(.12+.30*iHighMid+.24*iFlux);
+
+  // Five dune layers move at different depths, fed by bass and low mids.
+  for(int k=0;k<5;k++){
+    float fk=float(k);
+    float depth=fk/4.0;
+    float base=-.58+fk*.17;
+    float wave=sin(p.x*(2.3+fk*.72)+t*(.32+fk*.08)+fk*2.1);
+    wave+=.42*sin(p.x*(5.1+fk*.35)-t*.23+fk);
+    float ridge=base+wave*(.055+.035*iBass)+m.x*.025*iWarp;
+    float fill=smoothstep(ridge+.025,ridge-.018,p.y);
+    float lip=exp(-abs(p.y-ridge)*(48.0-4.0*fk));
+    vec3 dune=mix(vec3(.20,.025,.012),vec3(.72,.14,.045),depth);
+    dune=mix(dune,vec3(.96,.33,.09),.18*iEnergy+.12*iValence);
+    col=mix(col,dune,fill*(.48+.09*fk));
+    col+=vec3(1.0,.39,.10)*lip*(.035+.055*fk+.12*iMid+.08*downbeat);
+  }
+
+  float heat=sin(p.y*29.0+t*8.0+p.x*3.0)*(.006+.018*iTreble);
+  col.rb+=vec2(heat,-heat*.35)*smoothstep(-.2,.9,p.x);
+  float clickRing=exp(-pow((length(p-m)-(1.0-iClick)*.85)*10.0,2.0))*iClick;
+  col+=vec3(1.0,.42,.10)*clickRing*.58;
+  col=tameUniformFinish(col,p);
+  col*=.82+.18*smoothstep(1.7,.28,length(p));
+  col*=.92+.08*sin(t*.55)+.10*iPulse;
+  col+=iGrain*.030*grain(gl_FragCoord.xy,iTime);
+  gl_FragColor=vec4(col,1.0);
+}
+`,
+  'currents-sphere': `
+mat2 rotCurrent(float a){float c=cos(a),s=sin(a);return mat2(c,-s,s,c);}
+void main(){
+  vec2 uv=gl_FragCoord.xy/iResolution.xy;
+  vec2 p=uv*2.0-1.0;
+  p.x*=iResolution.x/iResolution.y;
+  vec2 m=(iMouse-0.5)*vec2(iResolution.x/iResolution.y,1.0);
+  float t=iTime*(.18+.10*iBpm);
+  float downbeat=pow(1.0-iBeat,3.0);
+  float radius=.47+.035*iBass+.025*downbeat;
+  float r=length(p);
+  float sphere=smoothstep(radius+.012,radius-.012,r);
+  vec3 col=mix(vec3(.018,.026,.070),vec3(.08,.19,.30),uv.y);
+
+  // Current lines in the surrounding field bend around the sphere's gravity.
+  float grav=radius*radius/max(dot(p,p),.025);
+  vec2 field=p+normalize(p+vec2(.0001))*grav*(.045+.08*iWarp);
+  field=rotCurrent(.18*sin(t*.33)+m.x*.18*iWarp)*field;
+  float bands=abs(sin(field.y*(24.0+8.0*iMid)+sin(field.x*5.0-t)*2.2+t*2.5));
+  float line=smoothstep(.88,.995,bands);
+  col+=mix(vec3(.10,.46,.66),vec3(.82,.25,.35),uv.x+.18*iValence)*line*(.20+.26*iTreble);
+
+  // Map the visible disk to a warped liquid surface.
+  float z=sqrt(max(radius*radius-r*r,0.0));
+  vec3 n=normalize(vec3(p,z));
+  float longitude=atan(n.y,n.x);
+  float latitude=atan(n.z,length(n.xy));
+  float swirl=longitude*5.0+latitude*12.0+t*2.2+sin(longitude*3.0-t)*2.0*iWarp;
+  float liquid=.5+.5*sin(swirl+iBass*8.0);
+  float thin=smoothstep(.70,.98,abs(sin(swirl*1.65+n.y*9.0)));
+  vec3 cool=mix(vec3(.045,.12,.24),vec3(.24,.72,.82),liquid);
+  vec3 warm=mix(vec3(.78,.18,.27),vec3(.98,.55,.44),liquid);
+  vec3 orb=mix(cool,warm,smoothstep(-.25,.62,n.x+.30*sin(t*.4))*(.35+.45*iEnergy));
+  float spec=pow(max(dot(n,normalize(vec3(-.45,.65,.8))),0.0),22.0-8.0*iAcoustic);
+  orb+=vec3(.72,.92,1.0)*spec*(.45+.55*iCentroid);
+  orb+=vec3(.8,.9,1.0)*thin*(.05+.14*iHighMid+.12*iFlux);
+  col=mix(col,orb,sphere);
+  float rim=exp(-abs(r-radius)*55.0);
+  col+=mix(vec3(.28,.82,1.0),vec3(1.0,.32,.42),.35+.35*iValence)*rim*(.22+.28*iPulse);
+  col+=vec3(.22,.56,.88)*exp(-r*3.4)*(.025+.10*iSub);
+  float clickRing=exp(-pow((length(p-m)-(1.0-iClick)*.8)*11.0,2.0))*iClick;
+  col+=vec3(.45,.86,1.0)*clickRing*.54;
+  col=tameUniformFinish(col,p);
+  col*=.86+.14*smoothstep(1.7,.22,r);
+  col+=iGrain*.026*grain(gl_FragCoord.xy,iTime);
+  gl_FragColor=vec4(col,1.0);
+}
+`,
+  'tame-triptych': `
+vec3 tripInner(vec2 q,float t){
+  vec3 sky=mix(vec3(.32,.50,.31),vec3(.57,.43,.70),q.y);
+  float hill=smoothstep(.42+.05*sin(q.x*8.0+t),.39,q.y);
+  vec3 col=mix(sky,vec3(.18,.37,.13),hill);
+  float x=fract((q.x+sin(q.y*13.0+t)*(.008+.025*iBass))*9.0)-.5;
+  float trunk=smoothstep(.065+.03*iBass,.035,abs(x))*smoothstep(.78,.24,q.y);
+  float crowns=0.0;
+  for(int k=0;k<3;k++){
+    float fk=float(k);
+    crowns=max(crowns,smoothstep(.17,.10,length(vec2(x,q.y-(.35+fk*.12)))));
+  }
+  col=mix(col,vec3(.08,.16,.05),trunk*.9);
+  col=mix(col,vec3(.43,.66,.20)+vec3(.15,.08,.22)*iTreble,crowns*.72);
+  return col;
+}
+vec3 tripSand(vec2 q,float t){
+  vec3 col=mix(vec3(.09,.008,.006),vec3(.40,.035,.018),q.y);
+  vec2 d=q-vec2(.68,.60);
+  float box=max(abs(d.x)-.14,abs(d.y)-.30);
+  col=mix(col,vec3(1.0,.40,.10),smoothstep(.015,-.015,box)*(.35+.28*iBass));
+  for(int k=0;k<4;k++){
+    float fk=float(k);
+    float ridge=.14+fk*.14+sin(q.x*(7.0+fk)+t*(.35+fk*.1)+fk)*(.035+.035*iBass);
+    float fill=smoothstep(ridge+.018,ridge-.012,q.y);
+    col=mix(col,mix(vec3(.24,.025,.01),vec3(.80,.18,.045),fk/3.0),fill*.58);
+    col+=vec3(1.0,.33,.06)*exp(-abs(q.y-ridge)*55.0)*(.025+.08*iMid);
+  }
+  return col;
+}
+vec3 tripCurrent(vec2 q,float t){
+  vec2 p=(q-.5)*2.0;
+  float r=length(p);
+  float rad=.50+.035*iBass;
+  float mask=smoothstep(rad+.015,rad-.015,r);
+  vec3 col=mix(vec3(.025,.04,.11),vec3(.08,.24,.34),q.y);
+  float lines=smoothstep(.88,.99,abs(sin(p.y*20.0+sin(p.x*5.0-t)*2.0+t*2.0)));
+  col+=vec3(.16,.62,.82)*lines*(.13+.25*iTreble);
+  float z=sqrt(max(rad*rad-r*r,0.0));
+  vec3 n=normalize(vec3(p,z));
+  float sw=atan(n.y,n.x)*5.0+atan(n.z,length(n.xy))*11.0+t*2.0;
+  vec3 orb=mix(vec3(.06,.25,.48),vec3(.88,.22,.34),.5+.5*sin(sw+iBass*7.0));
+  orb+=vec3(.7,.92,1.0)*pow(max(dot(n,normalize(vec3(-.4,.6,.8))),0.0),20.0)*(.4+.6*iCentroid);
+  col=mix(col,orb,mask);
+  col+=vec3(.35,.80,1.0)*exp(-abs(r-rad)*45.0)*(.16+.25*iPulse);
+  return col;
+}
+void main(){
+  vec2 uv=gl_FragCoord.xy/iResolution.xy;
+  float panel=floor(uv.x*3.0);
+  vec2 q=vec2(fract(uv.x*3.0),uv.y);
+  float t=iTime*(.15+.09*iBpm);
+  vec3 col;
+  if(panel<1.0) col=tripInner(q,t);
+  else if(panel<2.0) col=tripSand(q,t);
+  else col=tripCurrent(q,t);
+  float seam=min(fract(uv.x*3.0),1.0-fract(uv.x*3.0));
+  col*=.62+.38*smoothstep(.0,.018,seam);
+  float scan=.985+.015*sin(uv.y*iResolution.y*.45+t*4.0)*iHighMid;
+  col*=scan*(.92+.08*iPulse);
+  vec2 finishP=(uv-.5)*2.0;
+  finishP.x*=iResolution.x/iResolution.y;
+  col=tameUniformFinish(col,finishP);
+  col*=.86+.14*smoothstep(.72,.12,length(uv-.5));
+  col+=iGrain*.025*grain(gl_FragCoord.xy,iTime);
   gl_FragColor=vec4(col,1.0);
 }
 `,

@@ -1,3 +1,4 @@
+import html
 import re
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -23,7 +24,7 @@ def test_phase_shell_uses_lab_as_the_primary_center_lyrics_reader(client: TestCl
     assert response.status_code == 200
     assert response.headers["x-frame-options"] == "DENY"
     assert 'id="lyricsShaderReaderFrame"' in response.text
-    assert 'src="/lyrics-shader-lab?surface=reader"' in response.text
+    assert 'src="/lyrics-shader-lab?surface=reader&amp;v=20260830-wordglow1"' in response.text
     assert 'allowtransparency="true"' in response.text
     assert 'style="background:transparent"' in response.text
     assert 'id="lyricLanguageBar"' in response.text
@@ -77,6 +78,8 @@ def test_reader_composites_the_animated_shader_over_the_wallpaper():
     word_timing = (repo / "lyrics-shader-lab/src/lib/bilingual/wordTiming.js").read_text()
     styles = (repo / "lyrics-shader-lab/src/index.css").read_text()
     preferences = (repo / "static/gallery/reader-preferences.js").read_text()
+    host_surface = (repo / "lyrics-shader-lab/src/lib/base44/hostSurface.js").read_text()
+    host_hooks = (repo / "lyrics-shader-lab/src/lib/base44/useHostSurface.js").read_text()
 
     # The shader layer is a shell-owned preference, so the reader's own
     # Canvas2D layer can be judged against the shell's WebGL wallpaper
@@ -189,6 +192,13 @@ def test_reader_composites_the_animated_shader_over_the_wallpaper():
     assert "wordGlowState" in bilingual_timeline
     assert "lyricWordMetrics" in word_timing
     assert ".reader-word-active" in styles
+    # Per-frame host data normally bypasses React. Word glow opts into a
+    # throttled playback tick so the active word advances within the line.
+    assert "useHostFrameTime" in reader
+    assert "Boolean(prefs?.wordGlow) || view === \"timeline\"" in reader
+    assert "Math.floor(surface.frame.time * 20)" in host_surface
+    assert "surface.onFrameTick" in host_surface
+    assert "useSyncExternalStore(subscribe, snapshot" in host_hooks
     assert "body.lyrics-spectrum-hidden #eqCanvas" in shell
     app = (repo / "static/gallery/app.js").read_text()
     assert "!document.body.classList.contains('lyrics-spectrum-hidden')" in app
@@ -360,7 +370,9 @@ def test_canvas_editor_is_embedded_as_a_plugin(client: TestClient):
     assert client.get("/").headers["x-frame-options"] == "DENY"
 
     assert 'id="canvasEditorFrame"' in shell
-    assert 'src="/canvas?surface=editor"' in shell
+    # The surface is told how it is framed: a card gives it an opaque backing,
+    # an overlay gives it whatever the shell is animating underneath.
+    assert 'src="/canvas?surface=editor&amp;chrome=overlay"' in shell
     assert 'id="canvasToggle"' in shell
     assert 'aria-controls="canvasEditor"' in shell
     assert "/static/gallery/canvas-plugin.js" in shell
@@ -401,6 +413,122 @@ def test_canvas_editor_is_embedded_as_a_plugin(client: TestClient):
 
     served = client.get("/static/gallery/canvas-plugin.js")
     assert served.status_code == 200
+
+
+def test_every_framed_surface_is_allowed_to_be_framed(client: TestClient):
+    """Each iframe the shell declares must be served X-Frame-Options SAMEORIGIN.
+
+    A surface missing from the allowlist fails quietly in Chrome — the panel
+    just comes up empty — and loudly in Firefox, which paints a security
+    interstitial inside the panel. The solar clock shipped broken this way, so
+    the check reads the shell's own iframes rather than a hand-kept list.
+    """
+    repo = Path(__file__).resolve().parents[1]
+    shell = (repo / "static/index.html").read_text()
+
+    framed = re.findall(r'<iframe[^>]*\ssrc="([^"]+)"', shell)
+    assert framed, "the shell declares no iframes — has the markup changed?"
+
+    for src in framed:
+        path = html.unescape(src).split("?")[0]
+        assert path.startswith("/"), path
+        response = client.get(path)
+        assert response.status_code == 200, f"{path} -> {response.status_code}"
+        assert response.headers["x-frame-options"] == "SAMEORIGIN", path
+
+    # Everything else stays DENY: only what the shell frames may be framed.
+    assert client.get("/").headers["x-frame-options"] == "DENY"
+    assert client.get("/static/gallery/app.js").headers["x-frame-options"] == "DENY"
+
+
+def test_the_notes_editor_is_wired_up_as_an_overlay(client: TestClient):
+    """The overlay's *wiring* — the host/guest contract that makes it possible.
+
+    How it renders is not checked here. Asserting exact CSS values against the
+    stylesheet proved worse than useless: it broke on every deliberate design
+    change while missing the bugs that mattered, because `inset:0` next to
+    `right:auto` reads fine as text and produces a 300px-wide "full-viewport"
+    panel. `npm run audit:design` measures the rendered result in a browser.
+    """
+    repo = Path(__file__).resolve().parents[1]
+    shell = (repo / "static/index.html").read_text()
+    canvas = (repo / "static/gallery/canvas-plugin.js").read_text()
+
+    # The panel opts out of the row; the rule that places it exists.
+    assert "overlay:true" in canvas
+    assert ".dock-panel.dock-overlay{" in shell
+
+    # The guest cannot see how it is framed, so the host tells it in the URL.
+    assert 'src="/canvas?surface=editor&amp;chrome=overlay"' in shell
+    app_src = repo.parent / "Documents/GitHub/base44-canvas/src/App.jsx"
+    if app_src.is_file():
+        app_code = app_src.read_text()
+        assert '"chrome"' in app_code
+        assert '"chrome-overlay"' in app_code
+
+    # A full-viewport panel that covered its own toggle would have no way out,
+    # so the tool cluster is stacked above it and exempt from the idle fade.
+    assert "#stage.idle #topR{opacity:1;pointer-events:auto" in shell
+
+
+def test_component_vault_lookups_are_answered_by_the_shell(client: TestClient):
+    """The editor's /component command reaches the vault through its host.
+
+    The surface cannot do this itself: the vault speaks MCP, which no browser
+    speaks, and it lives on a different port than the one the editor is served
+    from. So the surface asks with an intent and the shell answers on the scene,
+    the same way it answers everything else the editor cannot know.
+    """
+    repo = Path(__file__).resolve().parents[1]
+    host = (repo / "static/gallery/canvas-plugin.js").read_text()
+
+    assert "search(payload)" in host
+    assert "searchDismiss()" in host
+    assert "/api/components/search" in host
+    # The reply travels on the scene, so a reconnecting surface is handed it too.
+    assert "scene(){ return { docs, activeId, search }; }" in host
+    # A listed command with no service behind it must be answered, not left
+    # hanging — an unanswered intent is indistinguishable from a slow one.
+    assert "'unsupported'" in host
+
+    surface_src = (
+        repo.parent / "Documents/GitHub/base44-canvas/src/pages/EditorSurface.jsx"
+    )
+    if surface_src.is_file():
+        surface_code = surface_src.read_text()
+        assert 'hostSurface.intent("search"' in surface_code
+        assert 'hostSurface.intent("searchDismiss"' in surface_code
+        assert "scene?.search" in surface_code
+
+    embed_src = (
+        repo.parent
+        / "Documents/GitHub/base44-canvas/src/components/canvas/componentEmbed.js"
+    )
+    if embed_src.is_file():
+        embed_code = embed_src.read_text()
+        # The card is stored as HTML in the host's note, so Parchment has to be
+        # able to match it back by class or the embed is lost on reload.
+        assert 'ComponentEmbed.className = "canvas-component-embed"' in embed_code
+        assert "allow-scripts allow-same-origin" in embed_code
+        # Never navigation, popups, forms or downloads, whichever branch is taken.
+        for granted in ("allow-top-navigation", "allow-popups", "allow-forms",
+                        "allow-downloads", "allow-modals"):
+            assert granted not in embed_code
+
+        editor_src = (
+            repo.parent
+            / "Documents/GitHub/base44-canvas/src/components/canvas/EditorArea.jsx"
+        )
+        editor_code = editor_src.read_text()
+        # Quill drops any format missing from the whitelist, embeds included.
+        assert "COMPONENT_EMBED_BLOT]" in editor_code
+
+    # The built surface has to actually carry the blot, not just the source.
+    bundle = " ".join(
+        path.read_text()
+        for path in (repo / "static/canvas/assets").glob("*.js")
+    )
+    assert "canvas-component-embed" in bundle
 
 
 def test_dock_panels_share_one_geometry_and_stack_horizontally(client: TestClient):
@@ -453,7 +581,12 @@ def test_dock_panels_share_one_geometry_and_stack_horizontally(client: TestClien
     assert "this.order.filter" in dock
     # A finite row must evict rather than push a panel off-screen.
     assert "capacity()" in dock
-    assert "evict least recent" in dock
+    assert "_evictToFit()" in dock
+    # An overlay takes the viewport, not a slot, so it neither narrows the row
+    # nor is evicted by it — counting it either way would move the other panels.
+    assert "_isOverlay(id)" in dock
+    assert "_rowOpen()" in dock
+    assert "!this._isOverlay(id)" in dock
 
     # The dock has to be defined before anything registers with it.
     assert shell.index("plugin-dock.js") < shell.index("clock-modal.js")

@@ -185,8 +185,10 @@ jumps sideways when another opens. Panels narrow as more join; only when even
 | 1280 | 520 | 520 | 401 | *evicts* |
 | 1024 | 430 | 430 | *evicts* | — |
 
-Six panels are registered: `notes · clock · spectrum · apple-music · spotify ·
-focus`. The four settings panels were modal dialogs; as dock panels they are
+Six production panels are registered: `notes · clock · spectrum · apple-music ·
+spotify · focus`. A seventh, `pika-voice-profile`, is registered only when the
+backend reports `PIKA_VOICE_PROFILE_ENABLED=true`; its vendored Semi bundle is
+also excluded from the default Vercel build. The four settings panels were modal dialogs; as dock panels they are
 non-modal (`role="region"`, no focus trap) because they are worth adjusting
 *while* the visuals react. `videoModal` and music search stay modal, where
 exclusivity is correct.
@@ -228,6 +230,7 @@ plugin.
 |---|---:|---|
 | `static/gallery/base44-plugin.js` | 130 | host runtime — **domain-free, reused unchanged** |
 | `src/lib/base44/hostSurface.js` | 102 | guest bridge — **domain-free, copied per app** |
+| `static/gallery/semi-plugin.js` | — | disabled-by-default host for Semi's identity-free Pika profile surface |
 | `src/lib/base44/useHostSurface.js` | 34 | React binding (scene / active-line hooks) |
 | `static/gallery/plugin-dock.js` | 164 | placement, stacking, capacity |
 | `static/gallery/lyrics-shader-reader.js` | 171 | manifest — reader |

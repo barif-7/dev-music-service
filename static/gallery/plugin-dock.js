@@ -17,6 +17,11 @@
    least recently opened — a stack that silently overflowed would put a panel
    off-screen with no way to reach it.
 
+   A panel can opt out of the row entirely with overlay:true. An overlay takes
+   the whole viewport rather than a slot, so it neither narrows the row nor is
+   narrowed by it, and row pressure never evicts it — it is not competing for
+   the same space. It still opens, closes and toggles like any other panel.
+
    Panels declare themselves in the markup with class="dock-panel" and a
    data-dock-id. Placement is therefore pure CSS and holds whether or not a
    script has registered them; registering only adds behaviour. A panel behind
@@ -61,12 +66,16 @@ const PluginDock = {
                a click-outside affordance that only makes sense for something
                modal — is hidden.
      showClass a legacy visibility class the panel's existing CSS still keys
-               off, toggled alongside .open so styling keeps working. */
+               off, toggled alongside .open so styling keeps working.
+     overlay   the panel covers the viewport instead of taking a slot in the
+               row. Placement is still pure CSS; this only keeps the layout
+               from counting it. */
   register(spec){
     if(!spec?.id || !spec.el) return null;
     this.panels.set(spec.id, spec);
     if(!this.order.includes(spec.id)) this.order.push(spec.id);
     spec.el.classList.add('dock-panel');
+    spec.el.classList.toggle('dock-overlay', Boolean(spec.overlay));
     spec.el.dataset.dockId = spec.id;
     if(spec.host){
       spec.host.classList.add('dock-host');
@@ -86,13 +95,25 @@ const PluginDock = {
 
   isOpen(id){ return this.recency.includes(id); },
 
+  _isOverlay(id){ return Boolean(this.panels.get(id)?.overlay); },
+  /* The open panels that actually occupy the row, least recently opened first. */
+  _rowOpen(){ return this.recency.filter(id => !this._isOverlay(id)); },
+
+  /* Drop least-recent row panels until the row fits. Overlays are skipped: they
+     take no width, so evicting one would free nothing. */
+  _evictToFit(){
+    let row = this._rowOpen();
+    while(row.length > this.capacity()){
+      this.close(row[0]);
+      row = this._rowOpen();
+    }
+  },
+
   open(id){
     const spec = this.panels.get(id);
     if(!spec || this.isOpen(id)) return;
     this.recency.push(id);
-    while(this.recency.length > this.capacity()){
-      this.close(this.recency[0]);                      // evict least recent
-    }
+    this._evictToFit();
     this._reflect(id);
     this._layout();
     spec.onOpen?.();
@@ -136,20 +157,22 @@ const PluginDock = {
 
   /* Assign contiguous slots to the open panels, in registration order. */
   _layout(){
-    const open = this.order.filter(id => this.isOpen(id));
+    const open = this.order.filter(id => this.isOpen(id) && !this._isOverlay(id));
     /* Publish the count so the stylesheet can divide the row between them. */
     document.documentElement.style.setProperty('--dock-count', String(Math.max(1, open.length)));
     open.forEach((id, slot)=>{
       this.panels.get(id).el.style.setProperty('--dock-slot', String(slot));
     });
-    document.body.classList.toggle('dock-any-open', open.length > 0);
-    document.body.dataset.dockOpen = String(open.length);
+    /* These describe what is open, not what the row is dividing, so an overlay
+       counts here even though it took no slot above. */
+    document.body.classList.toggle('dock-any-open', this.recency.length > 0);
+    document.body.dataset.dockOpen = String(this.recency.length);
   },
 
   /* A narrower viewport fits fewer panels; drop the excess rather than let
      them slide off the edge. */
   _onResize(){
-    while(this.recency.length > this.capacity()) this.close(this.recency[0]);
+    this._evictToFit();
     this._layout();
   },
 };

@@ -11,6 +11,7 @@ import { routes } from "@vercel/config/v1";
  * scripts/build-vercel-frontend.mjs) to keep those bytes off Vercel.
  */
 const backendOrigin = (process.env.PHASE_BACKEND_ORIGIN || "").replace(/\/$/, "");
+const pikaVoiceProfileEnabled = process.env.PIKA_VOICE_PROFILE_ENABLED === "true";
 
 if (!backendOrigin) {
   throw new Error(
@@ -35,6 +36,9 @@ export default {
     // them onto the vendored index.html; the query string carries through.
     routes.rewrite("/canvas", "/static/canvas/index.html"),
     routes.rewrite("/lyrics-shader-lab", "/static/lyrics-shader-lab/index.html"),
+    ...(pikaVoiceProfileEnabled
+      ? [routes.rewrite("/semi", "/static/semi/index.html")]
+      : []),
 
     // Share links land on /share and are resolved client-side from the query.
     routes.rewrite("/share", "/index.html"),

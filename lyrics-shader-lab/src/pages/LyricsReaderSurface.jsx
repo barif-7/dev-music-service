@@ -17,7 +17,7 @@ import { Eye, EyeOff, GraduationCap, ListMusic, Settings2, Sparkles } from "luci
 import LiveAnnouncer from "@/components/bilingual/LiveAnnouncer";
 import VisualizerPanel from "@/components/shader-lab/VisualizerPanel";
 import { hostSurface } from "@/lib/base44/hostSurface";
-import { intent, useActiveLine, useHostScene } from "@/lib/base44/useHostSurface";
+import { intent, useActiveLine, useHostFrameTime, useHostScene } from "@/lib/base44/useHostSurface";
 import { createCaptionLocalizerProvider } from "@/lib/bilingual/captionLocalizerProvider";
 import { TRANSLATION_STATES } from "@/lib/bilingual/translationService";
 
@@ -43,6 +43,7 @@ export default function LyricsReaderSurface() {
   const prefs = scene?.prefs;
   const view = scene?.view || "visual";
   const backgroundVisible = scene?.backgroundVisible !== false;
+  const readerTime = useHostFrameTime(Boolean(prefs?.wordGlow) || view === "timeline");
   const lines = scene?.lines || EMPTY_LINES;
   const activeLine = activeIndex >= 0 ? lines[activeIndex] : null;
 
@@ -177,7 +178,7 @@ export default function LyricsReaderSurface() {
               learnMode: view === "learn",
               translationRevealed,
               onRevealTranslation: () => setTranslationRevealed(true),
-              currentTime: hostSurface.frame.time,
+              currentTime: readerTime,
               lineStartTime: activeLine?.time,
               lineEndTime: activeLine?.endTime,
             }}
@@ -186,7 +187,7 @@ export default function LyricsReaderSurface() {
           <BilingualTimeline
             lyrics={lines}
             activeIndex={activeIndex}
-            currentTime={hostSurface.frame.time}
+            currentTime={readerTime}
             duration={scene.duration}
             prefs={prefs}
             targetLocale={scene.translationLocale}

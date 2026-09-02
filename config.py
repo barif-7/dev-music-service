@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     focus_profile_kv_namespace: str | None = None
     phase_field_api_base_url: str = "http://localhost:8787"
     reccobeats_api_base_url: str = "https://api.reccobeats.com/v1"
+    # HistoryKit Component Vault. The MCP server is the only interface it
+    # offers; the preview URL is the separate dev server the surface frames.
+    # Both are localhost-only, so the feature is inert on a hosted deploy.
+    component_vault_mcp_url: str = "http://127.0.0.1:8766/mcp"
+    component_vault_preview_url: str = "http://127.0.0.1:4174"
     # MusicKit on the Web embeds a signed developer token in the client. Prefer
     # an origin claim restricted to the app's Funnel and local development URLs.
     apple_music_developer_token: str | None = None
@@ -88,12 +93,15 @@ class Settings(BaseSettings):
     # Optional permitted-voice TTS backend. This is deliberately not an artist
     # voice-clone path; requests are limited to neutral, user-consented, or
     # licensed profiles by the API layer.
+    # The profile-management surface is pre-release and must be explicitly
+    # enabled on both the backend and frontend build. It is off by default so a
+    # production deploy cannot expose it accidentally.
+    pika_voice_profile_enabled: bool = False
     pikaprojbackend_url: str | None = None
     pikaprojbackend_tts_path: str = "/api/tts/segments"
     translated_vocals_voice_mode: str = "neutral"
     translated_vocals_voice_profile_id: str | None = None
     translated_vocals_voice_consent_token: str | None = None
-    translated_vocals_voice_label: str = "Neutral voice"
     translated_vocals_local_say_fallback: bool = True
     translated_vocals_say_command: str = "/usr/bin/say"
     translated_vocals_say_voice: str | None = None

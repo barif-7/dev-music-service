@@ -1,0 +1,41 @@
+import{r,j as t}from"./index-DZ85Niep.js";/**
+ * @license lucide-react v0.475.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */const g=e=>e.replace(/([a-z0-9])([A-Z])/g,"$1-$2").toLowerCase(),m=(...e)=>e.filter((a,s,i)=>!!a&&a.trim()!==""&&i.indexOf(a)===s).join(" ").trim();/**
+ * @license lucide-react v0.475.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */var v={xmlns:"http://www.w3.org/2000/svg",width:24,height:24,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2,strokeLinecap:"round",strokeLinejoin:"round"};/**
+ * @license lucide-react v0.475.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */const j=r.forwardRef(({color:e="currentColor",size:a=24,strokeWidth:s=2,absoluteStrokeWidth:i,className:n="",children:o,iconNode:x,...p},f)=>r.createElement("svg",{ref:f,...v,width:a,height:a,stroke:e,strokeWidth:i?Number(s)*24/Number(a):s,className:m("lucide",n),...p},[...x.map(([b,w])=>r.createElement(b,w)),...Array.isArray(o)?o:[o]]));/**
+ * @license lucide-react v0.475.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */const u=(e,a)=>{const s=r.forwardRef(({className:i,...n},o)=>r.createElement(j,{ref:o,iconNode:a,className:m(`lucide-${g(e)}`,i),...n}));return s.displayName=`${e}`,s};/**
+ * @license lucide-react v0.475.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */const k=[["path",{d:"M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8",key:"v9h5vc"}],["path",{d:"M21 3v5h-5",key:"1q7to0"}],["path",{d:"M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16",key:"3uifl3"}],["path",{d:"M8 16H3v5",key:"1cv678"}]],N=u("RefreshCw",k);/**
+ * @license lucide-react v0.475.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */const y=[["path",{d:"M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z",key:"oel41y"}],["path",{d:"m9 12 2 2 4-4",key:"dzmm74"}]],C=u("ShieldCheck",y);/**
+ * @license lucide-react v0.475.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */const M=[["path",{d:"M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z",key:"4pj2yx"}],["path",{d:"M20 3v4",key:"1olli1"}],["path",{d:"M22 5h-4",key:"1gvqau"}],["path",{d:"M4 17v2",key:"vumght"}],["path",{d:"M5 18H3",key:"zchphs"}]],S=u("Sparkles",M);/**
+ * @license lucide-react v0.475.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */const _=[["path",{d:"M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z",key:"uqj9uw"}],["path",{d:"M16 9a5 5 0 0 1 0 6",key:"1q6k2b"}],["path",{d:"M19.364 18.364a9 9 0 0 0 0-12.728",key:"ijwkga"}]],L=u("Volume2",_),c="base44",l=1;function A(){const e={scene:null,_subscribers:new Set},a=s=>{if(s.origin!==window.location.origin||s.source!==window.parent)return;const i=s.data;if(!(!i||i.p!==c||i.v!==l)){if(i.t==="probe"){window.parent.postMessage({p:c,v:l,t:"ready"},window.location.origin);return}if(i.t==="scene"){e.scene=i;for(const n of e._subscribers)n(i)}}};return e.start=()=>(window.addEventListener("message",a),window.parent.postMessage({p:c,v:l,t:"ready"},window.location.origin),()=>window.removeEventListener("message",a)),e.subscribe=s=>(e._subscribers.add(s),()=>e._subscribers.delete(s)),e.intent=(s,i)=>{window.parent.postMessage({p:c,v:l,t:"intent",name:s,payload:i},window.location.origin)},e}const h=A();function $(){const[e,a]=r.useState(h.scene);return r.useEffect(()=>{const s=h.start(),i=h.subscribe(a);return()=>{i(),s()}},[]),e}const E=(e,a)=>h.intent(e,a);function d({label:e,value:a,active:s=!1}){return t.jsxs("div",{className:"flex items-center justify-between gap-4 border-b border-white/10 py-3 last:border-0",children:[t.jsx("span",{className:"text-xs text-white/45",children:e}),t.jsx("span",{className:s?"text-xs text-emerald-300":"text-xs text-white/75",children:a})]})}function H(){const e=$(),a=!e||e.status==="loading",s=(e==null?void 0:e.profile)||{},i=!!(s.configured&&(e!=null&&e.backendConfigured));return t.jsx("main",{className:"min-h-screen bg-[#0d0c12] px-5 py-6 text-white","data-surface":"voice-profile",children:t.jsxs("div",{className:"mx-auto flex min-h-[calc(100vh-3rem)] max-w-md flex-col",children:[t.jsxs("header",{className:"flex items-start justify-between gap-4",children:[t.jsxs("div",{children:[t.jsxs("div",{className:"mb-2 flex items-center gap-2",children:[t.jsx("span",{className:"rounded-full border border-amber-300/25 bg-amber-300/10 px-2 py-1 font-mono text-[9px] uppercase tracking-[0.16em] text-amber-200",children:"Under development"}),t.jsx("span",{className:"font-mono text-[9px] uppercase tracking-[0.16em] text-white/30",children:"Semi"})]}),t.jsx("h1",{className:"text-2xl font-light tracking-[-0.04em]",children:"Pika voice profile"}),t.jsx("p",{className:"mt-2 max-w-sm text-sm font-light leading-6 text-white/45",children:"A shared, consent-governed voice configuration for translated playback."})]}),t.jsx("div",{className:"grid h-12 w-12 shrink-0 place-items-center rounded-full border border-violet-300/20 bg-violet-400/10 shadow-[0_0_32px_rgba(123,94,246,0.2)]",children:t.jsx(S,{className:"h-5 w-5 text-violet-200","aria-hidden":"true"})})]}),t.jsxs("section",{className:"mt-8 rounded-3xl border border-white/10 bg-white/[0.035] p-5","aria-live":"polite",children:[t.jsxs("div",{className:"mb-4 flex items-center gap-3",children:[t.jsx("div",{className:`grid h-10 w-10 place-items-center rounded-full ${i?"bg-emerald-300/10 text-emerald-300":"bg-white/[0.06] text-white/45"}`,children:t.jsx(L,{className:"h-4 w-4","aria-hidden":"true"})}),t.jsxs("div",{children:[t.jsx("p",{className:"text-sm font-medium",children:a?"Checking configuration…":s.label||"Neutral voice"}),t.jsx("p",{className:"mt-0.5 text-xs text-white/35",children:i?"Available to the host":"Not available"})]})]}),t.jsx(d,{label:"Profile scope",value:"Shared configuration"}),t.jsx(d,{label:"Identity dependency",value:"None",active:!0}),t.jsx(d,{label:"Voice mode",value:s.modeLabel||"Neutral"}),t.jsx(d,{label:"Synthesis backend",value:e!=null&&e.backendConfigured?"Connected":"Not connected",active:e==null?void 0:e.backendConfigured})]}),t.jsxs("section",{className:"mt-4 flex gap-3 rounded-3xl border border-white/10 bg-white/[0.025] p-5",children:[t.jsx(C,{className:"mt-0.5 h-5 w-5 shrink-0 text-emerald-300/80","aria-hidden":"true"}),t.jsxs("div",{children:[t.jsx("h2",{className:"text-sm font-medium",children:"Host-owned and identity-free"}),t.jsx("p",{className:"mt-1 text-xs font-light leading-5 text-white/40",children:"This view receives readiness metadata only. Profile identifiers, consent credentials, and account data remain outside the plugin."})]})]}),t.jsxs("div",{className:"mt-auto pt-6",children:[(e==null?void 0:e.message)&&t.jsx("p",{className:"mb-3 text-center text-xs text-white/35",children:e.message}),t.jsxs("button",{type:"button",onClick:()=>E("refresh"),className:"flex min-h-12 w-full items-center justify-center gap-2 rounded-full border border-white/10 bg-white/[0.06] text-sm text-white/70 transition-colors hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-300",children:[t.jsx(N,{className:`h-4 w-4 ${a?"animate-spin":""}`,"aria-hidden":"true"}),"Check availability"]})]})]})})}export{H as default};

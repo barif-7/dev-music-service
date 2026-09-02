@@ -260,4 +260,36 @@ const ALTS = [
     track:null,
     lyric:'the cursor kept blinking like it had more to say'
   },
+  {
+    id:'innerspeaker', name:'Innerspeaker', n:'31',
+    preset:'Flow', bpm:92, a11y:'medium', pairFrom:'Tame Impala · Innerspeaker',
+    desc:'A procedural woodland mirage drawn from the supplied Innerspeaker wallpaper: mirrored tree columns ripple through a sunlit green valley while bass bends the horizon and highs wash the sky violet.',
+    palette:['#08150e','#315f33','#a7ca68','#9f8ed8','#132519'],
+    track:null,
+    lyric:'the trees kept folding the afternoon back into itself'
+  },
+  {
+    id:'redroom-sand', name:'Red Room Sand', n:'32',
+    preset:'Rest', bpm:84, a11y:'medium', pairFrom:'Tame Impala · red room',
+    desc:'Layered crimson dunes flow through a dark red room. Bass rolls the sand, mids open the far doorway, and treble sends a narrow hot shimmer across its edge.',
+    palette:['#170504','#641612','#d45324','#ffb05c','#2b0907'],
+    track:null,
+    lyric:'the room was red enough to make the sand remember heat'
+  },
+  {
+    id:'currents-sphere', name:'Currents Sphere', n:'33',
+    preset:'Spark', bpm:108, a11y:'medium', pairFrom:'Tame Impala · Currents',
+    desc:'A liquid chrome sphere holds a field of warped current lines. Bass swells its gravity, mids pull the bands around its surface, and bright onsets split cyan into coral.',
+    palette:['#050711','#1b3f73','#66cce8','#e46876','#10182c'],
+    track:null,
+    lyric:'every current curved when it reached the centre'
+  },
+  {
+    id:'tame-triptych', name:'Tame Impala Triptych', n:'34',
+    preset:'Drive', bpm:104, a11y:'high', pairFrom:'Tame Impala · three-panel study',
+    desc:'The supplied combined concept rebuilt as one procedural shader: Innerspeaker woodland, red-room dunes, and the Currents sphere share a three-panel audio-reactive field.',
+    palette:['#07130d','#9dc35f','#b82f20','#56bde0','#171025'],
+    track:null,
+    lyric:'three rooms, one pulse moving through all of them'
+  },
 ];

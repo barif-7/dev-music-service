@@ -44,6 +44,7 @@ Set in Vercel Dashboard → Settings → Environment Variables:
 |----------|----------|---------|
 | `PHASE_BACKEND_ORIGIN` | yes | Backend's public origin. Production currently uses `https://phase.tail4752f5.ts.net:8443`. Drives both the rewrites and the direct audio URL. No trailing slash needed — one is stripped. |
 | `PHASE_BETA_AUTH_ENABLED` | no | Set `true` to mirror `BETA_AUTH_ENABLED` on the backend so `middleware.ts` gates the shell. Left unset, the shell is public and only the API is protected. |
+| `PIKA_VOICE_PROFILE_ENABLED` | no | Pre-release flag. Leave unset/`false` in production; when `true`, includes the Semi bundle and `/semi` rewrite. The backend flag must match. |
 
 ### Build
 
@@ -59,6 +60,7 @@ Rebuild the plugin bundles locally and commit them before deploying:
 ```bash
 npm run build:lyrics-shader-lab
 npm run build:canvas          # needs a base44-canvas checkout; see the script
+npm run build:semi            # needs the Base44 Semi checkout; pre-release only
 npm run build:vercel          # stage dist/ locally to inspect it
 ```
 

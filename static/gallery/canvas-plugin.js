@@ -10,7 +10,14 @@
    unloaded, rebuilt or replaced.
 
    The surface has no per-frame needs, so the plugin declares no uniforms and
-   the frame channel stays idle. */
+   the frame channel stays idle.
+
+   The editor's /component slash command is answered here too. The surface asks
+   with a search intent and the shell fetches, because reaching outside the note
+   is the host's job: the guest is a view, and the Component Vault is a service
+   this origin knows how to talk to and the guest does not. Results ride back on
+   the scene like everything else, so a reloaded surface is handed the same
+   state it had. */
 (function(){
   const frameEl = document.getElementById('canvasEditorFrame');
   const panel   = document.getElementById('canvasEditor');
@@ -51,6 +58,28 @@
   let wasOpen = false;
   try{ wasOpen = localStorage.getItem(OPEN_KEY) === 'true'; }catch(e){ /* default closed */ }
 
+  /* The in-flight (or last) service search. Deliberately not persisted: it is a
+     transient lookup, not part of the note. `seq` rises on every state change so
+     the surface can re-render an identical query, and stale replies from a
+     superseded fetch can be dropped. */
+  let search = null;
+  let searchSeq = 0;
+
+  /* Only the Component Vault is wired up. /history and /music are listed by the
+     editor but have no service behind them here, so they are answered rather
+     than left to hang — an unanswered intent looks identical to a slow one. */
+  const SERVICE_ENDPOINTS = {
+    component:(query)=>`/api/components/search?q=${encodeURIComponent(query)}&limit=8`,
+  };
+
+  function setSearch(next){
+    /* Bumped even when clearing, so a reply from a search the user has already
+       dismissed is recognised as stale and does not reopen the picker. */
+    searchSeq++;
+    search = next ? { ...next, seq:searchSeq } : null;
+    plugin.invalidate();
+  }
+
   function persist(){
     try{
       localStorage.setItem(DOCS_KEY, JSON.stringify(docs));
@@ -64,6 +93,9 @@
     id:'notes',
     el:panel,
     toggle,
+    /* Writing wants the whole page, not a card in the corner. The surface paints
+       no backdrop of its own, so the visuals run under the note. */
+    overlay:true,
     onOpen(){
       try{ localStorage.setItem(OPEN_KEY, 'true'); }catch(e){ /* ignore */ }
       plugin.invalidate();              // re-push notes when reopened
@@ -79,7 +111,7 @@
     frame:frameEl,
     frameFloats:0,          /* a text editor needs no per-frame channel */
     uniformKeys:[],
-    scene(){ return { docs, activeId }; },
+    scene(){ return { docs, activeId, search }; },
     /* Nothing to push per frame; returning null idles that channel. */
     frame_(){ return null; },
     paused(){ return !dock.isOpen(); },
@@ -118,6 +150,48 @@
         if(activeId === payload.id) activeId = docs[0].id;
         persist(); plugin.invalidate();
       },
+      /* Look a query up in a service the shell can reach and the surface cannot.
+         The reply lands on the scene; the surface decides what to do with it. */
+      search(payload){
+        const service = String(payload?.service || '');
+        const query = String(payload?.query || '').trim();
+        const endpoint = SERVICE_ENDPOINTS[service];
+        if(!endpoint){
+          setSearch({ service, query, status:'unsupported', results:[] });
+          return;
+        }
+        if(!query){ setSearch(null); return; }
+        setSearch({ service, query, status:'loading', results:[] });
+        const token = searchSeq;
+        fetch(endpoint(query), { headers:{ Accept:'application/json' } })
+          .then(response => response.json().then(
+            body => ({ ok:response.ok, body }),
+            /* A 503 from an unreachable vault has a JSON body; a proxy error
+               page does not, and must not read as an empty result set. */
+            () => ({ ok:false, body:{} }),
+          ))
+          .then(({ ok, body })=>{
+            if(token !== searchSeq) return;             // superseded
+            if(!ok){
+              setSearch({ service, query, status:'error', results:[],
+                          error:body.detail || 'Search failed' });
+              return;
+            }
+            setSearch({
+              service, query, status:'ready',
+              results:Array.isArray(body.results) ? body.results : [],
+              total:body.total_matches ?? 0,
+            });
+          })
+          .catch(()=>{
+            if(token !== searchSeq) return;
+            setSearch({ service, query, status:'error', results:[],
+                        error:'Search service unreachable' });
+          });
+      },
+      /* The picker closed, or a result was taken. Either way the lookup is over
+         and must not be re-pushed the next time the surface reconnects. */
+      searchDismiss(){ if(search) setSearch(null); },
       /* The surface asks for the current notes after a reload or a rebuild. */
       sync(){ plugin.invalidate(); },
     },
