@@ -80,11 +80,26 @@
     plugin.invalidate();
   }
 
-  function persist(){
+  function snapshot(reason){
+    return {
+      reason,
+      activeId,
+      docs:docs.map(doc=>({ ...doc, tags:Array.isArray(doc.tags) ? [...doc.tags] : [] })),
+    };
+  }
+
+  function announce(reason){
+    const detail = snapshot(reason);
+    window.dispatchEvent(new CustomEvent('phase:canvas-notes', { detail }));
+    plugin.publish('canvas:notes', detail);
+  }
+
+  function persist(reason='update'){
     try{
       localStorage.setItem(DOCS_KEY, JSON.stringify(docs));
       localStorage.setItem(ACTIVE_KEY, activeId);
     }catch(e){ /* storage unavailable — notes stay in memory */ }
+    announce(reason);
   }
 
   /* Placement, sizing, stacking and the toggle's pressed state belong to the
@@ -127,28 +142,29 @@
           tags:Array.isArray(payload.tags) ? payload.tags : docs[index].tags,
           updatedAt:new Date().toISOString(),
         };
-        persist();
-        /* Deliberately no invalidate(): echoing the note back while it is being
-           typed would re-seed the editor and fight the caret. The list rerenders
-           on the next scene push, which any other intent triggers. */
+        persist('save');
+        /* The surface only re-seeds its draft when the active note id changes,
+           so publishing this scene updates the note list without fighting the
+           caret. The runtime coalesces rapid autosaves into one immediate push. */
+        plugin.invalidate();
       },
       select(payload){
         if(!payload?.id || payload.id === activeId) return;
         if(!docs.some(d => d.id === payload.id)) return;
         activeId = payload.id;
-        persist(); plugin.invalidate();
+        persist('select'); plugin.invalidate();
       },
       create(){
         const doc = newDoc(docs.length);
         docs = [doc, ...docs];
         activeId = doc.id;
-        persist(); plugin.invalidate();
+        persist('create'); plugin.invalidate();
       },
       remove(payload){
         if(!payload?.id || docs.length <= 1) return;   // always keep one note
         docs = docs.filter(d => d.id !== payload.id);
         if(activeId === payload.id) activeId = docs[0].id;
-        persist(); plugin.invalidate();
+        persist('remove'); plugin.invalidate();
       },
       /* Look a query up in a service the shell can reach and the surface cannot.
          The reply lands on the scene; the surface decides what to do with it. */
@@ -195,6 +211,38 @@
       /* The surface asks for the current notes after a reload or a rebuild. */
       sync(){ plugin.invalidate(); },
     },
+  });
+
+  /* Other same-origin shell features can update notes without reaching into
+     the iframe. Storage events cover another tab/window; the custom event is
+     the in-document real-time API for future plugins and integrations. */
+  window.addEventListener('storage', event=>{
+    if(event.storageArea !== localStorage) return;
+    if(event.key !== DOCS_KEY && event.key !== ACTIVE_KEY && event.key !== null) return;
+    docs = loadDocs();
+    try{ activeId = localStorage.getItem(ACTIVE_KEY) || ''; }catch(e){ activeId = ''; }
+    if(!docs.some(doc=>doc.id === activeId)) activeId = docs[0].id;
+    announce('storage');
+    plugin.invalidate();
+  });
+
+  window.addEventListener('phase:canvas-notes:set', event=>{
+    const incoming = event.detail;
+    if(!incoming || !Array.isArray(incoming.docs) || !incoming.docs.length) return;
+    docs = incoming.docs
+      .filter(doc=>doc && typeof doc === 'object' && doc.id)
+      .map(doc=>({
+        ...newDoc(0),
+        ...doc,
+        id:String(doc.id),
+        title:String(doc.title || 'Untitled note'),
+        body:String(doc.body || ''),
+        tags:Array.isArray(doc.tags) ? doc.tags.map(String) : [],
+      }));
+    if(!docs.length) return;
+    activeId = docs.some(doc=>doc.id === incoming.activeId) ? incoming.activeId : docs[0].id;
+    persist('external');
+    plugin.invalidate();
   });
 
   /* Escape and the toggle's pressed state are handled by the dock. */

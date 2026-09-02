@@ -33,8 +33,8 @@ Acquisition and embedding are separate stages. The build is vendored into
 
 ## 2. Runtime contract
 
-Three message kinds, one direction each. **The host owns state; the surface
-renders it and asks for changes.**
+The protocol has snapshot, continuous-frame, event and request channels. **The
+host owns state; the surface renders it and asks for changes.**
 
 ```
         HOST  (static/gallery/base44-plugin.js)      SURFACE  (hostSurface.js)
@@ -44,7 +44,10 @@ renders it and asks for changes.**
         ──────────────  init  ─────────────────►        learns uniform layout
         ──────────────  scene ─────────────────►        React state   (rare)
         ──────────────  frame ─────────────────►        mutable ref   (60 Hz)
+        ──────────────  event ─────────────────►        named notification
+              ◄───────────── event ─────────────        named notification
               ◄───────────── intent ─────────────       "please do X"
+        ────────────── result ─────────────────►        optional request result
 ```
 
 | message  | direction | cadence | carries |
@@ -55,6 +58,8 @@ renders it and asks for changes.**
 | `scene`  | host → surface | when a revision bumps | resolved state |
 | `frame`  | host → surface | once per `requestAnimationFrame` | `Float32Array` + scalars |
 | `intent` | surface → host | on user action | `name`, `payload` |
+| `event`  | either direction | on a discrete change | `name`, `payload` |
+| `result` | host → surface | after a requested intent | `id`, `ok`, `value`/`error` |
 
 Every message carries `p: "base44"` and `v: 1`. Both sides check origin **and**
 `event.source` before reading anything.
@@ -89,6 +94,18 @@ Float32Array(14):  [ t │ e │ b │ c │ g │ l │ p │ w │ r g b │ r
 
 Neither side hard-codes offsets, so the layout can change without the two
 drifting apart.
+
+### Discrete state is pushed, not polled
+
+The player publishes track, source and lyric events at the mutation point. The
+reader converts those into an immediate scene invalidation; localization and
+progressive transcription therefore appear in the iframe without a polling
+delay. Canvas autosaves also invalidate its scene immediately. Its active draft
+is keyed by note id, so the refreshed note list does not reset the caret.
+
+All plugin instances share one window message listener and one animation-frame
+pump. `invalidate()` additionally schedules a microtask scene flush, coalescing
+multiple mutations from the same JavaScript turn.
 
 ---
 
@@ -245,13 +262,11 @@ plugin.
 
 ## 8. Known edges
 
-- **No declarative manifest.** Plugins are JS objects. An unknown intent is
-  `console.warn`-ed, not rejected structurally. Base44's own
+- **No declarative manifest.** Plugins are JS objects. An unknown fire-and-forget
+  intent is `console.warn`-ed; a requested intent also receives an error result.
+  Base44's own
   `tools_permission_config` (`auto_approved_operations`, `connector_guards`) is
   the shape worth copying.
-- **One rAF loop per plugin.** `_start()` gives each plugin its own animation
-  frame loop and message listener. Three plugins means three pumps competing.
-  Should be one shared pump with a dispatching listener.
 - **`frame_` is a naming workaround** — `frame` was taken by the iframe element.
 - **`frameFloats` duplicates `uniformKeys`.** The sum of components *is* the
   count; deriving it would remove a drift risk.

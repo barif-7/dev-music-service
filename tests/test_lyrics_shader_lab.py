@@ -389,8 +389,12 @@ def test_canvas_editor_is_embedded_as_a_plugin(client: TestClient):
     assert "phaseField.canvasActiveNote" in host
     for handler in ("save(payload)", "select(payload)", "create()", "remove(payload)"):
         assert handler in host
-    # A save must not re-push the scene, or it re-seeds the editor mid-keystroke.
-    assert "Deliberately no invalidate()" in host
+    # Autosaves publish the list immediately. The surface keys draft hydration
+    # by active note id, so this does not reset the caret mid-keystroke.
+    assert "persist('save')" in host
+    assert "plugin.invalidate()" in host
+    assert "phase:canvas-notes" in host
+    assert "phase:canvas-notes:set" in host
 
     # Ported Canvas components that stand on their own.
     surface_src = (
@@ -529,6 +533,42 @@ def test_component_vault_lookups_are_answered_by_the_shell(client: TestClient):
         for path in (repo / "static/canvas/assets").glob("*.js")
     )
     assert "canvas-component-embed" in bundle
+
+
+def test_plugin_bridge_pushes_discrete_state_and_events_in_real_time():
+    repo = Path(__file__).resolve().parents[1]
+    runtime = (repo / "static/gallery/base44-plugin.js").read_text()
+    guest = (repo / "lyrics-shader-lab/src/lib/base44/hostSurface.js").read_text()
+    player = (repo / "static/gallery/player.js").read_text()
+    service = (repo / "static/gallery/service.js").read_text()
+    reader = (repo / "static/gallery/lyrics-shader-reader.js").read_text()
+
+    # Every iframe shares one router and animation-frame pump.
+    assert "_plugins: new Map()" in runtime
+    assert "for(const plugin of this._plugins.values()) plugin._tick()" in runtime
+    assert "window.addEventListener('message', this._listener)" in runtime
+    assert "Promise.resolve().then" in runtime
+
+    # Events work in both directions; requested intents receive results.
+    assert "broadcast(name, payload)" in runtime
+    assert "publish(name, payload)" in runtime
+    assert "data.t === 'event'" in runtime
+    assert "t:'result'" in runtime
+    assert "intent-result" in runtime
+    assert "surface.onEvent" in guest
+    assert "surface.event" in guest
+    assert "surface.request" in guest
+    assert 'data.t === "result"' in guest
+
+    # Track and lyric mutations invalidate the reader at their source. There is
+    # no interval discovering a scene change after the fact.
+    assert "subscribe(fn)" in player
+    assert "notify(type, detail" in player
+    assert "phase:player" in player
+    assert "player.notify('lyrics'" in service
+    assert "player.subscribe" in reader
+    assert "plugin.publish(`player:${event.type}`" in reader
+    assert "setInterval(syncLines" not in reader
 
 
 def test_dock_panels_share_one_geometry_and_stack_horizontally(client: TestClient):

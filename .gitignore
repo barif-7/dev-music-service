@@ -26,3 +26,9 @@ node_modules/
 
 # Vercel frontend staging output
 dist/
+
+# Xcode user state
+**/xcuserdata/
+
+# generated weekly summaries
+weekly-summary-*.html
