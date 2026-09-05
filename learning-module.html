@@ -1,7 +1,234 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>dev-music-service — Visual Learning Module</title><style>body{margin:0;background:#0b0f14;color:#e8eef6;font:15px/1.55 -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif}.wrap{max-width:1100px;margin:auto;padding:32px}.hero,.card{background:#111823;border:1px solid #253244;border-radius:18px;padding:22px;margin:16px 0}h1{margin:0;font-size:32px}.muted{color:#9aa8b8}.tag{display:inline-block;color:#65d6ad;border:1px solid #253244;border-radius:999px;padding:4px 10px;margin:8px 6px 0 0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}pre{background:#071019;border:1px solid #253244;border-radius:14px;padding:16px;overflow:auto}.flow{display:flex;gap:10px;flex-wrap:wrap}.node{padding:12px;border:1px solid #253244;border-radius:12px;background:#0d1420}details{margin:10px 0;padding:12px;border:1px solid #253244;border-radius:12px;background:#0d1420}summary{color:#65d6ad;font-weight:700;cursor:pointer}</style></head><body><div class="wrap"><section class="hero"><h1>dev-music-service</h1><p class="muted">A backend/audio learning module for reviewing music search, browser-first streaming, media delivery APIs, service boundaries, and debugging paths.</p><span class="tag">FastAPI</span><span class="tag">Audio Streaming</span><span class="tag">Backend</span></section><section class="grid"><div class="card"><h2>Purpose</h2><p>Explain the service as a backend that turns search/input into playable media streams and API responses.</p></div><div class="card"><h2>Output</h2><p>This generated <code>learning-module.html</code> is paired with <code>docs/visual-learning-module-guide.md</code>.</p></div></section><section class="card"><h2>Architecture map</h2><pre>Client / Browser
- └─ HTTP API
-    ├─ Search Endpoint
-    ├─ Stream Endpoint
-    ├─ Media Tooling Boundary
-    ├─ Response / Error Mapping
-    └─ Runtime / Hosting Config</pre></section><section class="card"><h2>Request flow</h2><div class="flow"><div class="node">Query or URL</div><div class="node">API route</div><div class="node">Media resolver</div><div class="node">ffmpeg/stream pipe</div><div class="node">Browser playback</div></div></section><section class="grid"><div class="card"><h2>Inspect first</h2><ul><li>FastAPI entry point</li><li>Search route</li><li>Stream route</li><li>Media subprocess/tool calls</li><li>Error handling and deployment config</li></ul></div><div class="card"><h2>Talk tracks</h2><ul><li>Latency and buffering</li><li>Backpressure and stream safety</li><li>Local hosting versus public funnel</li><li>Where lyrics/shaders/metadata can attach</li></ul></div></section><section class="card"><h2>Deep dives</h2><details open><summary>Architecture summary</summary><p>Frame this as a pragmatic media API: search resolves content, stream routes deliver playable bytes, and tooling boundaries isolate external media processing.</p></details><details><summary>Next source-deepening pass</summary><p>Run the guide prompt locally to replace this module with exact endpoint names, snippets, diagrams, and failure-mode notes from the full repo.</p></details></section></div></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>dev-music-service / Phase — Visual Learning Module</title>
+<style>
+:root{color-scheme:dark;--bg:#090c11;--panel:#101722;--panel2:#0d131d;--line:#263246;--text:#edf3fb;--muted:#9cabbc;--accent:#72e0b8;--warn:#ffd27a;--danger:#ff9ca7;--blue:#8fc7ff;--radius:18px}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:radial-gradient(circle at 15% -10%,#17293a 0,transparent 32rem),var(--bg);color:var(--text);font:15px/1.58 ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.wrap{width:min(1180px,calc(100% - 28px));margin:auto;padding:28px 0 80px}.hero,.card{background:linear-gradient(180deg,rgba(18,27,39,.96),rgba(13,19,29,.96));border:1px solid var(--line);border-radius:var(--radius);box-shadow:0 18px 45px rgba(0,0,0,.18)}.hero{padding:28px}.hero h1{font-size:clamp(28px,5vw,48px);line-height:1.05;margin:0 0 10px}.hero p{max-width:850px;color:var(--muted);font-size:17px}.eyebrow{font:700 12px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}.tags{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}.tag{border:1px solid var(--line);background:#0a1119;border-radius:999px;padding:5px 10px;color:#c8d6e6;font:12px ui-monospace,SFMono-Regular,Menlo,monospace}.nav{display:flex;gap:8px;overflow:auto;padding:14px 2px 4px;position:sticky;top:0;z-index:10;background:linear-gradient(var(--bg) 55%,transparent)}.nav a{white-space:nowrap;text-decoration:none;color:var(--text);border:1px solid var(--line);background:#0c121b;border-radius:999px;padding:8px 12px;font-size:13px}.nav a:hover{border-color:#45617d}.section{margin-top:26px;scroll-margin-top:66px}.section>h2{font-size:25px;margin:0 0 6px}.lead{color:var(--muted);margin:0 0 14px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px}.card{padding:18px}.card h3{margin:0 0 7px;font-size:17px}.card p,.card li{color:#c7d2df}.card ul{padding-left:20px;margin-bottom:0}.accent{color:var(--accent)}.muted{color:var(--muted)}.warn{color:var(--warn)}.danger{color:var(--danger)}.mono,code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}code{background:#081018;border:1px solid #1e2b3b;border-radius:6px;padding:1px 5px;color:#cde4ff}pre{white-space:pre;overflow:auto;background:#071019;border:1px solid var(--line);border-radius:14px;padding:16px;color:#d8e7f7;margin:10px 0 0}.diagram{padding:20px;background:#081019;border:1px solid var(--line);border-radius:16px;overflow:auto}.row{display:flex;gap:10px;align-items:stretch;flex-wrap:wrap}.node{min-width:160px;flex:1;padding:12px 14px;border:1px solid #324156;border-radius:12px;background:#0e1722}.node strong{display:block;color:#f2f7fc}.node small{display:block;color:var(--muted);margin-top:3px}.arrow{display:grid;place-items:center;color:#6f8196;font-size:20px}.ownership{display:grid;grid-template-columns:1fr 1fr;gap:12px}.owner{border:1px solid var(--line);border-radius:14px;padding:16px;background:#0a1119}.owner h3{margin-top:0}.pill{display:inline-block;border-radius:8px;padding:3px 7px;margin:3px 3px 3px 0;background:#111d2a;border:1px solid #27394c;color:#cbd9e8;font-size:12px}.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:15px}table{width:100%;border-collapse:collapse;min-width:760px;background:#0b121b}th,td{text-align:left;vertical-align:top;padding:11px 12px;border-bottom:1px solid #1d2a3a}th{color:var(--accent);font-size:12px;text-transform:uppercase;letter-spacing:.08em;background:#0d1721}td{color:#cbd6e2}tr:last-child td{border-bottom:0}details{border:1px solid var(--line);border-radius:13px;background:#0b121b;margin:9px 0;padding:12px 14px}summary{cursor:pointer;color:var(--accent);font-weight:700}.callout{border-left:3px solid var(--accent);background:#0d171d;padding:13px 15px;border-radius:0 12px 12px 0;color:#cbd7e3}.callout.warnbox{border-left-color:var(--warn)}.flow-title{font-size:13px;color:var(--blue);font-weight:700;margin:0 0 8px;text-transform:uppercase;letter-spacing:.07em}.step{display:grid;grid-template-columns:34px 1fr;gap:10px;align-items:start;margin:10px 0}.num{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:#122334;border:1px solid #2d4864;color:var(--blue);font-weight:700}.step b{display:block}.step span{color:var(--muted)}.footer{margin-top:30px;color:#7f90a4;text-align:center;font-size:12px}.kbd{border:1px solid #405168;border-bottom-width:2px;border-radius:6px;padding:1px 5px;background:#0c141e;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px}@media(max-width:720px){.ownership{grid-template-columns:1fr}.hero{padding:21px}.wrap{width:min(100% - 18px,1180px)}.arrow{display:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <section class="hero">
+    <div class="eyebrow">10–15 minute codebase map</div>
+    <h1>dev-music-service <span class="accent">/ Phase</span></h1>
+    <p>A browser-first music system that coordinates media discovery, safe streaming, synchronized lyrics, translation, live transcription, audio-reactive visuals, library import, focus scoring, embedded creative surfaces, and MCP tooling.</p>
+    <div class="tags">
+      <span class="tag">FastAPI 0.4.0</span><span class="tag">Python 3.12+</span><span class="tag">yt-dlp</span><span class="tag">LRCLIB</span><span class="tag">MusicBrainz</span><span class="tag">CaptionLocalizer</span><span class="tag">ReccoBeats</span><span class="tag">React/Vite</span><span class="tag">MCP</span>
+    </div>
+  </section>
+
+  <nav class="nav" aria-label="Learning module navigation">
+    <a href="#mental-model">Mental model</a><a href="#architecture">Architecture</a><a href="#ownership">State ownership</a><a href="#flows">Flows</a><a href="#files">Key files</a><a href="#failure">Failure paths</a><a href="#setup">Run & test</a><a href="#extensions">Extension seams</a><a href="#interview">Interview notes</a>
+  </nav>
+
+  <section class="section" id="mental-model">
+    <h2>1. Mental model</h2>
+    <p class="lead">The easiest way to understand the repo is to stop thinking of it as a “music API” and see it as an orchestration system.</p>
+    <div class="grid">
+      <div class="card"><h3>🧠 Control plane</h3><p><code>main.py</code> exposes the HTTP contract, applies auth/rate limits, and coordinates services. Domain logic is pushed into <code>services/</code>.</p></div>
+      <div class="card"><h3>🎧 Playback plane</h3><p><code>MusicService</code> resolves candidates and direct media URLs. <code>/api/stream</code> validates the target and delivers seekable browser media.</p></div>
+      <div class="card"><h3>📝 Lyric plane</h3><p>LRCLIB is the fast path. Missing timed lyrics can fall back to CaptionLocalizer transcription, streamed progressively as SSE.</p></div>
+      <div class="card"><h3>🌈 Presentation plane</h3><p>The Phase shell owns playback and scene state. Embedded reader/editor surfaces receive projected state and emit intents back.</p></div>
+      <div class="card"><h3>🧩 Integration plane</h3><p>Spotify, Apple Music, ReccoBeats, Phase · Field, Component Vault, local ffplay, CaptionLocalizer, and MCP all attach behind explicit service boundaries.</p></div>
+      <div class="card"><h3>🛡️ Safety plane</h3><p>Stream allowlisting, private-address rejection, framing policy, beta auth, process-control auth, redacted structured logs, and rate limiting protect dangerous boundaries.</p></div>
+    </div>
+    <div class="callout" style="margin-top:12px"><strong>Core principle:</strong> the browser shell is authoritative for user-facing playback state; embedded apps are not allowed to become competing players or independently reach every upstream service.</div>
+  </section>
+
+  <section class="section" id="architecture">
+    <h2>2. Architecture</h2>
+    <p class="lead">Read top-to-bottom: clients enter through FastAPI, services isolate external systems, and the browser shell composes the final experience.</p>
+    <div class="diagram">
+<pre>                         ┌──────────────────────────────┐
+                         │         Clients              │
+                         │ Browser · Native · MCP agent │
+                         └──────────────┬───────────────┘
+                                        │ HTTP / MCP
+                                        ▼
+┌───────────────────────────────────────────────────────────────────────┐
+│                         main.py · FastAPI                             │
+│ routes · beta auth · rate limits · framing · logging · orchestration │
+└───────┬─────────┬─────────┬──────────┬──────────┬──────────┬────────┘
+        │         │         │          │          │          │
+        ▼         ▼         ▼          ▼          ▼          ▼
+  MusicService  Lyrics   Imports     Focus      Visuals    Controls
+    yt-dlp      LRCLIB   Spotify     Recco      Phase      ffplay/MCP
+      │           │      Apple       Beats      Field
+      │           └──────┐             │          │
+      │                  ▼             │          │
+      │          CaptionLocalizer      │          │
+      │          translation + SSE     │          │
+      └──────────────┬─────────────────┴──────────┘
+                     ▼
+          ┌───────────────────────────┐
+          │      Phase browser shell  │
+          │ playback · scene · FFT   │
+          │ lyrics · preferences     │
+          └───────────┬───────────────┘
+                      │ projected state / intents
+             ┌────────┼─────────┐
+             ▼        ▼         ▼
+        Shader Lab  Canvas   Semi (flagged)
+        React/Vite  editor   voice profile</pre>
+    </div>
+    <div class="grid" style="margin-top:12px">
+      <div class="card"><h3>Backend boundary</h3><p>Same-origin API routes hide upstream URLs, normalize provider behavior, and keep secrets/process control out of the browser.</p></div>
+      <div class="card"><h3>Frontend boundary</h3><p><code>static/index.html</code> + <code>static/gallery/</code> are the product shell. <code>frontend.py</code> is superseded and no longer the runtime UI.</p></div>
+      <div class="card"><h3>Embedded-app boundary</h3><p><code>lyrics-shader-lab/</code> is built into <code>static/lyrics-shader-lab/</code>. Canvas and Semi are similarly vendored surfaces.</p></div>
+      <div class="card"><h3>Native boundary</h3><p>iOS, iPadOS and macOS clients live in the separate <code>dev-music-clients</code> repo and consume this backend over HTTP.</p></div>
+    </div>
+  </section>
+
+  <section class="section" id="ownership">
+    <h2>3. Who owns what?</h2>
+    <p class="lead">This is the architectural detail most likely to save you from introducing duplicate state.</p>
+    <div class="ownership">
+      <div class="owner">
+        <h3 class="accent">Phase shell owns</h3>
+        <span class="pill">current track</span><span class="pill">play/pause</span><span class="pill">time</span><span class="pill">seek</span><span class="pill">lyrics</span><span class="pill">active line</span><span class="pill">translation state</span><span class="pill">FFT / RMS / onset</span><span class="pill">wallpaper</span><span class="pill">reader prefs</span><span class="pill">plugin dock</span>
+        <p>The shell creates the canonical scene projection and sends only what each guest needs.</p>
+      </div>
+      <div class="owner">
+        <h3 class="accent">Embedded surfaces own</h3>
+        <span class="pill">rendering</span><span class="pill">local visual UI</span><span class="pill">reader layout</span><span class="pill">editor interaction</span><span class="pill">intent dispatch</span>
+        <p>Guests can request actions such as seek or translation retry, but the host decides how those actions affect global state.</p>
+      </div>
+    </div>
+    <div class="callout warnbox" style="margin-top:12px"><strong>Avoid:</strong> letting an iframe start its own independent media player, fetch protected upstream services directly, or derive a second “active lyric line” from time. Those create split-brain state.</div>
+  </section>
+
+  <section class="section" id="flows">
+    <h2>4. Four flows to learn first</h2>
+    <p class="lead">If you can explain these four flows from memory, you understand most of the product architecture.</p>
+    <div class="card">
+      <div class="flow-title">A · Search → browser playback</div>
+      <div class="step"><div class="num">1</div><div><b><code>GET /api/search</code></b><span>The backend passes the resolved query and optional expected metadata into <code>MusicService.search</code>.</span></div></div>
+      <div class="step"><div class="num">2</div><div><b>Candidate resolution</b><span><code>yt-dlp</code> finds candidates; expected artist/title/album/year and duration can help rank the result.</span></div></div>
+      <div class="step"><div class="num">3</div><div><b><code>GET /api/stream</code></b><span>The webpage URL is validated, then resolved to a direct upstream media source which is validated again.</span></div></div>
+      <div class="step"><div class="num">4</div><div><b>Proxy or redirect</b><span>Proxy mode preserves upstream 200/206 and range headers so the browser can seek. Rejected audio sources can fall back to a progressive media strategy.</span></div></div>
+    </div>
+    <div class="card" style="margin-top:12px">
+      <div class="flow-title">B · Lyrics → localization → Learn view</div>
+      <div class="step"><div class="num">1</div><div><b>LRCLIB lookup</b><span><code>LyricsService</code> tries synchronized lyrics and parses LRC into timed lines.</span></div></div>
+      <div class="step"><div class="num">2</div><div><b>Fallback when missing</b><span><code>LiveTranscriptionService</code> can start a CaptionLocalizer live session and proxy finalized lines over server-sent events.</span></div></div>
+      <div class="step"><div class="num">3</div><div><b>Just-in-time translation</b><span>The shell localizes a small active/look-ahead lyric window rather than translating the entire product state indiscriminately.</span></div></div>
+      <div class="step"><div class="num">4</div><div><b>Stable scene projection</b><span>Visual, Timeline and Learn use stable line indices from the host. Vocabulary cards only display fields actually returned by CaptionLocalizer.</span></div></div>
+    </div>
+    <div class="card" style="margin-top:12px">
+      <div class="flow-title">C · Audio → shader behavior</div>
+      <div class="step"><div class="num">1</div><div><b>Frame-level measurements</b><span>Web Audio supplies live bass, mid, treble, RMS, flux and onset from the playing stream.</span></div></div>
+      <div class="step"><div class="num">2</div><div><b>Track priors</b><span>ReccoBeats can provide longer-lived audio features when a usable Spotify ID exists.</span></div></div>
+      <div class="step"><div class="num">3</div><div><b>Lyric visual analysis</b><span>Deterministic lyric analysis provides mood/color/energy-style parameters without leaking model secrets to the browser.</span></div></div>
+      <div class="step"><div class="num">4</div><div><b>Phase · Field</b><span>The backend proxies shader metadata/source formats same-origin; the shell combines priors with live audio to drive the visual field.</span></div></div>
+    </div>
+    <div class="card" style="margin-top:12px">
+      <div class="flow-title">D · Library import → playable match</div>
+      <div class="step"><div class="num">1</div><div><b>Provider library</b><span>Spotify uses PKCE/account APIs. Apple Music supports MusicKit and owner-only local XML/JSON export parsing.</span></div></div>
+      <div class="step"><div class="num">2</div><div><b>Normalization</b><span>Provider-specific shapes become common imported playlist/track models.</span></div></div>
+      <div class="step"><div class="num">3</div><div><b>Matching</b><span>MusicBrainz and shared preview logic reconcile imported metadata with playable search candidates.</span></div></div>
+      <div class="step"><div class="num">4</div><div><b>Playback resolution</b><span>The matched track returns to the same browser-first playback pipeline instead of creating a separate player architecture.</span></div></div>
+    </div>
+  </section>
+
+  <section class="section" id="files">
+    <h2>5. Key-file walkthrough</h2>
+    <p class="lead">Open these in this order when reviewing the code.</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Priority</th><th>File / area</th><th>Why it matters</th><th>Question to ask</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td><code>main.py</code></td><td>All HTTP entry points, middleware, streaming and orchestration.</td><td>Which logic belongs here vs. in a service?</td></tr>
+        <tr><td>2</td><td><code>config.py</code> + <code>security.py</code></td><td>Runtime modes and the trust boundary around media/control routes.</td><td>What can an untrusted caller influence?</td></tr>
+        <tr><td>3</td><td><code>services/music_service.py</code></td><td>Search, candidate ranking and media-source resolution.</td><td>How does a query become a stable playable source?</td></tr>
+        <tr><td>4</td><td><code>static/index.html</code> + <code>static/gallery/</code></td><td>The actual product shell and its state/message runtime.</td><td>Which state is canonical in the host?</td></tr>
+        <tr><td>5</td><td><code>services/lyrics_service.py</code> + <code>live_transcription_service.py</code></td><td>Fast-path timed lyrics plus graceful fallback.</td><td>What happens when the preferred provider has no data?</td></tr>
+        <tr><td>6</td><td><code>lyrics-shader-lab/</code></td><td>React/Vite embedded reader and learning UI.</td><td>Which responsibilities are intentionally kept out of the iframe?</td></tr>
+        <tr><td>7</td><td><code>services/focus_service.py</code> + <code>reccobeats_service.py</code></td><td>Provider abstraction, cached audio priors and focus scoring.</td><td>How did the system survive Spotify audio-feature deprecation?</td></tr>
+        <tr><td>8</td><td><code>services/*import*</code></td><td>Spotify/Apple Music normalization, matching and playback resolution.</td><td>Where is provider-specific behavior collapsed into shared models?</td></tr>
+        <tr><td>9</td><td><code>mcp-server/</code></td><td>Agent-facing tool wrapper around HTTP capabilities.</td><td>Which actions are safe to expose as tools?</td></tr>
+        <tr><td>10</td><td><code>HANDOFF.md</code></td><td>Newest implementation decisions and known drift.</td><td>What changed more recently than the formal docs?</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="section" id="failure">
+    <h2>6. Failure paths are part of the architecture</h2>
+    <p class="lead">This repo is strongest when it makes “not available” a normal state instead of inventing data or crashing the whole experience.</p>
+    <div class="grid">
+      <div class="card"><h3>No timed lyrics</h3><p>Start live CaptionLocalizer transcription and stream finalized lines as SSE when enabled.</p></div>
+      <div class="card"><h3>No audio features</h3><p>Return explicit neutral track priors. Playback and shaders continue.</p></div>
+      <div class="card"><h3>Rejected audio source</h3><p>Retry via progressive-media resolution for selected upstream rejection statuses.</p></div>
+      <div class="card"><h3>Component Vault offline</h3><p>Return a normal developer-service <code>503</code>; do not make the Canvas guest own localhost connectivity.</p></div>
+      <div class="card"><h3>Phase · Field offline</h3><p>Same-origin proxy returns <code>503</code> while keeping the upstream URL out of the browser.</p></div>
+      <div class="card"><h3>Unbuilt embedded surface</h3><p>Routes return a clear <code>503</code> with the build command rather than an unexplained blank page.</p></div>
+    </div>
+  </section>
+
+  <section class="section" id="setup">
+    <h2>7. Run, test, debug</h2>
+    <p class="lead">The preferred Python dependency source is <code>pyproject.toml</code>. Some older wrappers/CI still reference <code>requirements.txt</code>.</p>
+    <div class="grid">
+      <div class="card"><h3>Preferred backend setup</h3><pre>cp .env.example .env
+uv sync --extra dev
+uv run uvicorn main:app \
+  --host 127.0.0.1 --port 8000</pre></div>
+      <div class="card"><h3>Python tests</h3><pre>uv run --extra dev pytest
+# compatibility wrapper
+./test.sh</pre></div>
+      <div class="card"><h3>Lyrics Shader Lab</h3><pre>npm run install:lyrics-shader-lab
+npm run dev:lyrics-shader-lab
+npm run build:lyrics-shader-lab</pre></div>
+      <div class="card"><h3>Browser design audit</h3><pre>npm run audit:design</pre><p>Uses Chromium to assert computed geometry instead of brittle CSS string matches.</p></div>
+      <div class="card"><h3>MCP server</h3><pre>cd mcp-server
+npm ci
+npx tsc --noEmit
+npm run lint
+npm test</pre></div>
+      <div class="card"><h3>Useful URLs</h3><pre>http://127.0.0.1:8000/
+http://127.0.0.1:8000/docs
+http://127.0.0.1:8000/health
+http://127.0.0.1:8000/lyrics-shader-lab</pre></div>
+    </div>
+    <div class="callout warnbox" style="margin-top:12px"><strong>Documentation drift to remember:</strong> <code>HANDOFF.md</code> says <code>pyproject.toml</code> + <code>uv</code> are the source of truth and the project requires Python 3.12+, but <code>run.sh</code> still creates a venv and installs <code>requirements.txt</code>. Treat <code>run.sh</code> as a compatibility path until it is reconciled.</div>
+  </section>
+
+  <section class="section" id="extensions">
+    <h2>8. Good extension seams</h2>
+    <p class="lead">Add new capability where the architecture already expects variation.</p>
+    <details open><summary>New audio-feature provider</summary><p>Implement the provider protocol behind FocusService rather than teaching every caller about a new provider. Preserve coverage/no-data semantics.</p></details>
+    <details><summary>New lyric provider or transcription strategy</summary><p>Keep normalized timed-line models stable. The shell should not care whether lines came from LRCLIB, transcription, or another source.</p></details>
+    <details><summary>New embedded creative surface</summary><p>Use the host-owned plugin/message runtime: scene projection in, named intents out. Add the route to the explicit frameable-path policy and test it.</p></details>
+    <details><summary>New import source</summary><p>Normalize provider data into shared imported track models, then reuse import-preview matching and the browser playback resolution path.</p></details>
+    <details><summary>New MCP capability</summary><p>Expose a narrow backend operation rather than duplicating domain logic inside TypeScript. Be especially cautious with process-affecting tools.</p></details>
+  </section>
+
+  <section class="section" id="interview">
+    <h2>9. Interview / architecture talking points</h2>
+    <p class="lead">These are the strongest engineering stories in the repo.</p>
+    <div class="grid">
+      <div class="card"><h3>Provider migration</h3><p><strong>Story:</strong> Spotify deprecated audio features. The system moved to a provider abstraction + ReccoBeats, preserved the public Focus contract, added coverage/no-data reporting, caching and rate-limit backoff.</p></div>
+      <div class="card"><h3>Streaming correctness</h3><p><strong>Story:</strong> browser audio needs range semantics. The proxy mirrors upstream status and seek headers, validates every resolved target, and has a fallback path for rejected sources.</p></div>
+      <div class="card"><h3>Graceful degradation</h3><p><strong>Story:</strong> missing metadata is modeled explicitly: live transcription for missing timed lyrics, neutral priors for missing features, clear 503s for unavailable dev services.</p></div>
+      <div class="card"><h3>Embedded-state architecture</h3><p><strong>Story:</strong> the host owns playback/lyrics/audio state; guest surfaces receive projections and send intents. That prevents multiple sources of truth across iframes.</p></div>
+      <div class="card"><h3>Security boundaries</h3><p><strong>Story:</strong> remote media and local-process controls are both dangerous. URL allowlisting, private-address defense, route auth, frame policy and redacted logs are first-class architecture.</p></div>
+      <div class="card"><h3>Testing what users see</h3><p><strong>Story:</strong> CSS grep assertions were replaced with a real Chromium geometry audit because valid source text can still render broken UI.</p></div>
+    </div>
+    <div class="card" style="margin-top:12px"><h3>30-second summary</h3><p>“Phase is a browser-first music platform with a FastAPI orchestration layer. Search and streaming are powered by yt-dlp behind URL-safety and range-aware proxying; synchronized lyrics come from LRCLIB with CaptionLocalizer transcription/localization fallbacks. The browser shell owns playback, lyric timing and live audio analysis, while embedded React/Canvas surfaces consume projected scene state and emit intents. Spotify/Apple Music imports, ReccoBeats focus scoring, Phase · Field shaders, local controls and MCP integrations all sit behind service boundaries so providers can change without rewriting the product shell.”</p></div>
+  </section>
+
+  <section class="section">
+    <h2>10. What to read next</h2>
+    <div class="row">
+      <div class="node"><strong>README.md</strong><small>Product overview + current setup</small></div><div class="arrow">→</div>
+      <div class="node"><strong>docs/system-map.md</strong><small>Source-area map</small></div><div class="arrow">→</div>
+      <div class="node"><strong>docs/developer-api.md</strong><small>Routes + hosting + config</small></div><div class="arrow">→</div>
+      <div class="node"><strong>HANDOFF.md</strong><small>Newest implementation decisions</small></div>
+    </div>
+  </section>
+
+  <div class="footer">Self-contained offline learning module · no external scripts, fonts or CDNs · refreshed for the current Phase architecture</div>
+</div>
+</body>
+</html>
