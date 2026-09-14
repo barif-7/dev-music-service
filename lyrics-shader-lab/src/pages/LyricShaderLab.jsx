@@ -6,6 +6,7 @@ import LanguageSelect from "@/components/bilingual/LanguageSelect";
 import LearnControls from "@/components/bilingual/LearnControls";
 import LiveAnnouncer from "@/components/bilingual/LiveAnnouncer";
 import VocabularyCard from "@/components/bilingual/VocabularyCard";
+import { captureWord, directVocabulary } from "@/lib/vocabulary/client";
 import DebugPanel from "@/components/shader-lab/DebugPanel";
 import FeatureAttributionPanel from "@/components/shader-lab/FeatureAttributionPanel";
 import IntegrationNotes from "@/components/shader-lab/IntegrationNotes";
@@ -171,7 +172,7 @@ export default function LyricShaderLab() {
   const [preferences, setPreferences] = useState(readLabPreferences);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [translationRevealed, setTranslationRevealed] = useState(true);
-  const [vocabularyWord, setVocabularyWord] = useState("");
+  const [vocabularyCapture, setVocabularyCapture] = useState(null);
   const [announcement, setAnnouncement] = useState("");
   const [practiceLines, setPracticeLines] = useState(() => {
     try { return JSON.parse(localStorage.getItem(LAB_PRACTICE_KEY) || "[]"); }
@@ -507,18 +508,15 @@ export default function LyricShaderLab() {
     setAnnouncement("Practice list updated.");
   };
 
+  const selectWord = word => setVocabularyCapture(captureWord(word, activeLyric, song, sourceLocale, targetLocale));
+
   const handleVocabularyOpen = () => {
     const firstWord = activeLyric?.text?.split(/\s+/).find(Boolean) || "";
-    setVocabularyWord(firstWord.replace(/[^\p{L}\p{N}']/gu, ""));
+    selectWord(firstWord.replace(/[^\p{L}\p{N}']/gu, ""));
   };
 
-  const handleSaveVocabulary = (entry) => {
-    try {
-      const key = "phaseField.lyricVocabulary";
-      const existing = JSON.parse(localStorage.getItem(key) || "[]");
-      localStorage.setItem(key, JSON.stringify([...existing, { ...entry, track: song, locale: targetLocale, savedAt: new Date().toISOString() }].slice(-200)));
-    } catch {}
-    setVocabularyWord("");
+  const handleSaveVocabulary = () => {
+    setVocabularyCapture(null);
     setAnnouncement("Word saved for practice.");
   };
 
@@ -645,7 +643,7 @@ export default function LyricShaderLab() {
                   lineState,
                   preferences,
                   onRetry: retryTranslation,
-                  onWordSelect: setVocabularyWord,
+                  onWordSelect: selectWord,
                   learnMode: readerMode === "learn",
                   translationRevealed,
                   onRevealTranslation: () => setTranslationRevealed(true),
@@ -663,7 +661,8 @@ export default function LyricShaderLab() {
                 onPractice={() => handlePractice()}
                 onVocabulary={handleVocabularyOpen}
                 hasOriginal={Boolean(activeLyric?.text)}
-                canUseVocabulary={Boolean(targetLocale)}
+                canUseVocabulary
+                onStudy={() => { window.location.href = "/vocabulary"; }}
               />
             )}
           </div>
@@ -698,8 +697,8 @@ export default function LyricShaderLab() {
         </div>
       </main>
       <LiveAnnouncer enabled={preferences.srAnnouncements} message={announcement} />
-      {vocabularyWord && targetLocale && (
-        <VocabularyCard word={vocabularyWord} sourceLanguage={sourceLocale} targetLanguage={targetLocale} provider={localizerProvider} onSave={handleSaveVocabulary} onClose={() => setVocabularyWord("")} />
+      {vocabularyCapture && (
+        <VocabularyCard capture={vocabularyCapture} request={directVocabulary} onSave={handleSaveVocabulary} onClose={() => setVocabularyCapture(null)} />
       )}
     </div>
   );

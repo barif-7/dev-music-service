@@ -18,7 +18,7 @@ import LiveAnnouncer from "@/components/bilingual/LiveAnnouncer";
 import VisualizerPanel from "@/components/shader-lab/VisualizerPanel";
 import { hostSurface } from "@/lib/base44/hostSurface";
 import { intent, useActiveLine, useHostFrameTime, useHostScene } from "@/lib/base44/useHostSurface";
-import { createCaptionLocalizerProvider } from "@/lib/bilingual/captionLocalizerProvider";
+import { captureWord, embeddedVocabulary } from "@/lib/vocabulary/client";
 import { TRANSLATION_STATES } from "@/lib/bilingual/translationService";
 
 const BilingualTimeline = lazy(() => import("@/components/bilingual/BilingualTimeline"));
@@ -37,7 +37,7 @@ export default function LyricsReaderSurface() {
   const scene = useHostScene();
   const activeIndex = useActiveLine();
   const [optionsOpen, setOptionsOpen] = useState(false);
-  const [vocabularyWord, setVocabularyWord] = useState("");
+  const [vocabularyCapture, setVocabularyCapture] = useState(null);
   const [translationRevealed, setTranslationRevealed] = useState(true);
 
   const prefs = scene?.prefs;
@@ -54,10 +54,6 @@ export default function LyricsReaderSurface() {
     return { state: TRANSLATION_STATES.LOADING, text: "" };
   }, [activeLine, scene?.translationLocale]);
 
-  const localizerProvider = useMemo(
-    () => createCaptionLocalizerProvider(scene?.track),
-    [scene?.track],
-  );
 
   const announcement = useMemo(() => {
     if (!prefs?.srAnnouncements || !activeLine?.text) return "";
@@ -71,6 +67,7 @@ export default function LyricsReaderSurface() {
   if (!scene || !prefs) return <main className="h-screen" aria-busy="true" />;
 
   const seek = (time) => intent("seek", { time });
+  const selectWord = word => setVocabularyCapture(captureWord(word, activeLine, scene.track, scene.sourceLocale, scene.translationLocale));
   const translationFor = (line) => {
     if (!scene.translationLocale) return { state: TRANSLATION_STATES.NOT_REQUESTED, text: "" };
     return line.localized
@@ -161,7 +158,10 @@ export default function LyricsReaderSurface() {
             backgroundMode={prefs.readerShader === false ? "passthrough" : "wallpaper"}
             wallpaperName={scene.wallpaper?.name}
             wallpaperBlend
-            backgroundVisible={prefs.windowAppearance === "textOnly" ? false : backgroundVisible}
+            // Text-only removes window chrome, not the user's selected
+            // backdrop. Forcing this false also removed the Canvas2D fallback;
+            // browsers that cannot composite through the iframe showed white.
+            backgroundVisible={backgroundVisible}
             lyricsBehindShader={prefs.lyricsBehindShader}
             highContrast={prefs.highContrast}
             reduceMotion={prefs.reducedMotion}
@@ -174,7 +174,7 @@ export default function LyricsReaderSurface() {
               lineState,
               preferences: prefs,
               onRetry: () => intent("translate", { index: activeIndex }),
-              onWordSelect: setVocabularyWord,
+              onWordSelect: selectWord,
               learnMode: view === "learn",
               translationRevealed,
               onRevealTranslation: () => setTranslationRevealed(true),
@@ -193,7 +193,7 @@ export default function LyricsReaderSurface() {
             targetLocale={scene.translationLocale}
             targetLabel={scene.translationLabel}
             accent={scene.wallpaper?.palette?.[2] || "#ffffff"}
-            backgroundVisible={prefs.windowAppearance === "textOnly" ? false : backgroundVisible}
+            backgroundVisible={backgroundVisible}
             onSeek={seek}
             onReplay={(line) => seek(line.time)}
             onPractice={(line, index) => intent("practice", { index })}
@@ -212,22 +212,17 @@ export default function LyricsReaderSurface() {
             onPractice={() => intent("practice", { index: activeIndex })}
             onVocabulary={() => {
               const first = activeLine?.text?.split(/\s+/).find(Boolean) || "";
-              setVocabularyWord(first.replace(/[^\p{L}\p{N}']/gu, ""));
+              selectWord(first.replace(/[^\p{L}\p{N}']/gu, ""));
             }}
             hasOriginal={Boolean(activeLine?.text)}
-            canUseVocabulary={Boolean(scene.translationLocale)}
+            canUseVocabulary
+            onStudy={() => intent("openVocabulary")}
           />
         )}
 
-        {vocabularyWord && (
-          <VocabularyCard
-            word={vocabularyWord}
-            sourceLanguage={scene.sourceLocale}
-            targetLanguage={scene.translationLocale}
-            provider={localizerProvider}
-            onSave={(entry) => { intent("vocabulary", entry); setVocabularyWord(""); }}
-            onClose={() => setVocabularyWord("")}
-          />
+        {vocabularyCapture && (
+          <VocabularyCard capture={vocabularyCapture} request={embeddedVocabulary}
+            onSave={() => setVocabularyCapture(null)} onClose={() => setVocabularyCapture(null)} />
         )}
       </Suspense>
 

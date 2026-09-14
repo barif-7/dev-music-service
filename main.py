@@ -33,6 +33,7 @@ from api.live_component_bindings import (
     vertexflow_viewport,
 )
 from api.live_components import router as live_components_router
+from api.vocabulary import router as vocabulary_router
 from config import get_settings
 from models import (
     AppleMusicImportAlbum,
@@ -165,6 +166,7 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
+app.include_router(vocabulary_router)
 app.include_router(live_components_router)
 
 _PUBLIC_BETA_PATHS = {"/health", "/login", "/api/auth/login", "/api/auth/status"}

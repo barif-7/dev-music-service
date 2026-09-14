@@ -103,6 +103,8 @@ class Settings(BaseSettings):
     apple_music_import_path: Path | None = None
     # CaptionLocalizer integration — used to localize synced lyric lines on demand.
     caption_localizer_url: str = "http://127.0.0.1:8001"
+    # Independent plugin; this app is only its same-origin browser adapter.
+    vocabulary_service_url: str = "http://127.0.0.1:8796"
     # CaptionLocalizer decodes this trusted internal stream URL. Keep it on the
     # loopback interface even when the browser-facing app uses a Funnel origin.
     caption_audio_source_base_url: str = "http://127.0.0.1:8000"
@@ -167,6 +169,16 @@ class Settings(BaseSettings):
         if normalized not in {"proxy", "redirect"}:
             raise ValueError("STREAM_DELIVERY_MODE must be proxy or redirect")
         return normalized
+
+    @field_validator("vocabulary_service_url")
+    @classmethod
+    def _validate_vocabulary_service_url(cls, value: str) -> str:
+        parsed = urlparse(value)
+        if (parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost", "::1"}
+                or parsed.username or parsed.password or parsed.path not in {"", "/"}
+                or parsed.query or parsed.fragment):
+            raise ValueError("VOCABULARY_SERVICE_URL must be a loopback HTTP URL")
+        return value.rstrip("/")
 
     @field_validator("caption_localizer_url")
     @classmethod

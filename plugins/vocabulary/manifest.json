@@ -1,0 +1,15 @@
+{
+  "id": "vocabulary",
+  "name": "Vocabulary",
+  "version": "1.0.0",
+  "runtime": "fastapi",
+  "command": "sh scripts/run-vocabulary.sh",
+  "listen": "http://127.0.0.1:8796",
+  "health": "/health",
+  "api": "/v1",
+  "adapter": "/api/vocabulary",
+  "surface": "/vocabulary",
+  "storage": "~/Library/Application Support/Phase/vocabulary.sqlite3",
+  "optional_dependencies": ["ollama"],
+  "capabilities": ["capture", "lookup", "library", "review", "usage", "import", "export"]
+}

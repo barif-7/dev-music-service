@@ -106,7 +106,7 @@ def test_reader_composites_the_animated_shader_over_the_wallpaper():
     assert 'style={{ "--reader-soft-gradient": scene.gradient }}' in reader
     assert "Hide lyric window background" in reader
     assert "Show lyric window background" in reader
-    assert 'backgroundVisible={prefs.windowAppearance === "textOnly" ? false : backgroundVisible}' in reader
+    assert 'backgroundVisible={backgroundVisible}' in reader
 
     # The surface is a view: it derives nothing and owns no persistence.
     assert "localStorage" not in reader
