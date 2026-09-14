@@ -255,19 +255,67 @@ async function audit(page, url) {
     inner.bars.every((c) => c && !clear(c) && parseFloat((c.match(/[\d.]+\)$/) || ["1)"])[0]) < 0.2),
     String(inner.bars[0]));
 
+  // ---- the command palette stays on screen -------------------------------
+  /* The palette is fixed at the caret, and the caret is usually near the
+     bottom of a note. Only the horizontal side was ever clamped, which stopped
+     being survivable when the app list went from four rows to twenty-two: a
+     caret in the lower third put the search box and every result below the
+     fold. Driven here rather than asserted against the stylesheet, because the
+     panel's height depends on what the picker fetched. */
+  group("command palette placement");
+  await frame.click(".ql-editor");
+  for (let i = 0; i < 18; i += 1) await frame.press(".ql-editor", "Enter");
+  await frame.type(".ql-editor", "/component");
+  await frame.waitForSelector('[data-slash-menu] button[data-idx="0"]', { timeout: 8000 });
+  await frame.press(".ql-editor", "Enter");
+  await frame.waitForSelector("[data-slash-menu] input", { timeout: 8000 });
+  await new Promise((r) => setTimeout(r, 1500));
+
+  const palette = await frame.evaluate(() => {
+    const panel = document.querySelector("[data-slash-menu]")?.firstElementChild;
+    if (!panel) return null;
+    const box = panel.getBoundingClientRect();
+    const input = panel.querySelector("input")?.getBoundingClientRect();
+    const list = panel.querySelector("ul[aria-label$='results']");
+    const inView = (r) => r && r.top >= -1 && r.bottom <= window.innerHeight + 1;
+    return {
+      top: Math.round(box.top), bottom: Math.round(box.bottom), viewport: window.innerHeight,
+      onScreen: inView(box), inputReachable: inView(input),
+      listScrolls: list ? getComputedStyle(list).overflowY === "auto" : true,
+    };
+  });
+  check("palette stays within the viewport",
+    palette && palette.onScreen,
+    palette ? `${palette.top}–${palette.bottom} of ${palette.viewport}` : "no palette");
+  check("its search box is reachable from a caret near the bottom",
+    palette && palette.inputReachable && palette.listScrolls,
+    palette ? `input ${palette.inputReachable ? "in view" : "off screen"}` : "no palette");
+
+  await frame.press(".ql-editor", "Escape");
+  await frame.evaluate(() => {
+    const editor = document.querySelector(".ql-editor");
+    if (editor) editor.innerHTML = "<p><br></p>";
+  });
+  await new Promise((r) => setTimeout(r, 300));
+
   // ---- the component embed ----------------------------------------------
+  /* `/component` browses the live local apps now, not the vault's JSX index
+     (the vault search moved to /api/components/source-search). So the card
+     under test is an app wrapper, and what matters is that a mounted app view
+     gets an app-sized card instead of the stylesheet's preview default. */
   group("component embed");
-  const vaultUp = await (async () => {
+  const liveApp = await (async () => {
     try {
-      const response = await fetch(`${url}/api/components/search?q=calendar&limit=1`,
+      const response = await fetch(`${url}/api/components/search?kind=app`,
         { signal: AbortSignal.timeout(8000) });
-      return response.ok;
-    } catch { return false; }
+      if (!response.ok) return null;
+      return (await response.json()).results?.[0] || null;
+    } catch { return null; }
   })();
 
-  if (!vaultUp) {
-    skip("embed sizes itself from the vault report", "Component Vault unreachable");
-    skip("preview stays sandboxed", "Component Vault unreachable");
+  if (!liveApp) {
+    skip("embed sizes itself from the app's report", "no local app is running");
+    skip("live wrapper is scoped to our own origin", "no local app is running");
     return;
   }
 
@@ -276,30 +324,42 @@ async function audit(page, url) {
   await frame.waitForSelector('[data-slash-menu] button[data-idx="0"]', { timeout: 8000 });
   await frame.press(".ql-editor", "Enter");
   await frame.waitForSelector("[data-slash-menu] input", { timeout: 8000 });
-  await frame.fill("[data-slash-menu] input", "calendar");
-  await frame.press("[data-slash-menu] input", "Enter");
-  await frame.waitForSelector('[data-slash-menu] ul button[data-idx="0"]', { timeout: 20000 });
-  await frame.press(".ql-editor", "Enter");
+  await frame.fill("[data-slash-menu] input", liveApp.name);
+  /* The picker says which Enter it is offering. Waiting on the row selector
+     instead would match the app row that is still on screen, and the second
+     Enter would fire before the component list replaced it. */
+  const picker = (hint) => frame.waitForFunction(
+    (text) => document.querySelector("[data-slash-menu]")?.innerText.includes(text),
+    hint, { timeout: 20000 });
+  await picker("ENTER to browse app");
+  await frame.press(".ql-editor", "Enter");     // browse into the app
+  await picker("ENTER to embed");
+  await frame.press(".ql-editor", "Enter");     // embed its first component
   await frame.waitForSelector(".ql-editor .canvas-component-embed", { timeout: 8000 });
-  await page.waitForTimeout(5000);             // let the preview paint and report
+  await page.waitForTimeout(5000);             // let the surface mount and report
 
   const embed = await frame.evaluate(() => {
     const card = document.querySelector(".canvas-component-embed");
     const preview = card.querySelector("iframe.cce-frame");
     return {
       name: card.getAttribute("data-name"),
+      src: preview ? preview.getAttribute("src") : "",
       inlineHeight: preview ? preview.style.height : "",
       sandbox: preview ? preview.getAttribute("sandbox") : "",
     };
   });
   // The stylesheet's 280px is the pre-report default; an inline height means
-  // the vault's measured size won.
-  check("embed sizes itself from the vault report", embed.inlineHeight !== "",
+  // the wrapper's reported size won and the app view is not cropped.
+  check("embed sizes itself from the app's report", parseInt(embed.inlineHeight, 10) > 280,
     `${embed.name} ${embed.inlineHeight || "still default 280px"}`);
-  check("preview stays sandboxed",
-    /allow-scripts/.test(embed.sandbox)
-      && !/allow-(top-navigation|popups|forms|downloads|modals)/.test(embed.sandbox),
-    embed.sandbox);
+  /* The wrapper is granted same-origin and forms so the mounted app works, which
+     is only safe while the framed URL is our own /components/<app>/<key> and it
+     still cannot navigate the top window out from under the note. */
+  check("live wrapper is scoped to our own origin",
+    /^\/components\/[a-z0-9-]+\/[a-z0-9-]+$/.test(embed.src)
+      && /allow-scripts/.test(embed.sandbox)
+      && !/allow-(top-navigation|popups|modals)/.test(embed.sandbox),
+    `${embed.src} ${embed.sandbox}`);
 }
 
 /* ----------------------------------------------------------------- report -- */

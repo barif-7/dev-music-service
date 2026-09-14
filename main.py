@@ -6,6 +6,7 @@ import subprocess  # nosec B404
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncGenerator, Optional
+from urllib.parse import urlparse
 
 import certifi
 import httpx
@@ -26,6 +27,12 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from starlette.concurrency import run_in_threadpool
 
+from api.live_component_bindings import (
+    canvas_editor,
+    stillshot_board,
+    vertexflow_viewport,
+)
+from api.live_components import router as live_components_router
 from config import get_settings
 from models import (
     AppleMusicImportAlbum,
@@ -55,7 +62,12 @@ from services.beta_auth_service import (
     verify_session,
 )
 from services.focus_service import FocusProfile, FocusService
-from services.component_vault_service import ComponentVaultError, ComponentVaultService
+from services.live_components import COMPONENTS, app_proxy, close_proxies
+from services.component_vault_service import (
+    ComponentVaultError, ComponentVaultService, close_component_vault, get_component_vault,
+)
+from services.forge_inventory_service import ForgeInventoryError, ForgeInventoryService
+from services.forge_workbench_service import ForgeWorkbenchError, ForgeWorkbenchService
 from services.reccobeats_service import get_audio_feature_provider
 from services.import_preview_service import ImportPreviewError, ImportPreviewService
 from services.local_playback_service import LocalPlaybackService
@@ -128,9 +140,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await sp.aclose()
     if _phase_field_client and not _phase_field_client.is_closed:
         await _phase_field_client.aclose()
+    if _stillshot_client and not _stillshot_client.is_closed:
+        await _stillshot_client.aclose()
+    if _sketchfab_client and not _sketchfab_client.is_closed:
+        await _sketchfab_client.aclose()
+    if _canvas_backend_client and not _canvas_backend_client.is_closed:
+        await _canvas_backend_client.aclose()
     await get_audio_feature_provider().aclose()
-    if _component_vault is not None:
-        await _component_vault.aclose()
+    await close_component_vault()
+    await close_proxies()
 
 
 app = FastAPI(
@@ -146,6 +164,8 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+app.include_router(live_components_router)
 
 _PUBLIC_BETA_PATHS = {"/health", "/login", "/api/auth/login", "/api/auth/status"}
 # Media elements carry crossorigin="anonymous" so the Web Audio analyser can
@@ -185,7 +205,17 @@ async def beta_auth_gate(request: Request, call_next):
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("Referrer-Policy", "same-origin")
     frame_policy = "SAMEORIGIN" if is_frameable(request.url.path) else "DENY"
-    response.headers.setdefault("X-Frame-Options", frame_policy)
+    # Registered local components may also be embedded by Canvas's localhost
+    # development server. They are trusted app bundles, with exact registry IDs.
+    live_id = request.query_params.get('live-component', '')
+    if request.url.path.startswith('/components/') or (
+        live_id in COMPONENTS and request.url.path == urlparse(COMPONENTS[live_id].surface).path
+    ):
+        if 'X-Frame-Options' in response.headers:
+            del response.headers['X-Frame-Options']
+        response.headers['Content-Security-Policy'] = "frame-ancestors 'self' http://127.0.0.1:* http://localhost:* file:"
+    else:
+        response.headers.setdefault("X-Frame-Options", frame_policy)
     return response
 
 
@@ -1020,21 +1050,431 @@ async def get_shader_source(
     )
 
 
-_component_vault: ComponentVaultService | None = None
+# StillShot AI's index lives behind its own service on the Mac mini, bound to
+# localhost there. The board surface is framed from this origin, so it reaches
+# the index through here: same-origin, no CORS, no second port baked into the
+# guest, and the upstream address stays a property of the host.
+#
+# Both halves of the API matter. Metadata is under /api/, but thumbnails and
+# originals are served from /thumbs/ and /original/ — proxying only /api/ gives
+# a board of broken images.
+_stillshot_client: httpx.AsyncClient | None = None
+_STILLSHOT_PREFIXES = ("api/", "thumbs/", "original/")
+
+
+def _get_stillshot_client() -> httpx.AsyncClient:
+    global _stillshot_client
+    _stillshot_client = app_proxy("stillshot", get_settings()).client
+    return _stillshot_client
+
+
+@app.get("/api/stillshot/{path:path}")
+@limiter.limit("240 per minute")
+@stillshot_board
+async def stillshot_proxy(request: Request, path: str):
+    """Forward one read to the StillShot index.
+
+    Reads only: the surface renders the library and never writes to it, so
+    exposing anything but GET would widen what an embedded page can do to the
+    index for no benefit. The path is checked against the prefixes StillShot
+    actually serves rather than forwarded blindly, so this cannot be pointed at
+    an arbitrary URL on the upstream host.
+    """
+    if not path.startswith(_STILLSHOT_PREFIXES):
+        raise HTTPException(status_code=404, detail="Not a StillShot resource")
+
+    base = get_settings().stillshot_api_base_url.rstrip("/")
+    try:
+        resp = await _get_stillshot_client().get(
+            f"{base}/{path}", params=dict(request.query_params)
+        )
+    except httpx.HTTPError as exc:
+        logger.warning("stillshot_unreachable", path=path, error=str(exc))
+        raise HTTPException(
+            status_code=503,
+            detail="StillShot index unreachable. Is the stack running on the mini?",
+        ) from exc
+
+    # Images are immutable once written (content-addressed thumbs); metadata is
+    # not, and a stale board is worse than a re-fetch.
+    cache = "public, max-age=86400" if path.startswith(("thumbs/", "original/")) else "no-store"
+    return Response(
+        content=resp.content,
+        status_code=resp.status_code,
+        media_type=resp.headers.get("content-type", "application/octet-stream"),
+        headers={"Cache-Control": cache},
+    )
+
+
+_forge_inventory: ForgeInventoryService | None = None
+
+
+def _get_forge_inventory() -> ForgeInventoryService:
+    global _forge_inventory
+    if _forge_inventory is None:
+        settings = get_settings()
+        roots = [
+            Path(part.strip()).expanduser()
+            for part in settings.forge_index_roots.split(",")
+            if part.strip()
+        ]
+        _forge_inventory = ForgeInventoryService(
+            claude_config=Path(settings.forge_claude_config_path).expanduser(),
+            project_mcp_config=Path(__file__).parent / ".mcp.json",
+            index_roots=roots,
+            # The vault speaks MCP over HTTP and is declared here rather than in
+            # Claude's config, so the inventory would otherwise miss it.
+            extra_http_servers={"component-vault": settings.component_vault_mcp_url},
+            probe_stdio=settings.forge_probe_stdio,
+        )
+    return _forge_inventory
+
+
+@app.get("/api/forge/inventory")
+@limiter.limit("20 per minute")
+async def forge_inventory(request: Request, refresh: bool = Query(default=False)):
+    """What MCP tooling and which indexes this machine actually has.
+
+    ForgeTool's surface renders this instead of Base44 MCPTool/DataSource rows:
+    a registry maintained by hand drifts from the machine, and this cannot.
+    Secrets in the server configs are redacted in the service before they reach
+    the response, because the payload is rendered inside an embedded surface.
+    """
+    try:
+        payload = await _get_forge_inventory().inventory(refresh=refresh)
+    except ForgeInventoryError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    # The largest index is not on this machine: StillShot's lives on the Mac
+    # mini behind its own API. Copy the payload before adding it — inventory()
+    # hands back a cached dict, and appending in place would grow it on every
+    # request until the cache expired.
+    payload = {**payload, "indexes": list(payload["indexes"])}
+    try:
+        base = get_settings().stillshot_api_base_url.rstrip("/")
+        stats = (await _get_stillshot_client().get(f"{base}/api/stats")).json()
+    except (httpx.HTTPError, ValueError):
+        pass  # the mini's stack is optional; the rest of the inventory stands
+    else:
+        payload["indexes"].insert(
+            0,
+            {
+                "name": "stillshot",
+                "path": base,
+                "remote": True,
+                "sizeBytes": None,
+                "status": "ok",
+                "tableCount": None,
+                "rowTotal": stats.get("total", 0),
+                "tables": [
+                    {"name": "photos", "rows": stats.get("total")},
+                    {"name": "embeddings", "rows": stats.get("embedded")},
+                    {"name": "tagged", "rows": stats.get("tagged")},
+                    {"name": "favorites", "rows": stats.get("favorites")},
+                ],
+                "detail": stats.get("model"),
+            },
+        )
+        payload["indexRowTotal"] = sum(index.get("rowTotal") or 0 for index in payload["indexes"])
+
+    return JSONResponse(content=payload, headers={"Cache-Control": "no-store"})
+
+
+# sketchfab-cli-api indexes glTF/GLB exports and serves the model files. The
+# VertexFlow viewport is framed from this origin, so it reaches the indexer
+# through here rather than a second port baked into the guest.
+#
+# Model files are the reason this streams rather than buffering: the index holds
+# GLBs up to 57 MB, and reading one into memory to hand it on would cost that
+# much per concurrent viewer for no benefit.
+# Canvas's full app talks to its own local backend. Left alone it calls
+# http://127.0.0.1:39445 absolutely, which is cross-origin from this shell and
+# dead for anyone viewing through a tunnel. Proxied here it is same-origin, and
+# the port stays a property of the host.
+_canvas_backend_client: httpx.AsyncClient | None = None
+
+
+def _get_canvas_backend_client() -> httpx.AsyncClient:
+    global _canvas_backend_client
+    _canvas_backend_client = app_proxy("canvas", get_settings()).client
+    return _canvas_backend_client
+
+
+@app.api_route(
+    "/api/canvas/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"]
+)
+@limiter.limit("300 per minute")
+@canvas_editor
+async def canvas_backend_proxy(request: Request, path: str):
+    """Forward one Canvas request to its local backend.
+
+    Writes pass through: unlike the read-only proxies, this one fronts an
+    application the user is operating, not an index it is reading. The
+    Authorization header rides along so the guest's own session works, and
+    nothing else about the request is rewritten.
+    """
+    base = get_settings().canvas_backend_base_url.rstrip("/")
+    headers = {}
+    for name in ("authorization", "content-type", "accept", "cookie"):
+        if name in request.headers:
+            headers[name] = request.headers[name]
+    try:
+        resp = await _get_canvas_backend_client().request(
+            request.method,
+            f"{base}/{path}",
+            params=dict(request.query_params),
+            content=await request.body(),
+            headers=headers,
+        )
+    except httpx.HTTPError as exc:
+        logger.warning("canvas_backend_unreachable", path=path, error=str(exc))
+        raise HTTPException(
+            status_code=503,
+            detail="Canvas backend unreachable. Run: npm run backend (port 39445).",
+        ) from exc
+
+    passthrough = {
+        key: value
+        for key, value in resp.headers.items()
+        if key.lower() in {"set-cookie", "www-authenticate"}
+    }
+    return Response(
+        content=resp.content,
+        status_code=resp.status_code,
+        media_type=resp.headers.get("content-type", "application/json"),
+        headers={"Cache-Control": "no-store", **passthrough},
+    )
+
+
+_sketchfab_client: httpx.AsyncClient | None = None
+_SKETCHFAB_GET = ("health", "model-file")
+_SKETCHFAB_POST = ("scan", "inspect", "gallery")
+
+
+def _get_sketchfab_client() -> httpx.AsyncClient:
+    global _sketchfab_client
+    _sketchfab_client = app_proxy("vertexflow", get_settings()).client
+    return _sketchfab_client
+
+
+@app.get("/api/sketchfab/{path:path}")
+@limiter.limit("240 per minute")
+async def sketchfab_get(request: Request, path: str):
+    """Stream one read from the model indexer."""
+    if path not in _SKETCHFAB_GET:
+        raise HTTPException(status_code=404, detail="Not a sketchfab-cli resource")
+    base = get_settings().sketchfab_api_base_url.rstrip("/")
+    upstream = _get_sketchfab_client().build_request(
+        "GET", f"{base}/{path}", params=dict(request.query_params)
+    )
+    try:
+        response = await _get_sketchfab_client().send(upstream, stream=True)
+    except httpx.HTTPError as exc:
+        logger.warning("sketchfab_unreachable", path=path, error=str(exc))
+        raise HTTPException(
+            status_code=503,
+            detail="sketchfab-cli-api unreachable. Start it on port 8795.",
+        ) from exc
+
+    async def body():
+        try:
+            async for chunk in response.aiter_bytes():
+                yield chunk
+        finally:
+            await response.aclose()
+
+    return StreamingResponse(
+        body(),
+        status_code=response.status_code,
+        media_type=response.headers.get("content-type", "application/octet-stream"),
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
+
+
+@app.post("/api/sketchfab/{path:path}")
+@limiter.limit("60 per minute")
+@vertexflow_viewport
+async def sketchfab_post(request: Request, path: str):
+    """Forward a scan/inspect/gallery request to the indexer."""
+    if path not in _SKETCHFAB_POST:
+        raise HTTPException(status_code=404, detail="Not a sketchfab-cli resource")
+    base = get_settings().sketchfab_api_base_url.rstrip("/")
+    body = await request.json()
+    # The surface asks for "the models", not for a path — which root that is
+    # belongs to the host, and the indexer confines it to its allowed root.
+    if path == "scan" and not body.get("target"):
+        body["target"] = str(Path(get_settings().sketchfab_models_root).expanduser())
+    try:
+        resp = await _get_sketchfab_client().post(f"{base}/{path}", json=body)
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="sketchfab-cli-api unreachable. Start it on port 8795.",
+        ) from exc
+    return Response(
+        content=resp.content,
+        status_code=resp.status_code,
+        media_type=resp.headers.get("content-type", "application/json"),
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+_forge_workbench: ForgeWorkbenchService | None = None
+
+
+def _get_forge_workbench() -> ForgeWorkbenchService:
+    global _forge_workbench
+    if _forge_workbench is None:
+        settings = get_settings()
+        root = Path(settings.forge_apps_root).expanduser()
+        _forge_workbench = ForgeWorkbenchService(apps_root=root, write_roots=[root])
+    return _forge_workbench
+
+
+class ScaffoldRequest(BaseModel):
+    kind: str = Field(pattern="^(binding|test)$")
+    repo: str = Field(min_length=1, max_length=120)
+    target: str = Field(min_length=1, max_length=300)
+    api: Optional[dict] = None
+    write: bool = False
+
+
+@app.get("/api/forge/apps")
+@limiter.limit("30 per minute")
+async def forge_apps(request: Request, refresh: bool = Query(default=False)):
+    """The component index: what each Base44 app is made of."""
+    try:
+        payload = await run_in_threadpool(_get_forge_workbench().index, refresh=refresh)
+    except ForgeWorkbenchError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return JSONResponse(content=payload, headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/forge/test-queue")
+@limiter.limit("30 per minute")
+async def forge_test_queue(
+    request: Request,
+    limit: int = Query(default=40, ge=1, le=200),
+    refresh: bool = Query(default=False),
+):
+    """Components ranked worst-first by the risk of leaving them untested.
+
+    None of the apps has a test file, so coverage cannot order anything. The
+    ranking is blast radius instead: what a component can destroy, how much
+    depends on it, and how much code is in it.
+    """
+    try:
+        rows = await run_in_threadpool(
+            _get_forge_workbench().test_queue, limit, refresh=refresh
+        )
+    except ForgeWorkbenchError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return JSONResponse(content={"rows": rows}, headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/forge/bindings")
+@limiter.limit("30 per minute")
+async def forge_bindings(request: Request):
+    """The APIs a component could be plugged into, in one list.
+
+    Three kinds, because that is what the machine actually offers: MCP tools,
+    HTTP services already proxied through this origin, and the SQLite indexes.
+    Each row carries what the binding scaffold needs to generate a proxy route
+    and a fetch hook for it.
+    """
+    inventory = await _get_forge_inventory().inventory()
+    bindings: list[dict] = []
+
+    for server in inventory["servers"]:
+        for tool in server["tools"]:
+            bindings.append(
+                {
+                    "kind": "mcp",
+                    "source": server["name"],
+                    "name": tool["name"],
+                    "description": tool["description"],
+                    "prefix": server["name"],
+                    "path": f"/{tool['name']}",
+                    "upstream": server["url"] or " ".join(filter(None, [server["command"]])),
+                }
+            )
+
+    # StillShot is already proxied, so its operations are bindable as they are.
+    base = get_settings().stillshot_api_base_url.rstrip("/")
+    try:
+        spec = (await _get_stillshot_client().get(f"{base}/openapi.json")).json()
+    except (httpx.HTTPError, ValueError):
+        spec = {}
+    for path, operations in (spec.get("paths") or {}).items():
+        for method in operations:
+            if method.lower() != "get":
+                continue
+            bindings.append(
+                {
+                    "kind": "http",
+                    "source": "stillshot",
+                    "name": f"stillshot {path}",
+                    "description": (operations[method].get("summary") or "").strip(),
+                    "prefix": "stillshot",
+                    "path": path,
+                    "upstream": base,
+                }
+            )
+
+    for index in inventory["indexes"]:
+        bindings.append(
+            {
+                "kind": "index",
+                "source": index["name"],
+                "name": index["name"],
+                "description": f"{index.get('rowTotal', 0):,} rows across "
+                f"{index.get('tableCount') or '?'} tables",
+                "prefix": "index",
+                "path": f"/{index['name']}",
+                "upstream": index["path"],
+            }
+        )
+
+    return JSONResponse(
+        content={"bindings": bindings, "total": len(bindings)},
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.post("/api/forge/scaffold")
+@limiter.limit("20 per minute")
+async def forge_scaffold(request: Request, body: ScaffoldRequest):
+    """Generate a binding or a first test, previewing unless writing is allowed.
+
+    Writing is gated twice: the request must ask for it, and the deployment must
+    permit it. The service refuses paths outside the configured apps root and
+    never overwrites an existing file.
+    """
+    write = body.write and get_settings().forge_scaffold_write_enabled
+    try:
+        result = await run_in_threadpool(
+            _get_forge_workbench().scaffold,
+            body.kind,
+            repo=body.repo,
+            target=body.target,
+            api=body.api,
+            dry_run=not write,
+        )
+    except ForgeWorkbenchError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    payload = result.public()
+    if body.write and not write:
+        payload["notes"].append(
+            "Writing is disabled here — set FORGE_SCAFFOLD_WRITE_ENABLED=true to allow it."
+        )
+    return JSONResponse(content=payload, headers={"Cache-Control": "no-store"})
 
 
 def _get_component_vault() -> ComponentVaultService:
-    global _component_vault
-    if _component_vault is None:
-        settings = get_settings()
-        _component_vault = ComponentVaultService(
-            mcp_url=settings.component_vault_mcp_url,
-            preview_base_url=settings.component_vault_preview_url,
-        )
-    return _component_vault
+    return get_component_vault(get_settings())
 
 
-@app.get("/api/components/search")
+@app.get("/api/components/source-search")
 @limiter.limit("30 per minute")
 async def search_components(
     request: Request,

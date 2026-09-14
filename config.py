@@ -55,12 +55,43 @@ class Settings(BaseSettings):
     focus_profile_storage_backend: str = "local-json"
     focus_profile_kv_namespace: str | None = None
     phase_field_api_base_url: str = "http://localhost:8787"
+    # StillShot AI's core index API. It binds to 127.0.0.1 on the Mac mini, so a
+    # MacBook reaches it through the documented SSH tunnel — 8788 rather than
+    # 8787, which the local phase-field worker already owns. On the mini itself
+    # set STILLSHOT_API_BASE_URL=http://127.0.0.1:8787.
+    stillshot_api_base_url: str = "http://127.0.0.1:8788"
     reccobeats_api_base_url: str = "https://api.reccobeats.com/v1"
     # HistoryKit Component Vault. The MCP server is the only interface it
     # offers; the preview URL is the separate dev server the surface frames.
     # Both are localhost-only, so the feature is inert on a hosted deploy.
     component_vault_mcp_url: str = "http://127.0.0.1:8766/mcp"
     component_vault_preview_url: str = "http://127.0.0.1:4174"
+    # ForgeTool's inventory. The MCP servers come from Claude's own config
+    # rather than a registry kept by hand; the indexes are whatever SQLite
+    # databases live under these roots (comma-separated, ~ expanded).
+    forge_claude_config_path: str = "~/.claude.json"
+    forge_index_roots: str = (
+        "~/.filesystem-indexer,"
+        "~/Library/Application Support/historykit/historykit.db"
+    )
+    # Listing a stdio server's tools means starting it, exactly as an MCP client
+    # does. That is fine on a developer machine and is the only way to see those
+    # tools at all -- but it is the one part of the inventory that runs another
+    # program, so it can be turned off where that matters.
+    forge_probe_stdio: bool = True
+    # The Base44 checkouts the workbench indexes, and the only tree its
+    # scaffolds may ever write into.
+    forge_apps_root: str = "~/Documents/GitHub/base44-apps"
+    # Scaffolds preview by default. Writing files is a separate, explicit act,
+    # so a stray request cannot drop code into a repo.
+    forge_scaffold_write_enabled: bool = False
+    # Canvas's own local backend, fronted at /api/canvas so the full app runs
+    # same-origin. Start it with: npm run backend (in the base44-canvas checkout).
+    canvas_backend_base_url: str = "http://127.0.0.1:39445"
+    # sketchfab-cli-api: the glTF/GLB indexer VertexFlow's viewport reads from.
+    # Run it with:  uvicorn sketchfab_cli_api.app:app --port 8795
+    sketchfab_api_base_url: str = "http://127.0.0.1:8795"
+    sketchfab_models_root: str = "~/Downloads/Downloads-Organized-Clean/08_3D_Models"
     # MusicKit on the Web embeds a signed developer token in the client. Prefer
     # an origin claim restricted to the app's Funnel and local development URLs.
     apple_music_developer_token: str | None = None

@@ -169,15 +169,15 @@ class TestFailureModes:
 
 class TestEndpoint:
     def test_search_endpoint_returns_the_projected_payload(self, client, monkeypatch):
-        import main
+        from services import component_vault_service
 
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(200, json=_envelope({
                 "total_matches": 1, "results": [_ENTRY],
             }))
 
-        monkeypatch.setattr(main, "_component_vault", _make_service(handler))
-        response = client.get("/api/components/search", params={"q": "files"})
+        monkeypatch.setattr(component_vault_service, "_shared", _make_service(handler))
+        response = client.get("/api/components/source-search", params={"q": "files"})
 
         assert response.status_code == 200
         assert response.headers["cache-control"] == "no-store"
@@ -187,15 +187,15 @@ class TestEndpoint:
 
     def test_unreachable_vault_is_a_503(self, client, monkeypatch):
         """The vault is a developer-machine service; absent is not broken."""
-        import main
+        from services import component_vault_service
 
         def handler(request: httpx.Request) -> httpx.Response:
             raise httpx.ConnectError("connection refused")
 
-        monkeypatch.setattr(main, "_component_vault", _make_service(handler))
-        response = client.get("/api/components/search", params={"q": "files"})
+        monkeypatch.setattr(component_vault_service, "_shared", _make_service(handler))
+        response = client.get("/api/components/source-search", params={"q": "files"})
 
         assert response.status_code == 503
 
     def test_empty_query_is_rejected(self, client):
-        assert client.get("/api/components/search", params={"q": ""}).status_code == 422
+        assert client.get("/api/components/source-search", params={"q": ""}).status_code == 422

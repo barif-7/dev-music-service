@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any
 from urllib.parse import quote, urlparse
 
@@ -75,6 +76,8 @@ class ComponentVaultService:
         self._client = client
         self._timeout = timeout
         self._owns_client = client is None
+        self._projects: list[str] | None = None
+        self._projects_at = 0.0
 
     async def aclose(self) -> None:
         if self._owns_client and self._client is not None and not self._client.is_closed:
@@ -165,6 +168,69 @@ class ComponentVaultService:
             "preview_url": self._preview_url(component_id),
         }
 
+    async def catalog_projects(self) -> list[str]:
+        """Every project the vault has indexed.
+
+        Cached for a minute: it is read on each reusable-store lookup only to
+        find which buckets an export landed in, and that changes when the vault
+        is re-indexed, not between two keystrokes.
+        """
+        now = time.monotonic()
+        if self._projects is not None and now - self._projects_at < 60:
+            return self._projects
+        payload = await self._call_tool("get_component_catalog", {})
+        facets = payload.get("facets")
+        rows = facets.get("projects") if isinstance(facets, dict) else None
+        projects = [row["value"] for row in rows
+                    if isinstance(row, dict) and isinstance(row.get("value"), str)] if isinstance(rows, list) else []
+        self._projects, self._projects_at = projects, now
+        return projects
+
+    async def for_projects(self, projects: list[str], query: str = "", limit: int = 60) -> dict[str, Any]:
+        """The reusable components belonging to one app's export buckets.
+
+        One app can have been ingested more than once -- from the apps folder,
+        from a GitHub checkout, from a desktop copy -- and each lands as its own
+        project, so the caller passes every bucket that resolved to the app and
+        they are merged here. Byte-identical copies are already collapsed by the
+        vault; the merge only has to drop the same component arriving twice from
+        two buckets, which it does on the vault's own id.
+        """
+        # Fetch a whole bucket, not a page of one: the merge has to see every
+        # candidate before it can rank them or say how many the app has, and a
+        # display limit applied at the fetch would cap both. These are the
+        # vault's own per-tool maxima.
+        seen: dict[str, dict[str, Any]] = {}
+        for project in projects:
+            if query:
+                payload = await self._call_tool("search_components", {
+                    "project": project, "query": query, "limit": 100, "search_source": True})
+            else:
+                payload = await self._call_tool("list_components", {"project": project, "limit": 200})
+            raw = payload.get("results") or payload.get("components")
+            if not isinstance(raw, list):
+                continue
+            for entry in raw:
+                if not isinstance(entry, dict):
+                    continue
+                projected = self._project(entry)
+                if projected is None:
+                    continue
+                # The vault's reuse score orders the store but is not part of
+                # it: like the rest of the audit detail it stays server-side,
+                # because the picker ranks by it rather than showing it.
+                score = entry.get("reuse_score")
+                seen.setdefault(projected["id"], (score if isinstance(score, int) else 0, projected))
+        results = [row for _, row in
+                   sorted(seen.values(), key=lambda pair: (-pair[0], pair[1]["name"].casefold()))]
+        return {
+            "query": query,
+            # What the app actually has, not what this page shows.
+            "total_matches": len(results),
+            "preview_origin": self.preview_origin,
+            "results": results[:limit],
+        }
+
     async def search(self, query: str, limit: int = 8) -> dict[str, Any]:
         payload = await self._call_tool(
             "search_components",
@@ -186,3 +252,29 @@ class ComponentVaultService:
             "preview_origin": self.preview_origin,
             "results": results,
         }
+
+
+_shared: ComponentVaultService | None = None
+
+
+def get_component_vault(settings) -> ComponentVaultService:
+    """The process-wide vault client.
+
+    One client, because the vault is one local service and every caller frames
+    previews from the same configured origin. It lives here rather than beside
+    any one route so the routers can reach it without importing the app.
+    """
+    global _shared
+    if _shared is None:
+        _shared = ComponentVaultService(
+            mcp_url=settings.component_vault_mcp_url,
+            preview_base_url=settings.component_vault_preview_url,
+        )
+    return _shared
+
+
+async def close_component_vault() -> None:
+    global _shared
+    if _shared is not None:
+        await _shared.aclose()
+        _shared = None
