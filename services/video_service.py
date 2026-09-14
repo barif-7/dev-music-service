@@ -7,6 +7,7 @@ from cachetools import TTLCache
 import structlog
 import yt_dlp
 
+from config import ytdlp_options
 from models import VideoSearchResult
 from services.text_match import fuzzy_score
 
@@ -33,25 +34,27 @@ class VideoService:
         maxsize=128,
         ttl=_SEARCH_TTL_SECONDS,
     )
-    _video_stream_cache: TTLCache[str, tuple[str, dict[str, str]]] = TTLCache(
+    _video_stream_cache: TTLCache[tuple[str, bool], tuple[str, dict[str, str]]] = TTLCache(
         maxsize=128,
         ttl=_STREAM_TTL_SECONDS,
     )
 
-    # A plain <video src> needs one progressive file containing both audio and
-    # video. Split DASH formats require a muxing or MSE layer that this endpoint
-    # intentionally does not provide.
-    _BROWSER_VIDEO_FORMAT = (
+    # The overlay is muted and follows the separate audio player. A single
+    # video-only MP4 works there when YouTube offers no progressive A/V file.
+    # Audio playback's fallback must still require a file with an audio track.
+    _BROWSER_AV_FORMAT = (
         "best[ext=mp4][height<=480][vcodec!=none][acodec!=none]/"
         "best[height<=480][vcodec!=none][acodec!=none]/"
         "best[ext=mp4][vcodec!=none][acodec!=none]/"
-        "best[vcodec!=none][acodec!=none]"
+        "best[vcodec!=none][acodec!=none]/"
+        "best"
     )
-    _YOUTUBE_EXTRACTOR_ARGS = {
-        "youtube": {
-            "player_client": ["android", "web"],
-        }
-    }
+    _BROWSER_VIDEO_FORMAT = (
+        _BROWSER_AV_FORMAT + "/"
+        "bestvideo[ext=mp4][vcodec^=avc1][height<=480][protocol=https]/"
+        "bestvideo[ext=mp4][height<=480][protocol=https]/"
+        "bestvideo[ext=mp4][protocol=https]"
+    )
     _KINDS = {"music_video", "shorts", "live"}
 
     @staticmethod
@@ -151,13 +154,30 @@ class VideoService:
         return score
 
     @staticmethod
-    def _ydl_options() -> dict:
-        return {
-            "format": VideoService._BROWSER_VIDEO_FORMAT,
-            "quiet": True,
-            "noplaylist": True,
-            "extractor_args": VideoService._YOUTUBE_EXTRACTOR_ARGS,
-        }
+    def _ydl_search_options() -> dict:
+        """Options for metadata-only search. No format resolution — fast."""
+        return {**ytdlp_options(), "extract_flat": "in_playlist"}
+
+    @staticmethod
+    def _ydl_stream_options(require_audio: bool = False) -> dict:
+        return ytdlp_options(
+            VideoService._BROWSER_AV_FORMAT if require_audio
+            else VideoService._BROWSER_VIDEO_FORMAT
+        )
+
+    @staticmethod
+    def _best_thumbnail(entry: dict) -> str | None:
+        """Pick the best thumbnail from a flat-extract entry.
+        Flat extracts have `thumbnails` (list) not `thumbnail` (string)."""
+        thumbs = entry.get("thumbnails")
+        if isinstance(thumbs, list) and thumbs:
+            # Pick the largest thumbnail by area
+            best = max(
+                thumbs,
+                key=lambda t: (t.get("width", 0) or 0) * (t.get("height", 0) or 0),
+            )
+            return best.get("url")
+        return entry.get("thumbnail")
 
     @staticmethod
     def search(
@@ -175,7 +195,10 @@ class VideoService:
             fetch_count = max(safe_limit * 5, 10)
             try:
                 logger.debug("video_search_started", query=query, fetch=fetch_count)
-                with yt_dlp.YoutubeDL(VideoService._ydl_options()) as ydl:
+                # Flat extraction: metadata only, no per-entry format resolution.
+                # This is fast because yt-dlp only hits the search results page
+                # and does not fetch individual video pages.
+                with yt_dlp.YoutubeDL(VideoService._ydl_search_options()) as ydl:
                     info = ydl.extract_info(
                         f"ytsearch{fetch_count}:{query}",
                         download=False,
@@ -187,23 +210,13 @@ class VideoService:
             entries = [
                 entry
                 for entry in (info.get("entries") or [])
-                if entry and entry.get("webpage_url")
+                if entry and entry.get("url")
             ]
             VideoService._cache_set(
                 VideoService._video_search_cache,
                 cache_key,
                 entries,
             )
-
-            for entry in entries:
-                webpage_url = entry.get("webpage_url")
-                direct_url = entry.get("url")
-                if webpage_url and direct_url:
-                    VideoService._cache_set(
-                        VideoService._video_stream_cache,
-                        webpage_url,
-                        (direct_url, dict(entry.get("http_headers") or {})),
-                    )
 
         ranked = sorted(
             entries,
@@ -218,12 +231,12 @@ class VideoService:
         return [
             VideoSearchResult(
                 title=entry.get("title", "Unknown Video"),
-                webpage_url=entry["webpage_url"],
+                webpage_url=entry["url"],
                 video_stream_url=(
-                    f"/api/video/stream?{urlencode({'url': entry['webpage_url']})}"
+                    f"/api/video/stream?{urlencode({'url': entry['url']})}"
                 ),
-                duration=entry.get("duration") or 0,
-                thumbnail=entry.get("thumbnail"),
+                duration=int(entry.get("duration") or 0),
+                thumbnail=VideoService._best_thumbnail(entry),
                 channel=entry.get("channel") or entry.get("uploader"),
                 kind=kind,
                 width=entry.get("width"),
@@ -233,13 +246,16 @@ class VideoService:
         ]
 
     @staticmethod
-    def get_video_stream_source(webpage_url: str) -> tuple[str, dict[str, str]]:
+    def get_video_stream_source(
+        webpage_url: str, *, require_audio: bool = False,
+    ) -> tuple[str, dict[str, str]]:
         if not webpage_url.startswith(("http://", "https://")):
             raise VideoStreamResolutionError("A valid video webpage URL is required")
 
+        cache_key = (webpage_url, require_audio)
         cached = VideoService._cache_get(
             VideoService._video_stream_cache,
-            webpage_url,
+            cache_key,
         )
         if cached is not None:
             direct_url, headers = cached
@@ -247,7 +263,7 @@ class VideoService:
 
         try:
             logger.debug("extracting_video_stream", url=webpage_url)
-            with yt_dlp.YoutubeDL(VideoService._ydl_options()) as ydl:
+            with yt_dlp.YoutubeDL(VideoService._ydl_stream_options(require_audio)) as ydl:
                 info = ydl.extract_info(webpage_url, download=False)
         except Exception as exc:
             logger.error("video_extraction_failed", url=webpage_url, error=str(exc))
@@ -264,7 +280,7 @@ class VideoService:
         cached_value = (direct_url, dict(info.get("http_headers") or {}))
         VideoService._cache_set(
             VideoService._video_stream_cache,
-            webpage_url,
+            cache_key,
             cached_value,
         )
         return cached_value[0], dict(cached_value[1])

@@ -536,7 +536,9 @@ class TestStreamEndpoint:
         assert response.status_code == 206
         assert response.content == b"playable"
         assert response.headers["content-type"].startswith("audio/mp4")
-        fallback_source.assert_called_once_with("https://youtube.com/watch?v=test")
+        fallback_source.assert_called_once_with(
+            "https://youtube.com/watch?v=test", require_audio=True,
+        )
         remember_source.assert_called_once()
 
     def test_stream_redirect_mode_returns_validated_location(self, client: TestClient, monkeypatch):

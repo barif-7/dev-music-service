@@ -330,7 +330,6 @@ class TestMusicServiceHelpers:
             "bestaudio",
         ]
         assert choices.index("bestaudio") < choices.index("best[ext=mp4]")
-        assert MusicService._YOUTUBE_EXTRACTOR_ARGS["youtube"]["player_client"][0] == "android_vr"
 
 
 class TestVideoService:
@@ -404,18 +403,18 @@ class TestVideoService:
                 return False
 
             def extract_info(self, query, download=False):
+                # Flat extraction format: url is the webpage URL, no direct
+                # stream URL (that's resolved separately by get_video_stream_source).
                 return {
                     "entries": [
                         {
                             "title": "Fan lyric video",
-                            "webpage_url": "https://youtube.com/watch?v=fan",
+                            "url": "https://youtube.com/watch?v=fan",
                             "duration": 200,
                         },
                         {
                             "title": "Artist - Song (Official Music Video)",
-                            "webpage_url": "https://youtube.com/watch?v=official",
-                            "url": "https://rr1---sn.googlevideo.com/videoplayback",
-                            "http_headers": {"User-Agent": "fixture"},
+                            "url": "https://youtube.com/watch?v=official",
                             "channel": "Artist VEVO",
                             "duration": 210,
                             "width": 854,

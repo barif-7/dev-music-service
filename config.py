@@ -197,6 +197,15 @@ def get_settings() -> Settings:
     return Settings()
 
 
-def configure_ytdlp_js_runtime(default: str = "node") -> None:
-    runtime = get_settings().ytdlp_js_runtime or default
-    os.environ["YTDLP_JS_RUNTIME"] = runtime
+def ytdlp_options(media_format: str | None = None) -> dict:
+    """Pass runtime settings to the Python API; yt-dlp does not read our env var."""
+    runtime = get_settings().ytdlp_js_runtime or "node"
+    name, _, path = runtime.partition(":")
+    options = {
+        "quiet": True,
+        "noplaylist": True,
+        "js_runtimes": {name: {"path": path} if path else {}},
+    }
+    if media_format:
+        options["format"] = media_format
+    return options

@@ -1129,6 +1129,7 @@ async def stream_song(
                 fallback_url, fallback_headers = await run_in_threadpool(
                     VideoService.get_video_stream_source,
                     webpage_url,
+                    require_audio=True,
                 )
                 fallback_url = validate_stream_url(fallback_url)
                 headers_copy = dict(fallback_headers)

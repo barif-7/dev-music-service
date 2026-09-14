@@ -7,6 +7,7 @@ from cachetools import TTLCache
 import structlog
 import yt_dlp
 
+from config import ytdlp_options
 from models import BrowserPlaybackState, SongSearchResult, TrackMetadata
 from services.text_match import combined_score, normalize
 
@@ -104,14 +105,6 @@ class MusicService:
     _DURATION_TOLERANCE_SECONDS = 5
     _OFFICIAL_CHANNEL_TOKENS = ("topic", "vevo", "official")
 
-    _YOUTUBE_EXTRACTOR_ARGS = {
-        "youtube": {
-            # android_vr currently exposes token-free DASH audio-only formats;
-            # the other clients remain fallbacks for videos it cannot access.
-            "player_client": ["android_vr", "android", "web"],
-        }
-    }
-
     @staticmethod
     def _search_entries(query: str, limit: int = 5, oversample: int = 1) -> list[dict]:
         # `oversample` lets the caller fetch extra candidates so we can filter/
@@ -124,12 +117,7 @@ class MusicService:
             logger.debug("search_cache_hit", query=cache_key)
             return cached
 
-        ydl_opts = {
-            "format": MusicService._BROWSER_AUDIO_FORMAT,
-            "quiet": True,
-            "noplaylist": True,
-            "extractor_args": MusicService._YOUTUBE_EXTRACTOR_ARGS,
-        }
+        ydl_opts = ytdlp_options(MusicService._BROWSER_AUDIO_FORMAT)
 
         try:
             logger.debug("youtube_search_started", query=cache_key, fetch=fetch_count)
@@ -364,12 +352,7 @@ class MusicService:
             direct_url, headers = cached
             return direct_url, dict(headers)
 
-        ydl_opts = {
-            "format": MusicService._BROWSER_AUDIO_FORMAT,
-            "quiet": True,
-            "noplaylist": True,
-            "extractor_args": MusicService._YOUTUBE_EXTRACTOR_ARGS,
-        }
+        ydl_opts = ytdlp_options(MusicService._BROWSER_AUDIO_FORMAT)
 
         try:
             logger.debug("extracting_audio_stream", url=webpage_url)
@@ -396,12 +379,7 @@ class MusicService:
 
     @staticmethod
     def get_metadata(webpage_url: str) -> TrackMetadata:
-        ydl_opts = {
-            "format": MusicService._BROWSER_AUDIO_FORMAT,
-            "quiet": True,
-            "noplaylist": True,
-            "extractor_args": MusicService._YOUTUBE_EXTRACTOR_ARGS,
-        }
+        ydl_opts = ytdlp_options(MusicService._BROWSER_AUDIO_FORMAT)
 
         try:
             logger.debug("extracting_track_metadata", url=webpage_url)
