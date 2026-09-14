@@ -6,6 +6,8 @@ time. These checks resolve every local reference in index.html against the
 files on disk to catch that before it ships.
 """
 from pathlib import Path
+import json
+import os
 import re
 import sys
 
@@ -75,6 +77,7 @@ def check_framed_routes(index_html: str) -> None:
         return
 
     declared = set(re.findall(r'routes\.rewrite\(\s*"([^"]+)"', vercel_config.read_text(encoding="utf-8")))
+    declared |= surface_rewrites()
 
     for reference in set(FRAMED_REF.findall(index_html)):
         route = reference.split("?", 1)[0]
@@ -87,6 +90,30 @@ def check_framed_routes(index_html: str) -> None:
                 f"index.html frames {reference}, but vercel.ts declares no rewrite for {route} "
                 f"— it will 404 once deployed"
             )
+
+
+def surface_rewrites() -> set[str]:
+    """The surface routes vercel.ts generates from the plugin catalogue.
+
+    Those rewrites are built by mapping over `plugins.json` rather than written
+    out as literals, so grepping vercel.ts for `routes.rewrite("...")` no longer
+    sees them and every catalogue-driven surface reads as an undeclared 404.
+    Mirror the same two conditions vercel.ts filters on -- the surface is
+    vendored into static/, and its feature flag is not holding it back -- so
+    this check keeps answering the question it was written to answer.
+    """
+    catalog = GALLERY_DIR / "plugins.json"
+    if not catalog.is_file():
+        return set()
+
+    pika_enabled = os.environ.get("PIKA_VOICE_PROFILE_ENABLED") == "true"
+    routes = set()
+    for plugin in json.loads(catalog.read_text(encoding="utf-8"))["plugins"]:
+        if plugin.get("flag") == "pika_voice_profile_enabled" and not pika_enabled:
+            continue
+        if (STATIC_DIR / (plugin.get("serves") or plugin["id"]) / "index.html").is_file():
+            routes.add(f"/{plugin['id']}")
+    return routes
 
 
 def check_plugin_surfaces() -> None:

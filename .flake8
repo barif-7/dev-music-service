@@ -4,5 +4,8 @@ exclude =
     .venv,
     __pycache__,
     mcp-server/node_modules,
-    mcp-server/dist
+    mcp-server/dist,
+    node_modules,
+    dist,
+    .vercel
 extend-ignore = E501,W293

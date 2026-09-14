@@ -1,4 +1,10 @@
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { routes } from "@vercel/config/v1";
+
+const here = dirname(fileURLToPath(import.meta.url));
 
 /**
  * Vercel hosts the frontend only. The FastAPI backend runs on its own
@@ -19,6 +25,25 @@ if (!backendOrigin) {
   );
 }
 
+
+/** Plugin surfaces that have a vendored build to rewrite onto. */
+function surfaceRewrites() {
+  const catalog = JSON.parse(
+    readFileSync(join(here, "static", "gallery", "plugins.json"), "utf8"),
+  ) as { plugins: { id: string; flag?: string; serves?: string }[] };
+
+  return catalog.plugins
+    .filter((plugin) => {
+      // A flagged surface stays absent unless its flag is on, matching the
+      // backend gate and keeping the bundle out of the default build.
+      if (plugin.flag === "pika_voice_profile_enabled" && !pikaVoiceProfileEnabled) return false;
+      return existsSync(join(here, "static", plugin.serves ?? plugin.id, "index.html"));
+    })
+    .map((plugin) =>
+      routes.rewrite(`/${plugin.id}`, `/static/${plugin.serves ?? plugin.id}/index.html`),
+    );
+}
+
 export default {
   buildCommand: "node scripts/build-vercel-frontend.mjs",
   outputDirectory: "dist",
@@ -34,11 +59,14 @@ export default {
     // the backend serves them from those paths and the surface name has to
     // survive in the query string. Nothing serves those paths here, so map
     // them onto the vendored index.html; the query string carries through.
-    routes.rewrite("/canvas", "/static/canvas/index.html"),
-    routes.rewrite("/lyrics-shader-lab", "/static/lyrics-shader-lab/index.html"),
-    ...(pikaVoiceProfileEnabled
-      ? [routes.rewrite("/semi", "/static/semi/index.html")]
-      : []),
+    //
+    // The list comes from the same catalogue the shell's launcher and the
+    // backend's routes read, so a plugin cannot work locally and 404 here for
+    // want of a rewrite somebody forgot to add. Only surfaces actually vendored
+    // into static/ are mapped: an unbuilt one would otherwise rewrite to a file
+    // Vercel does not have and answer 404 with no explanation, where the
+    // backend says which command builds it.
+    ...surfaceRewrites(),
 
     // Share links land on /share and are resolved client-side from the query.
     routes.rewrite("/share", "/index.html"),

@@ -1,0 +1,1 @@
+import{j as i}from"./index-DJxUCLo7.js";import{W as u}from"./vocabulary-BYqjEgIN.js";import"./x-Dtb8COYi.js";import"./client-B2d0kgcx.js";function s({capture:o,request:r,onSave:t,onClose:a}){return i.jsx(u,{initial:o,request:r,onSaved:t,onClose:a,autoLookup:!0})}export{s as default};

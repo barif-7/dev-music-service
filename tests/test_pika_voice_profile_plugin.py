@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 
@@ -70,4 +71,17 @@ def test_production_build_excludes_pre_release_bundle_without_flag():
     assert 'process.env.PIKA_VOICE_PROFILE_ENABLED === "true"' in build
     assert 'join(outDir, "static", "semi")' in build
     assert 'process.env.PIKA_VOICE_PROFILE_ENABLED === "true"' in vercel
-    assert 'routes.rewrite("/semi", "/static/semi/index.html")' in vercel
+
+    # The surface rewrites are generated from the plugin catalogue rather than
+    # written out one literal at a time, so the gate that used to be visible as
+    # a conditional `routes.rewrite("/semi", ...)` now lives in two places: the
+    # filter that drops flagged surfaces, and the catalogue entry that marks
+    # Semi as one. Both have to hold for the bundle to stay out of production.
+    assert 'plugin.flag === "pika_voice_profile_enabled"' in vercel
+    # One catalogue entry may alias another's bundle (canvas-full serves the
+    # canvas build), so the destination is the served directory, not the id.
+    assert '`/static/${plugin.serves ?? plugin.id}/index.html`' in vercel
+
+    catalog = json.loads((repo / "static/gallery/plugins.json").read_text())
+    semi = next(entry for entry in catalog["plugins"] if entry["id"] == "semi")
+    assert semi["flag"] == "pika_voice_profile_enabled"

@@ -35,6 +35,7 @@ from models import (
     SpotifySaveTrackRequest,
     TranslatedVocalRequest,
 )
+from plugin_catalog import Plugin, is_frameable, load_catalog
 from security import (
     open_validated_stream,
     redact_sensitive_data,
@@ -156,12 +157,6 @@ _PUBLIC_STREAM_PATHS = {"/api/stream", "/stream", "/api/video/stream"}
 # Every surface the shell frames. A path missing from this set is served
 # X-Frame-Options: DENY and its panel comes up empty in Chrome and as a security
 # interstitial in Firefox, which is how the solar clock was broken.
-_FRAMEABLE_PATHS = {
-    "/lyrics-shader-lab",
-    "/canvas",
-    "/semi",
-    "/static/clock/index.html",
-}
 
 
 @app.middleware("http")
@@ -189,7 +184,7 @@ async def beta_auth_gate(request: Request, call_next):
     response = await call_next(request)
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("Referrer-Policy", "same-origin")
-    frame_policy = "SAMEORIGIN" if request.url.path in _FRAMEABLE_PATHS else "DENY"
+    frame_policy = "SAMEORIGIN" if is_frameable(request.url.path) else "DENY"
     response.headers.setdefault("X-Frame-Options", frame_policy)
     return response
 
@@ -221,52 +216,47 @@ def root():
     return FileResponse(STATIC_DIR / "index.html")
 
 
-@app.get("/lyrics-shader-lab")
-def lyrics_shader_lab():
-    """Serve the independently built Lyrics Shader Lab embedded app."""
-    index_path = STATIC_DIR / "lyrics-shader-lab" / "index.html"
-    if not index_path.is_file():
-        raise HTTPException(
-            status_code=503,
-            detail="Lyrics Shader Lab is not built. Run: npm run build:lyrics-shader-lab",
-        )
-    return FileResponse(index_path)
+def _register_surface_routes() -> None:
+    """Serve every localized Base44 surface the catalogue declares.
 
+    This was a function per surface, each differing only in directory, feature
+    flag and the build command named in its 503. Those three facts now live in
+    static/gallery/plugins.json, so adding a plugin does not mean adding a
+    route here — and the shell, the build script and this loop cannot disagree
+    about which surfaces exist.
 
-@app.get("/canvas")
-def canvas_editor_surface():
-    """Serve the embedded Canvas editor surface.
-
-    Built from the separate base44-canvas project and vendored into static/,
-    the same arrangement as the Lyrics Shader Lab: this app has no Node build
-    step in its deploy path, so the bundle ships with it.
+    Behaviour is unchanged: a flagged surface 404s until its flag is set, and a
+    surface whose bundle was never vendored 503s naming the command that
+    produces it, rather than falling through to the shell's own index.html.
     """
-    index_path = STATIC_DIR / "canvas" / "index.html"
-    if not index_path.is_file():
-        raise HTTPException(
-            status_code=503,
-            detail="Canvas editor is not built. Run: npm run build:canvas",
-        )
-    return FileResponse(index_path)
+    for plugin in load_catalog():
+
+        def serve(sub_path: str = "", plugin: Plugin = plugin) -> FileResponse:
+            if plugin.flag and not getattr(get_settings(), plugin.flag, False):
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"{plugin.name} is under development",
+                )
+            index_path = STATIC_DIR / plugin.index_name / "index.html"
+            if not index_path.is_file():
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"{plugin.name} is not built. Run: {plugin.build_command}",
+                )
+            return FileResponse(index_path)
+
+        app.get(plugin.route, name=f"surface_{plugin.id.replace('-', '_')}")(serve)
+        # A surface that runs a router deep-links beneath its own path, and a
+        # reload of /canvas-full/graph must serve the same bundle rather than
+        # 404. The router reads the path; the server only has to hand over the
+        # app that will read it.
+        app.get(
+            f"{plugin.route}/{{sub_path:path}}",
+            name=f"surface_{plugin.id.replace('-', '_')}_sub",
+        )(serve)
 
 
-@app.get("/semi")
-def semi_voice_profile_surface():
-    """Serve Semi's user-agnostic Pika voice-profile plugin surface.
-
-    The feature is intentionally absent unless the pre-release flag is set.
-    This keeps both direct navigation and the shell's iframe from exposing the
-    work-in-progress surface on production by accident.
-    """
-    if not get_settings().pika_voice_profile_enabled:
-        raise HTTPException(status_code=404, detail="Pika voice profile is under development")
-    index_path = STATIC_DIR / "semi" / "index.html"
-    if not index_path.is_file():
-        raise HTTPException(
-            status_code=503,
-            detail="Semi voice profile is not built. Run: npm run build:semi",
-        )
-    return FileResponse(index_path)
+_register_surface_routes()
 
 
 class BetaLoginRequest(BaseModel):

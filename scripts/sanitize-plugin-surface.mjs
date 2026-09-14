@@ -24,16 +24,25 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const staticDir = join(resolve(here, ".."), "static");
 
-// Vendored Base44 surfaces. A surface not listed here is simply skipped.
-const SURFACES = ["canvas", "clock", "lyrics-shader-lab", "semi"];
+// Vendored Base44 surfaces, from the catalogue every other piece of the
+// pipeline reads. "clock" is not a Base44 export and is not in it, but it is
+// vendored the same way, so it stays on the list. A surface with no build on
+// disk is simply skipped.
+const catalog = JSON.parse(
+  readFileSync(join(resolve(here, ".."), "static", "gallery", "plugins.json"), "utf8"),
+);
+const SURFACES = [...catalog.plugins.map((plugin) => plugin.id), "clock"];
 
 // Titles Base44 emits when the app was never renamed in their editor.
 const PLACEHOLDER_TITLES = new Set(["Base44 APP", "Vite + React", "React App"]);
 
-const TITLES = {
-  canvas: "Canvas Editor · Phase",
-  semi: "Pika Voice Profile · Semi",
-};
+// A Base44 export that was never renamed in their editor carries a placeholder
+// title; give it the catalogue's name so the browser tab and the launcher agree.
+const TITLES = Object.fromEntries(
+  catalog.plugins.map((plugin) => [plugin.id, `${plugin.name} · Phase`]),
+);
+TITLES.canvas = "Canvas Editor · Phase";
+TITLES.semi = "Pika Voice Profile · Semi";
 
 function sanitize(name) {
   const indexPath = join(staticDir, name, "index.html");

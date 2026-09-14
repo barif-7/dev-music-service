@@ -7,6 +7,7 @@
     "install:lyrics-shader-lab": "npm --prefix lyrics-shader-lab install",
     "build:canvas": "node scripts/build-canvas-surface.mjs",
     "build:semi": "node scripts/build-semi-surface.mjs",
+    "build:surface": "node scripts/build-surface.mjs",
     "sanitize:plugins": "node scripts/sanitize-plugin-surface.mjs",
     "build:vercel": "node scripts/build-vercel-frontend.mjs",
     "audit:design": "node scripts/design-audit.mjs"

@@ -50,6 +50,26 @@ if (!pikaVoiceProfileEnabled) {
   rmSync(join(outDir, "static", "semi"), { recursive: true, force: true });
 }
 
+// Phase 3: remove non-music surfaces from the Vercel (prod) build.
+// Only these subdirectories under static/ are part of the focused music product.
+const PROD_ALLOWED_SUBDIRS = new Set([
+  "gallery",           // core shell scripts
+  "lyrics-shader-lab", // bilingual lyrics reader
+  "canvas",            // notes editor (bespoke panel)
+  "css",               // extracted stylesheets
+  "js",                // state module + init
+]);
+const distStatic = join(outDir, "static");
+if (existsSync(distStatic)) {
+  const { readdirSync, statSync } = await import("node:fs");
+  for (const name of readdirSync(distStatic)) {
+    const full = join(distStatic, name);
+    if (statSync(full).isDirectory() && !PROD_ALLOWED_SUBDIRS.has(name)) {
+      rmSync(full, { recursive: true, force: true });
+    }
+  }
+}
+
 const indexHtml = readFileSync(join(staticDir, "index.html"), "utf8");
 const injected = indexHtml.replace(
   "</head>",

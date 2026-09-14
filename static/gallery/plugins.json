@@ -1,0 +1,345 @@
+{
+  "_comment": "Localized Base44 plugin catalogue \u2014 the single source of truth. main.py builds its surface routes and SAMEORIGIN list from this, scripts/build-surface.mjs resolves checkouts and surface names from it, and the shell's apps launcher renders from it. Adding a plugin means adding an entry here; nothing else enumerates them.",
+  "repoRoot": "~/Documents/GitHub/base44-apps",
+  "plugins": [
+    {
+      "id": "lyrics-shader-lab",
+      "name": "Lyrics Shader Lab",
+      "surface": "reader",
+      "repo": null,
+      "base44Repo": "base44-repo-lyric-shader-lab",
+      "state": "wired",
+      "host": "bespoke",
+      "blurb": "Lyrics reader driven by the shell's scene and 60 Hz uniform frames.",
+      "category": "experimental",
+      "archived": true
+    },
+    {
+      "id": "vocabulary",
+      "name": "Vocabulary",
+      "surface": "vocabulary",
+      "serves": "lyrics-shader-lab",
+      "repo": null,
+      "state": "wired",
+      "host": "generic",
+      "category": "music",
+      "blurb": "Save words, practice recall, and bring them into conversation.",
+      "chrome": {
+        "background": "#111a16",
+        "opacity": 1,
+        "blur": 0
+      }
+    },
+    {
+      "id": "canvas",
+      "name": "Canvas",
+      "surface": "editor",
+      "repo": "base44-canvas",
+      "base44Repo": "base44-repo-canvas",
+      "repoRoot": "~/Documents/GitHub",
+      "state": "wired",
+      "host": "bespoke",
+      "blurb": "Note editor. The shell owns the note collection.",
+      "chrome": {
+        "background": "#0f1016",
+        "opacity": 0.55,
+        "blur": 28,
+        "saturate": 1.5
+      },
+      "category": "creative"
+    },
+    {
+      "id": "canvas-full",
+      "name": "Canvas (full app)",
+      "surface": "app",
+      "serves": "canvas",
+      "repo": null,
+      "state": "wired",
+      "host": "generic",
+      "chrome": {
+        "background": "#0a0b0e",
+        "opacity": 0.98,
+        "blur": 0
+      },
+      "blurb": "The whole Canvas application \u2014 router, pages and graph \u2014 not just the notes editor.",
+      "category": "creative",
+      "archived": true
+    },
+    {
+      "id": "semi",
+      "name": "Pika Voice Profile",
+      "surface": "voice-profile",
+      "repo": "base44-repo-semi",
+      "state": "wired",
+      "host": "bespoke",
+      "flag": "pika_voice_profile_enabled",
+      "blurb": "Identity-free shared voice configuration for translated vocals.",
+      "category": "experimental"
+    },
+    {
+      "id": "floatdesk",
+      "name": "FloatDesk",
+      "surface": "reactions",
+      "repo": "base44-repo-floatdesk-ui-copy-6a01ff36",
+      "appId": "6a01ff36287b5d1e8dfe8b83",
+      "state": "wired",
+      "host": "generic",
+      "blurb": "Reactions for the track the shell is playing.",
+      "chrome": {
+        "background": "#0d0f14",
+        "opacity": 0.88,
+        "blur": 24
+      },
+      "category": "music"
+    },
+    {
+      "id": "tuneshere",
+      "name": "TUNESHERE",
+      "surface": "library",
+      "repo": "base44-repo-tuneshere-2-copy",
+      "appId": "6a0c1286d2f0a294ef71aeb0",
+      "state": "wired",
+      "host": "generic",
+      "blurb": "Playlist and library view over the shell's queue.",
+      "chrome": {
+        "background": "#0d0f14",
+        "opacity": 0.88,
+        "blur": 24
+      },
+      "category": "music"
+    },
+    {
+      "id": "champions",
+      "name": "Champions Hub",
+      "surface": "standings",
+      "repo": "base44-repo-champions-hub-copy",
+      "appId": "6a4c8f36b11d2e35ac9e312d",
+      "state": "wired",
+      "host": "generic",
+      "blurb": "Standings board. No persistence of its own.",
+      "chrome": {
+        "background": "#101520",
+        "opacity": 0.9,
+        "blur": 22
+      },
+      "category": "utility"
+    },
+    {
+      "id": "specdoc",
+      "name": "Emerald Sky",
+      "surface": "specdoc",
+      "repo": "base44-repo-emerald-sky-encounter",
+      "appId": "6a101b0bf6bbc55f16c4d54f",
+      "state": "wired",
+      "host": "generic",
+      "blurb": "Spec document reader. No persistence of its own.",
+      "chrome": {
+        "background": "#0f1216",
+        "opacity": 0.92,
+        "blur": 20
+      },
+      "category": "development"
+    },
+    {
+      "id": "vertexflow",
+      "name": "VertexFlow",
+      "surface": "viewport",
+      "repo": "base44-repo-vertexflow",
+      "appId": "6a2bc2ccf348e707b659e92c",
+      "state": "wired",
+      "host": "generic",
+      "blurb": "Live glTF viewport over the sketchfab-cli model index \u2014 orbit, wireframe and animation playback.",
+      "chrome": {
+        "background": "#08090c",
+        "opacity": 0.985,
+        "blur": 0
+      },
+      "category": "creative"
+    },
+    {
+      "id": "stillshot",
+      "name": "StillShot AI",
+      "surface": "board",
+      "repo": "base44-repo-stillshot-ai",
+      "appId": "6a02e641971850cda8d24156",
+      "state": "wired",
+      "host": "generic",
+      "blurb": "Photo board and curator view.",
+      "chrome": {
+        "background": "#0b0c0f",
+        "opacity": 0.97,
+        "blur": 12
+      },
+      "category": "creative"
+    },
+    {
+      "id": "forgetool",
+      "name": "ForgeTool",
+      "surface": "tools",
+      "repo": "base44-repo-forgetool",
+      "appId": "6a0b02da8f8707e2a799afaa",
+      "state": "wired",
+      "host": "generic",
+      "blurb": "Developer workbench: MCP tools and indexes, components ranked by test risk, and generated API bindings.",
+      "chrome": {
+        "background": "#0c0e12",
+        "opacity": 0.96,
+        "blur": 16
+      },
+      "category": "development"
+    },
+    {
+      "id": "flowstate",
+      "name": "FlowState",
+      "surface": "today",
+      "repo": "base44-repo-flowstate",
+      "appId": "6a0b9e68c47d266322dc27b7",
+      "state": "wired",
+      "host": "generic",
+      "blurb": "Today's focus list.",
+      "category": "utility"
+    },
+    {
+      "id": "flowschedule",
+      "name": "FlowSchedule",
+      "surface": "agenda",
+      "repo": "base44-repo-flowschedule-copy",
+      "appId": "6a4bda8ad903698809c2d7be",
+      "state": "wired",
+      "host": "generic",
+      "blurb": "Agenda for the current day.",
+      "category": "utility"
+    },
+    {
+      "id": "tasks",
+      "name": "Task Management",
+      "surface": "board",
+      "repo": "base44-repo-task-management-copy",
+      "appId": "6a4c9036229d26a93e20841c",
+      "state": "wired",
+      "host": "generic",
+      "blurb": "Board view over host-owned items.",
+      "category": "utility"
+    },
+    {
+      "id": "digma",
+      "name": "Digma",
+      "surface": "components",
+      "repo": "base44-repo-digma-copy",
+      "appId": "6a4bddd5604ecb56b336dcb3",
+      "state": "wired",
+      "host": "generic",
+      "blurb": "Component gallery, read-only.",
+      "category": "development"
+    },
+    {
+      "id": "orbitjobs",
+      "name": "OrbitJobs",
+      "surface": "pipeline",
+      "repo": "base44-repo-orbitjobs-69edf69d",
+      "appId": "69edf69de7fa7d1065d8a3ce",
+      "state": "wired",
+      "host": "generic",
+      "blurb": "Application pipeline board.",
+      "category": "development"
+    },
+    {
+      "id": "passportlog",
+      "name": "PassportLog",
+      "surface": "map",
+      "repo": "base44-repo-passportlog",
+      "appId": "6a01b735a16cbbbc3887f683",
+      "state": "wired",
+      "host": "generic",
+      "blurb": "Visited-countries map.",
+      "category": "utility"
+    },
+    {
+      "id": "chronicle",
+      "name": "Luminous Chronicle",
+      "surface": "collection",
+      "repo": "base44-repo-luminous-chronicle",
+      "appId": "69e9ce95d9777cf8108cf699",
+      "state": "wired",
+      "host": "generic",
+      "blurb": "Print collection browser.",
+      "category": "creative"
+    },
+    {
+      "id": "radiant",
+      "name": "Radiant Archive",
+      "surface": "archive",
+      "repo": "base44-repo-radiant-archive",
+      "appId": "69edc55b3151c21a62fcb860",
+      "state": "wired",
+      "host": "generic",
+      "blurb": "Project archive grid.",
+      "category": "creative"
+    },
+    {
+      "id": "resolutions",
+      "name": "Resolution Weaver",
+      "surface": "resolutions",
+      "repo": "base44-repo-resolution-weaver-copy-copy",
+      "appId": "6a01fef1fbf783d2219753e4",
+      "state": "wired",
+      "host": "generic",
+      "blurb": "Resolution list, read-only.",
+      "category": "utility"
+    },
+    {
+      "id": "seth",
+      "name": "SETH",
+      "surface": "session",
+      "repo": "base44-repo-seth-copy",
+      "appId": "6a02eecb70807f1c8e906459",
+      "state": "wired",
+      "host": "generic",
+      "blurb": "Learning session view.",
+      "category": "utility"
+    },
+    {
+      "id": "aura-vision",
+      "name": "Aura Vision",
+      "surface": "visualizer",
+      "page": "Visualizer",
+      "repo": "base44-repo-aura-vision",
+      "appId": "6a9bf1a2f4aadf8877d00b63",
+      "state": "wired",
+      "host": "generic",
+      "blurb": "Audio-reactive visualizer for an uploaded track.",
+      "category": "music"
+    },
+    {
+      "id": "museum-exhibition",
+      "name": "Museum Exhibition",
+      "surface": "home",
+      "page": "Home",
+      "repo": "base44-repo-museum-exhibition",
+      "appId": "6a9bf0c331c4716ca94e460f",
+      "state": "wired",
+      "host": "generic",
+      "blurb": "Exhibition landing page \u2014 hero, mission, features and pricing.",
+      "category": "creative"
+    }
+  ],
+  "duplicates": [
+    {
+      "of": "orbitjobs",
+      "repo": "base44-repo-orbitjobs-69fbf067",
+      "appId": "69fbf0675ff8d8641a7b22c0",
+      "note": "Older OrbitJobs export (2026-07-06); the newer 69edf69d is the wired one."
+    },
+    {
+      "of": "floatdesk",
+      "repo": "base44-repo-floatdesk-ui-copy-6a01fffb",
+      "appId": "6a01fffbc407f5cc46e94cf2",
+      "note": "Older FloatDesk UI export (2026-08-16); the newer 6a01ff36 is the wired one."
+    }
+  ],
+  "chromeDefault": {
+    "background": "#0c0d10",
+    "opacity": 0.94,
+    "blur": 18
+  }
+}
