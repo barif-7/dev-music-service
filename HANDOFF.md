@@ -9,6 +9,288 @@ Running context for whoever picks this up next. Newest first.
 - Dev tooling (pytest, flake8, bandit) lives in the `dev` optional-dependency
   group.
 
+## 2026-09-13 — Restore audio and muted video resolution
+
+**Mac mini follow-up:** SSH access restored; applied the same targeted resolver
+fix to `/Users/struggling/.phase/app` and restarted `com.phase.music-service`
+on port 8010. Its LaunchAgent already used the project venv and Homebrew PATH.
+Backup: `/Users/struggling/.phase/backups/playback-20260913-070444`.
+Chrome verified audio playback, seeking past 80 seconds, and 854×480 video
+through `https://phase.tail4752f5.ts.net:8443`. 151 service/API checks passed
+with 3 skips and 3 Focus tests deselected; an unrelated Focus-scoring assertion
+also fails in the backed-up test. Details are recorded on the mini in
+`docs/playback-repair-2026-09-13.md`.
+
+Playback of `WAd7VEWCWOI` (SEM DEMORA, Super Slowed) returned 403 for ordinary
+and open-ended Range requests, even though a bounded 1 MiB probe returned 206.
+The old forced Android clients yielded unusable full-stream URLs. Both audio
+and video logged these rejections; a small range probe alone hid the failure.
+
+- Updated yt-dlp from 2026.3.17 to 2026.8.19 with its `default` extra, which
+  installs the matching EJS solver; removed the forced player-client list.
+- `config.ytdlp_options()` passes `js_runtimes` into every Python extraction.
+  Setting `YTDLP_JS_RUNTIME` in the environment alone had no effect in yt-dlp.
+- The muted overlay can use a video-only MP4 when a progressive A/V file is
+  unavailable. The audio fallback still requires audio, with separate cache
+  entries to prevent a muted overlay source from becoming silent playback.
+- `run.sh` uses `uv run --locked`. The local LaunchAgent now runs the project
+  `.venv/bin/python` instead of global Python and includes Homebrew in `PATH`
+  so Node is available. The previous plist is backed up at
+  `/private/tmp/phase-music-launchagent-before-playback-fix.plist`.
+
+Validation: 248 pytest passed, 7 skipped; both Vercel entry points import;
+the failing audio now returns 200 without Range, and video `fNg2wdawbiQ`
+returns its complete 10,515,848-byte H.264 MP4 with an open-ended Range request.
+The LaunchAgent was restarted on port 8000 with the corrected environment.
+An actual Chrome run through `loadTrack` on port 8000 confirmed playback past
+2 seconds, seeking past 80 seconds, and the 854×480 video overlay playing in
+sync with no media errors (three successful 206 responses).
+
+## 2026-09-13 — Every local app is registered, and each one carries its export store
+
+**Why:** `/component` browsed four hand-listed apps, three of which were not
+running, so in practice it browsed one. Meanwhile 24 Base44 surfaces were
+already vendored and served by this shell, and the vault held the components
+exported from them — with no link between the two.
+
+### The link already existed in the catalogue
+
+`plugins.json` names a `repo` per surface, `apps.json` in the export folder maps
+that repo to Base44's own `appId`, and the vault tags every component with the
+project it was ingested from. Joining those three is `services/base44_index.py`.
+
+**The app id is the join key, not the app name.** OrbitJobs is why: two exports,
+both called "OrbitJobs", 9 components and 13. Matching on the name merges them
+into one 22-component list, which is the same undifferentiated pile the picker
+was built to get rid of. Matching on the id keeps them apart.
+
+Two catalogue entries were not joined and now are. `lyrics-shader-lab` had no
+`repo` at all, and `canvas` points at `base44-canvas` — its build checkout,
+which is not its export bucket. Both got a **`base44Repo`** field: `repo` says
+where a surface is *built* from and is read by `build-surface.mjs`, so it could
+not be repointed. They are genuinely different facts about one app.
+
+A surface can also be known by two names — Base44 calls it "Lyric Shader Lab"
+and the catalogue calls it "Lyrics Shader Lab". Both are matched on, because
+searching an app by its own name and not finding it is indefensible.
+
+### Registration has two tiers
+
+- A **mounted** app is a compiled bundle this shell serves and can frame. That
+  is what most of the Base44 surfaces are; there is no process behind them, and
+  the tier exists because pretending otherwise meant they could never register.
+  They are registered from the catalogue rather than listed by hand, so
+  vendoring a surface is now all it takes to make it browsable.
+- A **service** app additionally has a local backend, so its components can be
+  driven rather than only shown. Those four are still spelled out by hand in
+  `api/live_component_bindings.py` with the operations they actually back.
+
+**A backend going down no longer removes the app.** It drops to the mounted
+tier: the bundle still frames and the export store still browses, and only the
+components that would have forwarded to a dead API are hidden. Losing 60
+browsable StillShot components because its photo indexer is stopped was the
+behaviour that made this obvious.
+
+A surface behind an unset feature flag is left out entirely — its route 404s,
+so listing it offers a dead end. That is why `semi` is absent.
+
+### The store
+
+`/api/components/search?kind=reusable&app=<id>` returns the vault components
+exported from that app, ranked by the vault's reuse score. **Scoped to one app
+on purpose**: the vault holds 782 distinct components across every export ever
+ingested, and handing that back unscoped is exactly what was replaced. The app
+has to be named, running, and carry a Base44 app id.
+
+The picker grew a third view, **Reusable**, which appears only once an app is
+chosen — offering it earlier would be offering the unscoped index again. Live
+components stay interactive; vault entries are inert previews framed from the
+vault's own origin, which is why they keep the stricter cross-origin sandbox
+rather than the app wrapper's.
+
+**The reuse score ranks the store but is not in it.** It stays server-side with
+the rest of the audit detail, as `test_source_and_audit_detail_are_not_forwarded`
+has required since the vault endpoint was written; the ordering happens before
+the projection drops it.
+
+**One vault client, in `services/component_vault_service`.** It used to be a
+private singleton in `main.py`, which the routers cannot import without a cycle.
+
+### The palette had to learn to stay on screen
+
+Growing the app list from 4 rows to 22 broke the picker. It is fixed at the
+caret and only its horizontal side was ever clamped, so a caret in the lower
+third of a note put the search box and every result below the fold — the header
+was all you got, with no way to reach the rest.
+
+It now measures itself and flips above the caret when it will not fit below,
+capping the panel on whichever side it lands so the result list scrolls inside
+it rather than the panel running off the screen. The service view is a flex
+column for that reason: capping the height without letting the list shrink
+would just clip the footer instead. Measured rather than guessed, because the
+height depends on which view is open and how many rows came back.
+
+`npm run audit:design` drives it from a caret pushed to the bottom of a note
+and asserts the panel is inside the viewport with its search box reachable.
+Verified it fails: dropping the computed placement reports `880–1283 of 900`
+and `input off screen`. 20 checks.
+
+### Gotcha worth keeping
+
+The fetch size and the display limit are different numbers. Passing the display
+limit down to the vault caps `total_matches` at the page size — Canvas reported
+"10 of 10" when it has 103. A bucket is fetched whole, then ranked, then sliced.
+
+### Verified
+
+241 pytest passed, 18 design-audit checks passed. Driven in a browser: 22 apps
+listed where there was 1, StillShot present and marked offline, picking an app
+narrowing to it, its 29 exported components listed, a query narrowing within
+them, and one embedded as a vault preview. The audit's embed check now happens
+to land on a mounted app (Aura Vision), so both tiers are covered.
+
+**Left open:** the three service backends (canvas `:39445`, stillshot `:8788`,
+vertexflow `:8795`) are still down, so their drivable components are unproven
+against a live API. `/favicon.ico` still 404s.
+
+## 2026-09-12 — Vocabulary is its own local service; `/component` browses live apps
+
+Two threads, both landing in the same session. Written up together because the
+second one exists to put the first one's surface inside a note.
+
+### Vocabulary runs beside the app, not inside it
+
+**Why:** the learning loop wanted its own storage, its own schedule arithmetic
+and an optional model call, none of which belong in the music shell's process.
+It follows the CaptionLocalizer pattern already in `plugins/`: a separate
+FastAPI process, a same-origin adapter, and a surface the shell can frame.
+
+- **`plugins/vocabulary/`** — FastAPI on `127.0.0.1:8796`
+  (`sh scripts/run-vocabulary.sh`, `plugins/vocabulary/manifest.json`), SQLite at
+  `~/Library/Application Support/Phase/vocabulary.sqlite3`.
+- **Two schedules per word.** Recognition (see the word, recall the meaning) and
+  production (see the meaning, recall the word) advance independently, because
+  understanding a word and being able to reach for it are different things and
+  they decay at different rates.
+- **A word with no meaning is not a card.** It waits in an inbox instead, so a
+  capture made mid-song does not become a review prompt with nothing to recall.
+- **`api/vocabulary.py`** proxies `/api/vocabulary/*` to it, so the browser only
+  ever talks to our origin. The plugin itself refuses cross-origin writes
+  outright rather than relying on permissive CORS.
+- **Ollama is optional.** Capture, edit, review and export all work with it
+  stopped; only the meaning suggestion needs it.
+
+**The lookup had never actually worked.** It returned
+`{"state":"unavailable"}` against a healthy Ollama with the model loaded, and
+the `except` swallowed the reason. Ollama compiles the `format` schema into a
+GBNF grammar, and llama.cpp expands a length bound into that many repetition
+rules — `Definition.meaning`'s `maxLength: 3000` alone builds a grammar large
+enough to kill the model runner before it emits a token, which surfaces as a
+500 `"model runner has unexpectedly stopped"`. `lookup._grammar_safe` strips
+the four length/count keywords out of the schema on the way to Ollama; the
+bounds still hold, because the response is validated against `Definition`
+coming back.
+
+Worth knowing when adding a field: **a `max_length` on a `Definition` field is
+free, a length bound in the wire schema is not.** Two tests keep the split
+honest — one asserts the request carries no bounds, the other that an
+over-length answer is still rejected. The first one fails if the raw
+`model_json_schema()` goes back on the request.
+
+The lookup tests mock `httpx`, which is why this survived a green suite: a mock
+accepts any `format` at all. It only shows up against a real Ollama.
+
+### `/component` browses running apps, not a file index
+
+**Why:** the picker listed every `.jsx` the vault had indexed, duplicates and
+all, and nothing in that list could do anything — they were source files, not
+running components.
+
+- **`/api/components/search` is now the live registry.** The vault's source
+  search moved to **`/api/components/source-search`**; same service, same
+  shape, new path.
+- **Registration is explicit** (`api/live_component_bindings.py`): an app, a
+  bundle, a health probe, and named operations over its real API. No JSX
+  scanning and no synthesised handlers, so a component in the list is one
+  someone decided to expose.
+- **Availability needs both halves** — the compiled bundle on disk *and* the
+  backing service answering its health probe. An app that is not running does
+  not appear, which is what keeps the duplicates out.
+- **One pooled proxy per app** (`services/live_components.py`) is shared by the
+  embeds and the API adapters, so a note with four cards in it does not open
+  four connection pools.
+- The picker has **Active apps** and **Components** views; choosing an app
+  narrows to its registered components, and an embed mounts the app's own
+  compiled view against the same backend. Actions are forwarded to the real
+  API, so the card shows live data.
+
+**Embeds report their height.** Canvas sizes a component card from a height the
+framed page posts on `cv-embed-size`, falling back to a preview-shaped 280px.
+The vault's embed mode measures what it painted; a mounted *app* view has no
+content height to measure — it fills what it is given — so
+`static/components/host.js` asks for a viewport-shaped card instead. Without
+it the app view is cropped mid-content at 280px.
+
+**`npm run audit:design` covers the live embed now**, not the vault preview —
+the flow it used to drive no longer exists on that route. Its two component
+checks assert the card outgrew the 280px default and that the wrapper, which is
+deliberately granted same-origin and forms so the mounted app works, is still
+scoped to our own `/components/<app>/<key>` and cannot navigate the top window.
+Verified it fails: commenting out the height report turns the first one red
+with `still default 280px`. 18 checks.
+
+The audit drove the picker by waiting on a row selector, which matched the app
+row still on screen and fired the second Enter before the component list
+replaced it. It waits on the picker's own `ENTER to browse app` /
+`ENTER to embed` hint instead.
+
+### Verified
+
+237 pytest passed, 18 design-audit checks passed, and the browser flows driven
+end to end: a real `llama3.2` lookup filling the editor, save, recall with a
+rating, the library, and a second tab refreshing off the `phase-vocabulary`
+BroadcastChannel when the first one saves.
+
+**Left open:** the model fills `collocations` with paraphrases rather than
+common phrases, and leaves `translation` empty on a cross-language lookup even
+though the prompt asks for one. Both are answer quality from `llama3.2`, not
+wiring — worth a prompt pass or a larger model, neither attempted here.
+`/favicon.ico` still 404s, as it has since 2026-09-01.
+
+## 2026-09-05 — Frontend refactor: CSS extraction, state module, env toggle
+
+**What changed:** the monolithic `static/index.html` (1736 lines with 1129
+lines of inline CSS) was split into modular files following the design audit
+in `docs/frontend-redesign.md`.
+
+- **CSS** extracted into 6 files under `static/css/`: `main.css` (variables,
+  resets, stage, lyric reader), `chrome.css` (auto-hide chrome, wordmark,
+  tools, audio, caption, dots, zones, nowbar, share), `dock.css` (dock panel
+  system, overlays, EQ, apps launcher), `grid.css` (wallpaper grid mode),
+  `search.css` (search overlay, Spotify/Focus/Apple Music/translation/video
+  modals), `responsive.css` (all media queries, loaded last).
+- **`static/js/state.js`** — centralized state module (`PhaseState` global)
+  with observable set/get/on/batch pattern. Existing `state` object in
+  `app.js` remains for backward compat; new code should use `PhaseState`.
+- **`static/js/init.js`** — boot sequence with environment detection.
+  `?mode=dev` query param enables dev mode; default is prod. In prod mode,
+  dev-only surfaces (Canvas, Apps, Clock) are hidden via CSS
+  (`body[data-env="prod"]`).
+- **Chrome behavior** — idle timer increased to 4s, idle fades to 0.15
+  opacity (not fully hidden), edge zones narrowed to 10vw with 80ms debounce,
+  wallpaper dots show name tooltips on hover.
+- **Vercel build** — `scripts/build-vercel-frontend.mjs` now removes non-music
+  surface directories from `dist/static/`. Only `gallery/`, `lyrics-shader-lab/`,
+  `canvas/`, `css/`, `js/` survive the prod build.
+- **Apps launcher** — category taxonomy added to `plugins.json`. In dev mode,
+  the launcher shows all generic-host plugins with category filter tabs and
+  archived badges. In prod, only music-related plugins appear.
+
+**Canvas chrome fix:** the canvas plugin's chrome in `plugins.json` was
+`opacity: 0.995` (near-opaque), which conflicted with the design audit's
+expectation of semi-transparent glass. Updated to `opacity: 0.55` to match
+the CSS fallback and the "liquid glass" design direction.
+
 ## 2026-09-01 — Frontend design is audited in a browser, not grepped
 
 **Why:** the design assertions were string matches against `static/index.html`

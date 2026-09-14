@@ -10,7 +10,11 @@
 - Local playback integrations.
 
 ## Quick Start
-`./run.sh` for local dev. See original for yt-dlp and deployment notes.
+Install `uv` and Node.js 22 or newer, then run `./run.sh` for local dev.
+The launcher uses the dependencies pinned in `uv.lock`, including yt-dlp's
+matching [JavaScript solver](https://github.com/yt-dlp/yt-dlp/wiki/EJS).
+`YTDLP_JS_RUNTIME` defaults to `node`; use
+`node:/absolute/path/to/node` when Node is outside the service's `PATH`.
 
 ## Embedded Lyrics Shader Lab
 
