@@ -69,7 +69,7 @@
      editor but have no service behind them here, so they are answered rather
      than left to hang — an unanswered intent looks identical to a slow one. */
   const SERVICE_ENDPOINTS = {
-    component:(query)=>`/api/components/search?q=${encodeURIComponent(query)}&limit=8`,
+    component:(query, options = {})=>`/api/components/search?${new URLSearchParams({ q:query, kind:options.kind || 'component', app:options.app || '', limit:100 })}`,
   };
 
   function setSearch(next){
@@ -109,7 +109,9 @@
     el:panel,
     toggle,
     /* Writing wants the whole page, not a card in the corner. The surface paints
-       no backdrop of its own, so the visuals run under the note. */
+       no backdrop of its own, so the panel supplies it — from the catalogue, so
+       the editor can be solid while the reader stays glass. Text over a moving
+       shader is the least legible thing the shell can produce. */
     overlay:true,
     onOpen(){
       try{ localStorage.setItem(OPEN_KEY, 'true'); }catch(e){ /* ignore */ }
@@ -119,6 +121,10 @@
       try{ localStorage.setItem(OPEN_KEY, 'false'); }catch(e){ /* ignore */ }
     },
   });
+
+  /* Applied once at registration rather than on every open: the panel keeps its
+     backdrop while closed, so the opening transition has something to ramp. */
+  if(typeof PluginChrome === 'object') PluginChrome.apply('canvas', panel);
 
   const plugin = Base44AppPlugin.create({
     id:'base44-canvas',
@@ -131,6 +137,35 @@
     frame_(){ return null; },
     paused(){ return !dock.isOpen(); },
     intents:{
+      /* The editor's GRAPH / MCP / WORKSHOP controls.
+
+         None of these can run inside the writing surface: the graph is a route
+         in the full app, the workshop needs an LLM, and MCP is a transport no
+         browser speaks. So the surface does not try — it names what the user
+         pressed and the host decides which window to bring up. That is the same
+         rule the /component lookup already follows. */
+      open(payload){
+        const view = String(payload?.view || '');
+        const targets = {
+          /* Both live in the full Canvas app; the graph is a route within it. */
+          graph:    { app:'canvas-full', path:'graph' },
+          workshop: { app:'canvas-full' },
+          /* The MCP catalogue is ForgeTool's job — it already probes every
+             server on this machine and lists their tools. */
+          mcp:      { app:'forgetool' },
+        };
+        const target = targets[view];
+        if(!target) throw new Error(`Unknown Canvas view: ${view || '(none)'}`);
+        if(typeof AppsLauncher !== 'object' || !AppsLauncher.has(target.app)){
+          throw new Error(`${target.app} is not available in this shell`);
+        }
+        /* The editor keeps its own panel open underneath; the launcher's
+           surface is an overlay, so returning closes it and the note is still
+           there. */
+        AppsLauncher.open(target.app, { path:target.path });
+        return { opened:target.app, path:target.path || null };
+      },
+
       save(payload){
         if(!payload || typeof payload !== 'object') return;
         const index = docs.findIndex(d => d.id === payload.id);
@@ -176,10 +211,10 @@
           setSearch({ service, query, status:'unsupported', results:[] });
           return;
         }
-        if(!query){ setSearch(null); return; }
+        if(!query && service !== 'component'){ setSearch(null); return; }
         setSearch({ service, query, status:'loading', results:[] });
         const token = searchSeq;
-        fetch(endpoint(query), { headers:{ Accept:'application/json' } })
+        fetch(endpoint(query, payload?.options), { headers:{ Accept:'application/json' } })
           .then(response => response.json().then(
             body => ({ ok:response.ok, body }),
             /* A 503 from an unreachable vault has a JSON body; a proxy error

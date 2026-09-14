@@ -173,12 +173,15 @@ function closeManagedDialog(panel, { trigger=null }={}){
   wake();
 }
 
-/* ---- build dot rail ---- */
+/* ---- build dot rail ----
+   Phase 2: dots carry data-name and data-preset for CSS tooltip previews. */
 ALTS.forEach((w,i)=>{
   const d = document.createElement('button');
   d.type = 'button';
   d.className = 'dot';
   d.setAttribute('aria-label', w.name);
+  d.dataset.name = w.name;
+  d.dataset.preset = w.preset || '';
   d.addEventListener('click', ()=> Wallpaper.go(i));
   dotsWrap.appendChild(d);
 });
@@ -272,6 +275,7 @@ function saveRecentTracks(items){
 function compactRecentTrack(track){
   return {
     key:recentTrackKey(track),
+    playlistKey:track?.playlistKey || null,
     title:track?.title || 'Untitled',
     artist:track?.artist || '',
     album:track?.album || '',
@@ -328,6 +332,33 @@ function renderRecentlyPlayed(){
 }
 window.renderRecentlyPlayed = renderRecentlyPlayed;
 
+/* ---- playing set carousel: view over the provider-neutral ordered set ---- */
+const playlistCarousel = new PlaylistCarousel({
+  playlist:phasePlaylist,
+  root:$('#playlistCarousel'),
+  rail:$('#playlistTrackRail'),
+  toggleButton:$('#nbQueue'),
+  countElement:$('#nbQueueCount'),
+  titleElement:$('#playlistTitle'),
+  positionElement:$('#playlistPosition'),
+  nextElement:$('#playlistNext'),
+  previousPageButton:$('#playlistPagePrevious'),
+  nextPageButton:$('#playlistPageNext'),
+  clearButton:$('#playlistClear'),
+  closeButton:$('#playlistClose'),
+  onPlay:track=>loadTrack(track, { playlistMode:'sync' }),
+  renderLimit:30,
+});
+window.playlistCarousel = playlistCarousel;
+phasePlaylist.subscribe(snapshot=>{
+  if(typeof PhaseState === 'undefined') return;
+  PhaseState.batch(()=>{
+    PhaseState.set('playlist', snapshot);
+    PhaseState.set('queueSize', snapshot.size);
+    PhaseState.set('nextTrack', snapshot.next);
+  });
+});
+
 /* ---- now-playing player bar ---- */
 const playerControls = new PlayerControls({
   player,
@@ -343,8 +374,8 @@ const playerControls = new PlayerControls({
   subtitle:$('#nbSub'),
   artwork:$('#nbArt'),
   artworkImage:$('#nbImg'),
-  onPrevious:()=>Wallpaper.go(state.index-1),
-  onNext:()=>Wallpaper.go(state.index+1),
+  onPrevious:()=>playPlaylistOffset(-1, 'previous-button'),
+  onNext:()=>playPlaylistOffset(1, 'next-button'),
   onTrackRendered:track=>{
     if(typeof syncSpotifySaveButton === 'function') syncSpotifySaveButton(track);
     if(typeof refreshSpotifySavedState === 'function') refreshSpotifySavedState(track);
@@ -880,20 +911,40 @@ function wake(){
   if(RM) return;
   if(state.searchOpen) return;
   if(state.mode !== 'immersive') return;
+  /* Phase 2: increased from 2800ms to 4000ms for less aggressive chrome hiding.
+     Chrome now fades to reduced opacity rather than fully disappearing,
+     so users can always see where controls are. */
   idleTimer = setTimeout(()=>{
     if(state.transitioning || state.crossfading) { wake(); return; }
     state.idle = true;
     stage.classList.add('idle');
-  }, 2800);
+  }, 4000);
 }
 
 /* ---- input ---- */
 window.addEventListener('pointermove', wake, {passive:true});
 window.addEventListener('pointerdown', wake, {passive:true});
 
-// edge click zones for prev/next in immersive
-$('#zoneL').addEventListener('click', ()=>{ if(state.mode==='immersive') Wallpaper.go(state.index-1); });
-$('#zoneR').addEventListener('click', ()=>{ if(state.mode==='immersive') Wallpaper.go(state.index+1); });
+/* Edge click zones for prev/next in immersive.
+   Phase 2: debounced to prevent accidental wallpaper changes from casual
+   mouse movements near the edges. A click must be a deliberate press
+   (pointerdown held >100ms or a clean click without significant movement). */
+let _zoneDownTime = 0, _zoneDownPos = null;
+function _onZoneDown(e){ _zoneDownTime = Date.now(); _zoneDownPos = { x: e.clientX, y: e.clientY }; }
+function _onZoneClick(e, dir){
+  if(state.mode !== 'immersive') return;
+  const dt = Date.now() - _zoneDownTime;
+  const dx = _zoneDownPos ? Math.abs(e.clientX - _zoneDownPos.x) + Math.abs(e.clientY - _zoneDownPos.y) : 0;
+  /* Ignore if the pointer moved significantly (indicating a swipe/gesture, not a click) */
+  if(dx > 30) return;
+  /* Require at least 80ms of press time to filter accidental brushes */
+  if(dt < 80) return;
+  Wallpaper.go(state.index + dir);
+}
+$('#zoneL').addEventListener('pointerdown', _onZoneDown, {passive:true});
+$('#zoneL').addEventListener('click', (e)=> _onZoneClick(e, -1));
+$('#zoneR').addEventListener('pointerdown', _onZoneDown, {passive:true});
+$('#zoneR').addEventListener('click', (e)=> _onZoneClick(e, 1));
 
 window.addEventListener('keydown', (e)=>{
   if(state.searchOpen) return;

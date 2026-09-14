@@ -430,7 +430,10 @@ function createSpotifyLikedRow(item){
 
   row.append(meta, matchCol, saved, hint);
   if(playable){
-    row.addEventListener('click', ()=>playSpotifyExportedTrack(item));
+    row.addEventListener('click', ()=>playSpotifyExportedTrack(
+      item,
+      spotify.preview ? spotify.previewTracks : spotify.likedTracks,
+    ));
   }
   return row;
 }
@@ -493,12 +496,11 @@ function exitSpotifyPlaylistPreview(){
   setSpotifyStatus(`connected · ${spotify.playlists.length} lists`, `${spotify.playlists.length} loaded · read-only`);
 }
 
-async function playSpotifyExportedTrack(item){
+function spotifyPhaseTrack(item){
   const track = item?.source || {};
   const match = item?.musicbrainz || {};
-  const queryParts = [match.title || track.title, match.artist || (track.artist_names || []).join(', ')].filter(Boolean);
-  const query = queryParts.join(' ');
-  const fallback = {
+  return {
+    provider:'spotify',
     title: match.title || track.title || 'Untitled track',
     artist: match.artist || (track.artist_names || []).join(', ') || '—',
     album: match.album || track.album || undefined,
@@ -506,20 +508,29 @@ async function playSpotifyExportedTrack(item){
     thumbnail: match.artwork_url || track.artwork_url || undefined,
     artwork_source: match.artwork_url ? 'musicbrainz' : (track.artwork_url ? 'spotify' : undefined),
     release_year: match.release_year || undefined,
+    spotifyId: track.provider_track_id,
+    savedToSpotify: track.provider_playlist_id === 'liked',
   };
+}
+
+async function playSpotifyExportedTrack(item, queueItems=[]){
+  const fallback = spotifyPhaseTrack(item);
+  const playableQueue = queueItems
+    .filter(candidate=>Number(candidate?.musicbrainz?.confidence || 0) >= 80)
+    .map(spotifyPhaseTrack);
+  let selected = fallback;
+  if(typeof phasePlaylist !== 'undefined' && playableQueue.length){
+    const snapshot = phasePlaylist.replace(playableQueue, {
+      currentKey:PlaylistSet.keyFor(fallback),
+      label:spotify.previewPlaylist?.name || (spotify.view === 'liked' ? 'Liked Songs' : 'Spotify set'),
+      source:'spotify',
+      reason:'spotify-selection',
+    });
+    selected = snapshot.current || fallback;
+  }
   closeSpotifyPanel();   // drop back to the immersive wallpaper, now reacting to the track
   try {
-    await loadTrack({
-      title: fallback.title,
-      artist: fallback.artist,
-      album: fallback.album,
-      duration: fallback.duration,
-      thumbnail: fallback.thumbnail,
-      artwork_source: fallback.artwork_source,
-      release_year: fallback.release_year,
-      spotifyId: track.provider_track_id,   // drives the per-track feature fetch
-      savedToSpotify: track.provider_playlist_id === 'liked',
-    });
+    await loadTrack(selected, { playlistMode:playableQueue.length ? 'sync' : 'ensure' });
   } catch(e) {
     console.warn('spotify playback', e);
     setSpotifyStatus('playback failed', String(e?.message || e || 'resolve failed'));

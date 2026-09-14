@@ -67,9 +67,20 @@
 
   function choose(i){
     const s = results[i]; if(!s) return;
+    const queryLabel = input.value.trim();
     input.value = s.title || '';
     closeModal();
-    loadTrack(s);
+    if(typeof phasePlaylist !== 'undefined'){
+      const snapshot = phasePlaylist.replace(results, {
+        currentIndex:i,
+        label:queryLabel ? `Search · ${queryLabel}` : 'Search results',
+        source:'search',
+        reason:'search-selection',
+      });
+      loadTrack(snapshot.current || s, { playlistMode:'sync' });
+    }else{
+      loadTrack(s);
+    }
   }
 
   function focusableIn(root){

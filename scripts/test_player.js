@@ -42,6 +42,7 @@ class FakeMedia {
 class FakeElement {
   constructor() {
     this.listeners = new Map();
+    this.attributes = new Map();
     this.dataset = {};
     this.style = {};
     this.classList = { add(){}, remove(){} };
@@ -51,6 +52,14 @@ class FakeElement {
 
   addEventListener(event, handler) {
     this.listeners.set(event, handler);
+  }
+
+  setAttribute(name, value) {
+    this.attributes.set(name, String(value));
+  }
+
+  removeAttribute(name) {
+    this.attributes.delete(name);
   }
 
   click(clientX = 0) {

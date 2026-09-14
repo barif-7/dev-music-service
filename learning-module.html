@@ -1,7 +1,746 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>dev-music-service — Visual Learning Module</title><style>body{margin:0;background:#0b0f14;color:#e8eef6;font:15px/1.55 -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif}.wrap{max-width:1100px;margin:auto;padding:32px}.hero,.card{background:#111823;border:1px solid #253244;border-radius:18px;padding:22px;margin:16px 0}h1{margin:0;font-size:32px}.muted{color:#9aa8b8}.tag{display:inline-block;color:#65d6ad;border:1px solid #253244;border-radius:999px;padding:4px 10px;margin:8px 6px 0 0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}pre{background:#071019;border:1px solid #253244;border-radius:14px;padding:16px;overflow:auto}.flow{display:flex;gap:10px;flex-wrap:wrap}.node{padding:12px;border:1px solid #253244;border-radius:12px;background:#0d1420}details{margin:10px 0;padding:12px;border:1px solid #253244;border-radius:12px;background:#0d1420}summary{color:#65d6ad;font-weight:700;cursor:pointer}</style></head><body><div class="wrap"><section class="hero"><h1>dev-music-service</h1><p class="muted">A backend/audio learning module for reviewing music search, browser-first streaming, media delivery APIs, service boundaries, and debugging paths.</p><span class="tag">FastAPI</span><span class="tag">Audio Streaming</span><span class="tag">Backend</span></section><section class="grid"><div class="card"><h2>Purpose</h2><p>Explain the service as a backend that turns search/input into playable media streams and API responses.</p></div><div class="card"><h2>Output</h2><p>This generated <code>learning-module.html</code> is paired with <code>docs/visual-learning-module-guide.md</code>.</p></div></section><section class="card"><h2>Architecture map</h2><pre>Client / Browser
- └─ HTTP API
-    ├─ Search Endpoint
-    ├─ Stream Endpoint
-    ├─ Media Tooling Boundary
-    ├─ Response / Error Mapping
-    └─ Runtime / Hosting Config</pre></section><section class="card"><h2>Request flow</h2><div class="flow"><div class="node">Query or URL</div><div class="node">API route</div><div class="node">Media resolver</div><div class="node">ffmpeg/stream pipe</div><div class="node">Browser playback</div></div></section><section class="grid"><div class="card"><h2>Inspect first</h2><ul><li>FastAPI entry point</li><li>Search route</li><li>Stream route</li><li>Media subprocess/tool calls</li><li>Error handling and deployment config</li></ul></div><div class="card"><h2>Talk tracks</h2><ul><li>Latency and buffering</li><li>Backpressure and stream safety</li><li>Local hosting versus public funnel</li><li>Where lyrics/shaders/metadata can attach</li></ul></div></section><section class="card"><h2>Deep dives</h2><details open><summary>Architecture summary</summary><p>Frame this as a pragmatic media API: search resolves content, stream routes deliver playable bytes, and tooling boundaries isolate external media processing.</p></details><details><summary>Next source-deepening pass</summary><p>Run the guide prompt locally to replace this module with exact endpoint names, snippets, diagrams, and failure-mode notes from the full repo.</p></details></section></div></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dev-music-service — Codebase Learning Module</title>
+<style>
+  :root{
+    --bg:#0c0e13; --bg2:#11141b; --panel:#151925; --panel2:#1b2030;
+    --line:#262d3d; --line2:#323b4f;
+    --tx:#e7ebf3; --tx2:#aeb6c7; --tx3:#7b8499;
+    --acc:#7aa091;
+    --acc2:#f48d68;
+    --blue:#5cd9ff; --lime:#d7ff3a; --violet:#b58bff; --amber:#ffc88c;
+    --kw:#f48d68; --fn:#5cd9ff; --str:#9fd98a; --cm:#6b7488; --num:#b58bff; --op:#aeb6c7; --type:#ffc88c;
+    --radius:14px; --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:radial-gradient(1200px 700px at 70% -10%,#16202a 0%,var(--bg) 55%);color:var(--tx);font-family:var(--sans);line-height:1.62;-webkit-font-smoothing:antialiased}
+  a{color:var(--blue);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code{font-family:var(--mono);font-size:.86em}
+
+  .hero{max-width:1120px;margin:0 auto;padding:64px 28px 30px}
+  .hero .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--acc)}
+  .hero h1{font-size:clamp(30px,5vw,52px);margin:.18em 0 .1em;line-height:1.05;letter-spacing:-.02em}
+  .hero h1 .grad{background:linear-gradient(95deg,var(--acc),var(--blue) 60%,var(--acc2));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero p{color:var(--tx2);font-size:18px;max-width:760px}
+  .pills{display:flex;flex-wrap:wrap;gap:8px;margin-top:20px}
+  .pill{font-family:var(--mono);font-size:12px;color:var(--tx2);background:var(--panel);border:1px solid var(--line);padding:6px 11px;border-radius:999px}
+  .pill b{color:var(--tx)}
+
+  .tabwrap{position:sticky;top:0;z-index:20;background:rgba(12,14,19,.82);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+  .tabs{max-width:1120px;margin:0 auto;display:flex;gap:4px;padding:8px 22px;overflow-x:auto}
+  .tab{flex:0 0 auto;font-family:var(--sans);font-size:14px;color:var(--tx3);background:none;border:0;padding:11px 16px;cursor:pointer;border-radius:9px;white-space:nowrap;transition:.16s}
+  .tab:hover{color:var(--tx);background:var(--panel)}
+  .tab.on{color:var(--tx);background:var(--panel2);box-shadow:inset 0 -2px 0 var(--acc)}
+
+  .container{max-width:1120px;margin:0 auto;padding:38px 28px 90px}
+  .panel-view{display:none;animation:fade .4s ease}
+  .panel-view.on{display:block}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+  h2{font-size:26px;letter-spacing:-.01em;margin:8px 0 6px;display:flex;align-items:center;gap:11px}
+  h2 .ix{font-family:var(--mono);font-size:13px;color:var(--acc);border:1px solid var(--line2);border-radius:7px;padding:3px 8px}
+  h3{font-size:18px;margin:34px 0 10px;color:var(--tx)}
+  h4{font-size:14.5px;margin:20px 0 6px;color:var(--amber);font-family:var(--mono);letter-spacing:.02em}
+  p{color:var(--tx2)}
+  .lead{font-size:17px;color:var(--tx2);max-width:820px}
+  hr.sep{border:0;border-top:1px solid var(--line);margin:38px 0}
+
+  .grid{display:grid;gap:16px;margin:18px 0}
+  .g2{grid-template-columns:repeat(2,1fr)}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  .g4{grid-template-columns:repeat(4,1fr)}
+  @media(max-width:780px){.g2,.g3,.g4{grid-template-columns:1fr}}
+  .card{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line);border-radius:var(--radius);padding:18px 18px 16px}
+  .card h4{margin-top:0;color:var(--tx)}
+  .card .tag{font-family:var(--mono);font-size:11px;color:var(--acc);text-transform:uppercase;letter-spacing:.12em}
+  .card p{font-size:14px;margin:.4em 0 0}
+  .card .file{font-family:var(--mono);font-size:11.5px;color:var(--tx3);margin-top:10px;display:block}
+
+  pre.code{background:#0a0c11;border:1px solid var(--line);border-radius:12px;padding:16px 18px;overflow:auto;margin:14px 0;font-family:var(--mono);font-size:13px;line-height:1.6}
+  pre.code .kw{color:var(--kw)} pre.code .fn{color:var(--fn)} pre.code .str{color:var(--str)}
+  pre.code .cm{color:var(--cm);font-style:italic} pre.code .num{color:var(--num)} pre.code .op{color:var(--op)} pre.code .type{color:var(--type)}
+  .codecap{font-family:var(--mono);font-size:11.5px;color:var(--tx3);margin:-6px 0 14px;padding-left:3px}
+
+  pre.diagram{background:#080a0e;border:1px solid var(--line);border-radius:12px;padding:20px;overflow:auto;font-family:var(--mono);font-size:12.5px;line-height:1.5;color:var(--tx2)}
+  pre.diagram .n{color:var(--acc)} pre.diagram .b{color:var(--blue)} pre.diagram .c{color:var(--acc2)} pre.diagram .v{color:var(--violet)} pre.diagram .d{color:var(--tx3)} pre.diagram .l{color:var(--lime)}
+
+  .flow{display:flex;align-items:stretch;gap:0;flex-wrap:wrap;margin:18px 0}
+  .flow-node{flex:1 1 120px;min-width:120px;background:var(--panel);border:1px solid var(--line2);border-radius:11px;padding:12px 13px;text-align:center;position:relative}
+  .flow-node .t{font-size:13px;color:var(--tx);font-weight:600}
+  .flow-node .s{font-family:var(--mono);font-size:10.5px;color:var(--tx3);margin-top:3px;display:block}
+  .flow-arrow{display:flex;align-items:center;color:var(--acc);font-size:20px;padding:0 8px}
+  @media(max-width:780px){.flow{flex-direction:column}.flow-arrow{justify-content:center;transform:rotate(90deg);padding:6px 0}}
+
+  .collap{border:1px solid var(--line);border-radius:11px;margin:12px 0;overflow:hidden;background:var(--bg2)}
+  .collap > button{width:100%;text-align:left;background:var(--panel);border:0;color:var(--tx);padding:14px 16px;cursor:pointer;font-size:15px;font-weight:600;display:flex;justify-content:space-between;align-items:center;gap:12px;font-family:var(--sans)}
+  .collap > button:hover{background:var(--panel2)}
+  .collap > button .chev{color:var(--acc);transition:.2s;font-size:13px}
+  .collap.open > button .chev{transform:rotate(90deg)}
+  .collap .body{display:none;padding:4px 18px 18px}
+  .collap.open .body{display:block}
+
+  .tbl{width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;overflow:hidden;border-radius:11px;border:1px solid var(--line)}
+  .tbl th,.tbl td{text-align:left;padding:11px 13px;border-bottom:1px solid var(--line)}
+  .tbl th{background:var(--panel2);color:var(--tx);font-size:12.5px;text-transform:uppercase;letter-spacing:.05em}
+  .tbl td{color:var(--tx2);vertical-align:top}
+  .tbl tr:last-child td{border-bottom:0}
+  .tbl td code,.tbl th code{color:var(--amber)}
+  .tbl tr:hover td{background:rgba(122,160,145,.04)}
+
+  .call{border-radius:11px;padding:14px 16px;margin:16px 0;border:1px solid;font-size:14px;display:flex;gap:11px}
+  .call .ic{flex:0 0 auto;font-size:16px;line-height:1.4}
+  .call.info{background:rgba(92,217,255,.06);border-color:rgba(92,217,255,.3)}
+  .call.tip{background:rgba(122,160,145,.07);border-color:rgba(122,160,145,.34)}
+  .call.warn{background:rgba(244,141,104,.07);border-color:rgba(244,141,104,.34)}
+  .call b{color:var(--tx)}
+  .call p{margin:0;color:var(--tx2)}
+
+  .kbd{font-family:var(--mono);font-size:11px;background:var(--panel2);border:1px solid var(--line2);border-bottom-width:2px;border-radius:5px;padding:1px 6px;color:var(--tx)}
+  ul.clean{padding-left:18px;color:var(--tx2)}
+  ul.clean li{margin:5px 0}
+  .muted{color:var(--tx3)}
+  .stat-row{display:flex;gap:24px;flex-wrap:wrap;margin:14px 0}
+  .stat{font-family:var(--mono);font-size:13px;color:var(--tx3)}
+  .stat b{color:var(--acc);font-size:22px;display:block;margin-bottom:2px}
+  footer{max-width:1120px;margin:0 auto;padding:30px 28px 60px;border-top:1px solid var(--line);color:var(--tx3);font-size:13px}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="eyebrow">Codebase Learning Module</div>
+  <h1><span class="grad">dev-music-service</span></h1>
+  <p class="lead">A browser-first music platform: YouTube search/stream with fuzzy scoring, Spotify &amp; Apple Music import, audio-reactive WebGL wallpapers (43 shaders), a plugin system (21 surfaces), lyrics localization with translated vocals, ADHD focus mode, and a developer forge — all fronted by a vanilla-JS shell with no build step.</p>
+  <div class="pills">
+    <span class="pill"><b>Backend</b> · Python / FastAPI</span>
+    <span class="pill"><b>Resolver</b> · yt-dlp</span>
+    <span class="pill"><b>Frontend</b> · vanilla JS + WebGL</span>
+    <span class="pill"><b>Plugins</b> · 21 surfaces (Base44 protocol)</span>
+    <span class="pill"><b>Integrations</b> · Spotify · Apple Music · LRCLIB · ReccoBeats</span>
+    <span class="pill"><b>Auth</b> · Private beta (HMAC sessions)</span>
+    <span class="pill"><b>Deploy</b> · Vercel + separate backend</span>
+  </div>
+  <div class="stat-row" style="margin-top:24px">
+    <div class="stat"><b>1,927</b>lines in main.py</div>
+    <div class="stat"><b>26</b>service modules</div>
+    <div class="stat"><b>29</b>gallery JS files</div>
+    <div class="stat"><b>43</b>GLSL wallpapers</div>
+    <div class="stat"><b>21</b>plugin surfaces</div>
+    <div class="stat"><b>11</b>test files</div>
+  </div>
+</header>
+
+<div class="tabwrap">
+  <nav class="tabs" id="tabs">
+    <button class="tab on" data-t="overview">Overview</button>
+    <button class="tab" data-t="backend">Backend &amp; Services</button>
+    <button class="tab" data-t="security">Security &amp; Auth</button>
+    <button class="tab" data-t="music">Music Services</button>
+    <button class="tab" data-t="shaders">Shader Engine</button>
+    <button class="tab" data-t="plugins">Plugin System</button>
+    <button class="tab" data-t="integrations">Integrations</button>
+    <button class="tab" data-t="patterns">Patterns &amp; Takeaways</button>
+  </nav>
+</div>
+
+<main class="container">
+
+<!-- ============================ OVERVIEW ============================ -->
+<section class="panel-view on" id="overview">
+  <h2><span class="ix">00</span> What this project is</h2>
+  <p class="lead">Phase · Field is a browser-first music platform. You search a song, the backend resolves the best YouTube audio match via yt-dlp, proxies the stream to a plain <code>&lt;audio&gt;</code> element, and the playing audio drives a fullscreen WebGL wallpaper that reacts in real time. Beyond playback, it imports libraries from Spotify and Apple Music, localizes lyrics across 27+ languages, scores tracks for ADHD focus, and hosts 21 plugin surfaces via an iframe-based app protocol.</p>
+
+  <div class="grid g3">
+    <div class="card"><span class="tag">Resolve</span><h4>Search &amp; metadata</h4><p>MusicBrainz + Spotify fused autocomplete → yt-dlp search with duration/title/channel scoring. LRCLIB lyrics, Cover Art Archive artwork.</p><span class="file">main.py · services/music_service.py · services/metadata_service.py</span></div>
+    <div class="card"><span class="tag">Stream</span><h4>Server-backed audio</h4><p>The server proxies the resolved stream (range-aware, mirrors 200/206) so the browser plays reliably with no CORS issues. SSRF defense validates every URL and redirect hop.</p><span class="file">main.py · security.py</span></div>
+    <div class="card"><span class="tag">React</span><h4>Phase · Field gallery</h4><p>43 procedural GLSL wallpapers. Live FFT + per-track ReccoBeats features → shader uniforms → wallpapers that breathe, pulse, and tint to the music. Motion-safe for reduced-motion users.</p><span class="file">static/gallery/*.js</span></div>
+    <div class="card"><span class="tag">Import</span><h4>Library import</h4><p>Spotify (PKCE OAuth) and Apple Music (MusicKit + XML parser). Tracks matched to MusicBrainz for canonical metadata and cover art.</p><span class="file">services/spotify_import_service.py · services/apple_music_import_service.py</span></div>
+    <div class="card"><span class="tag">Localize</span><h4>Lyrics &amp; vocals</h4><p>LRCLIB lyrics with CaptionLocalizer bridge for just-in-time translation. Translated vocal synthesis via Pika TTS or macOS <code>say</code>. Progressive transcription fallback.</p><span class="file">services/lyrics_service.py · services/translated_vocals_service.py</span></div>
+    <div class="card"><span class="tag">Extend</span><h4>21 plugin surfaces</h4><p>Canvas notes editor, Lyrics Shader Lab, ForgeTool, StillShot AI, VertexFlow 3D, and 16 more — all mounted via the Base44 postMessage protocol.</p><span class="file">static/gallery/plugins.json · static/gallery/base44-plugin.js</span></div>
+  </div>
+
+  <h3>System map</h3>
+  <pre class="diagram">
+                          ┌────────────────────────────────────────────────────────────┐
+   Browser  ──────────▶   │  <span class="n">FastAPI app  (main.py · 1927 lines · app.py for Vercel)</span>       │
+   <span class="d">static/index.html</span>      │  rate-limited · structlog (redacted) · beta auth · CORS     │
+   <span class="d">+ gallery/*.js</span>         └───────┬────────────────────────────────────────────────────┘
+   <span class="d">+ 21 plugin surfaces</span>          │
+       ┌──────────────┬──────────┼─────────────┬───────────────┬───────────────┬──────────────┐
+       ▼              ▼          ▼             ▼               ▼               ▼              ▼
+  <span class="b">MusicService</span>   <span class="b">Metadata</span>   <span class="b">Lyrics</span>      <span class="b">SpotifyImport</span>    <span class="b">FocusService</span>     <span class="b">Video</span>       <span class="b">AppleMusic</span>
+  <span class="d">yt-dlp search</span>  <span class="d">Service</span>    <span class="d">Service</span>     <span class="d">Service</span>         <span class="d">ReccoBeats</span>       <span class="d">Service</span>     <span class="d">Import</span>
+  <span class="d">+stream +cache</span> <span class="d">MusicBrainz</span> <span class="d">LRCLIB</span>      <span class="d">PKCE OAuth</span>      <span class="d">focus scoring</span>   <span class="d">yt-dlp video</span> <span class="d">XML/JSON</span>
+  <span class="d">3h TTL</span>        <span class="d">+Spotify</span>   <span class="d">+localize</span>   <span class="d">+liked songs</span>                     <span class="d">4min cache</span>  <span class="d">MusicKit</span>
+       │              │          │             │               │               │              │
+       ▼              ▼          ▼             ▼               ▼               ▼              ▼
+   <span class="c">YouTube</span>      <span class="c">musicbrainz</span> <span class="c">lrclib.net</span>  <span class="c">Spotify API</span>  <span class="c">ReccoBeats</span>      <span class="c">YouTube</span>      <span class="c">Apple</span>
+  (googlevideo)    <span class="c">.org</span>     <span class="c">CaptionLoc.</span>  <span class="d">Matcher</span>       <span class="c">API</span>                     <span class="c">Music API</span>
+
+   <span class="v">Proxy bridges</span>  ──HTTP──▶  Phase Field API · StillShot AI · Sketchfab CLI · Canvas Backend
+   <span class="v">Forge</span>          ──HTTP──▶  MCP server inventory · Base44 app indexing · Component Vault
+  </pre>
+
+  <h3>Repository layout</h3>
+  <pre class="diagram">
+dev-music-service/
+├─ <span class="b">main.py</span>            <span class="d">1,927 lines — all FastAPI routes, rate limits, logging, beta auth, MCP process mgmt</span>
+├─ <span class="b">app.py</span>             <span class="d">Vercel ASGI entrypoint (configures Node.js runtime for yt-dlp)</span>
+├─ <span class="b">models.py</span>          <span class="d">Pydantic response/request schemas (the API contract)</span>
+├─ <span class="b">config.py</span>          <span class="d">pydantic-settings; .env-driven Settings + get_settings()</span>
+├─ <span class="b">security.py</span>        <span class="d">SSRF guard, control-auth, log redaction, stream validation</span>
+├─ <span class="b">plugin_catalog.py</span>  <span class="d">reads plugins.json, registers dynamic routes, frameable-path checks</span>
+├─ <span class="b">frontend.py</span>        <span class="d">reads static/index.html into a module constant</span>
+├─ <span class="b">services/</span>          <span class="d">26 modules — one per capability</span>
+├─ <span class="b">static/</span>
+│  ├─ index.html        <span class="d">615-line shell (ARIA, 28 scripts, 17-button tool dock)</span>
+│  ├─ <span class="b">gallery/</span>        <span class="d">29 JS modules — reactive shader engine + plugin host + integrations</span>
+│  ├─ <span class="b">css/</span>            <span class="d">6 stylesheets (main, chrome, dock, grid, search, responsive)</span>
+│  ├─ <span class="b">js/</span>             <span class="d">state.js (centralized state), init.js (boot/env detection)</span>
+│  ├─ <span class="b">canvas/</span>         <span class="d">vendored Vite/React notes editor</span>
+│  ├─ <span class="b">lyrics-shader-lab/</span> <span class="d">vendored bilingual lyrics reader surface</span>
+│  ├─ <span class="b">semi/</span>           <span class="d">vendored Pika voice profile (feature-flagged)</span>
+│  └─ <span class="b">16 sub-apps/</span>   <span class="d">Base44 generic plugins (champions…vertexflow), each index.html + assets/</span>
+├─ <span class="b">lyrics-shader-lab/</span> <span class="d">React/Vite source for the bilingual reader (also vendored into static/)</span>
+├─ <span class="b">scripts/</span>           <span class="d">build-vercel-frontend, build-surface, sanitize-plugin-surface, design-audit</span>
+├─ <span class="b">tests/</span>             <span class="d">11 test files — pytest: routes, services, beta security, plugins, focus, shaders</span>
+└─ <span class="b">vercel.ts</span>          <span class="d">Vercel routing: /api/* → backend, plugin surfaces → static HTML</span>
+  </pre>
+
+  <div class="call info"><span class="ic">◆</span><div><b>The one idea to hold onto.</b><p>Two signals feed the visuals and never get confused: <b>live FFT</b> (the current audio frame, <code>audio.js</code>) is the source of frame-by-frame truth and <em>drives</em> motion; the <b>track-level profile</b> (per-track audio features, <code>reactivity.js</code>) only <em>biases/calibrates</em> it. Everything in the frontend is a variation on "live drives, prior nudges."</p></div></div>
+</section>
+
+<!-- ============================ BACKEND ============================ -->
+<section class="panel-view" id="backend">
+  <h2><span class="ix">01</span> Backend &amp; services</h2>
+  <p class="lead">The backend is a FastAPI surface (<code>main.py</code>, 1,927 lines) over 26 stateless service modules. Routes validate input with Pydantic models, rate-limit with <b>slowapi</b>, log structured events with <b>structlog</b> (auto-redacting secrets), enforce private-beta auth, and funnel every error through one translator.</p>
+
+  <h4>The error-translation seam</h4>
+  <p>Every route body ends with <code>fail_with_http_error(exc)</code> — one function maps domain exceptions to HTTP status codes, so service code raises plain exceptions and never imports FastAPI status logic.</p>
+  <pre class="code"><span class="kw">def</span> <span class="fn">fail_with_http_error</span>(exc: Exception) -> <span class="kw">None</span>:
+    <span class="kw">if</span> <span class="fn">isinstance</span>(exc, HTTPException):       <span class="cm"># already shaped — re-raise</span>
+        <span class="kw">raise</span> exc
+    <span class="kw">if</span> <span class="fn">isinstance</span>(exc, LyricsRequestError):   <span class="cm"># 400 bad input</span>
+        <span class="kw">raise</span> HTTPException(status_code=<span class="num">400</span>, detail=<span class="fn">str</span>(exc)) <span class="kw">from</span> exc
+    <span class="kw">if</span> <span class="fn">isinstance</span>(exc, LyricsNotFoundError):   <span class="cm"># 404 not found</span>
+        <span class="kw">raise</span> HTTPException(status_code=<span class="num">404</span>, detail=<span class="fn">str</span>(exc)) <span class="kw">from</span> exc
+    <span class="kw">if</span> <span class="fn">isinstance</span>(exc, (ImportPreviewError, MusicServiceError, MetadataServiceError,
+                        SpotifyImportError, VideoServiceError, httpx.HTTPError)):
+        <span class="kw">raise</span> HTTPException(status_code=<span class="num">502</span>, detail=<span class="fn">str</span>(exc)) <span class="kw">from</span> exc  <span class="cm"># upstream failed</span>
+    <span class="kw">raise</span> HTTPException(status_code=<span class="num">500</span>, detail=<span class="fn">str</span>(exc)) <span class="kw">from</span> exc</pre>
+  <div class="codecap">main.py — domain errors in, HTTP errors out. Services stay framework-agnostic.</div>
+
+  <h4>Lifespan: warm the clients, close them cleanly</h4>
+  <p>On startup the app pre-establishes TLS connections for persistent <code>httpx</code> clients (MusicBrainz, Spotify, ReccoBeats, Phase Field, StillShot, Sketchfab, Canvas, Component Vault) and fetches a Spotify client-credentials token. Shutdown closes every long-lived client.</p>
+
+  <h3>Complete route map</h3>
+  <table class="tbl">
+    <tr><th>Group</th><th>Routes</th><th>Key details</th></tr>
+    <tr><td><b>Shell</b></td><td><code>GET /</code>, <code>/share</code>, <code>/{plugin_id}</code>, <code>/{plugin_id}/{sub_path}</code></td><td>Serves index.html; plugin surfaces registered dynamically from plugins.json. Flagged plugins return 404; missing builds return 503.</td></tr>
+    <tr><td><b>Auth</b></td><td><code>POST /api/auth/login|logout</code>, <code>GET /api/auth/status</code></td><td>Beta login: email + invite code → HMAC-signed session cookie (7-day TTL). Login rate-limited 10/min.</td></tr>
+    <tr><td><b>Search</b></td><td><code>GET /api/search</code>, <code>/api/autocomplete</code>, <code>/api/metadata</code></td><td>YouTube search (60/min), MusicBrainz+Spotify fused autocomplete (60/min), track metadata extraction (60/min).</td></tr>
+    <tr><td><b>Lyrics</b></td><td><code>GET /api/lyrics</code>, <code>/api/lyrics/transcribe</code>, <code>/api/lyrics/transcribe/events</code>, <code>POST /api/lyrics/localize-window</code></td><td>LRCLIB with localization, progressive transcription with SSE streaming.</td></tr>
+    <tr><td><b>Vocals</b></td><td><code>POST /api/vocals/translated</code>, <code>GET /api/vocals/config</code>, <code>GET /api/vocals/audio/{file}</code></td><td>Translated vocal synthesis via Pika TTS or macOS <code>say</code> fallback. Voice policy enforcement.</td></tr>
+    <tr><td><b>Visuals</b></td><td><code>POST /api/visuals/llm-analyze</code>, <code>GET /api/audio-features</code></td><td>Deterministic lyric-to-visual direction mapping. ReccoBeats audio features with neutral fallback.</td></tr>
+    <tr><td><b>Streaming</b></td><td><code>GET /api/stream</code>, <code>/api/video/stream</code>, <code>/api/video/search</code></td><td>Audio/video proxy (30/min each), SSRF-guarded, range-aware.</td></tr>
+    <tr><td><b>Spotify</b></td><td>8 routes under <code>/api/import/spotify/</code></td><td>PKCE OAuth, playlist/liked import, save-to-library, track playback resolution.</td></tr>
+    <tr><td><b>Apple Music</b></td><td>5 routes under <code>/api/import/apple-music/</code></td><td>MusicKit config, XML/JSON import, album preview with MusicBrainz matching, playback resolution.</td></tr>
+    <tr><td><b>Focus</b></td><td>6 routes under <code>/api/focus/</code></td><td>Profile CRUD, playlist filtering, top-tracks analysis, per-track scoring.</td></tr>
+    <tr><td><b>Forge</b></td><td>5 routes under <code>/api/forge/</code></td><td>MCP inventory, Base44 app indexing, test-queue risk, bindings, scaffold generation.</td></tr>
+    <tr><td><b>Proxies</b></td><td><code>/api/shaders</code>, <code>/api/stillshot/{path}</code>, <code>/api/sketchfab/{path}</code>, <code>/api/canvas/{path}</code>, <code>/api/components/search</code></td><td>Same-origin bridges to local services (Phase Field API, StillShot, Sketchfab CLI, Canvas, Component Vault MCP).</td></tr>
+    <tr><td><b>MCP</b></td><td><code>/api/mcp/status|start|stop</code></td><td>MCP server subprocess lifecycle (control-auth gated).</td></tr>
+    <tr><td><b>Local</b></td><td><code>/api/integrations/openclaw/play|stop|resume</code></td><td>Local ffplay playback (control-auth, disabled on Vercel).</td></tr>
+  </table>
+
+  <h3>The 26 service modules</h3>
+  <table class="tbl">
+    <tr><th>Service</th><th>Responsibility</th><th>Notable mechanics</th></tr>
+    <tr><td><code>music_service</code></td><td>YouTube search &amp; audio-stream resolution via yt-dlp</td><td>Candidate <b>scoring</b> (title/artist fuzzy + duration coherence + channel quality + bad-keyword penalty); 3h TTL caches; search <b>primes</b> the stream cache; <code>android_vr</code> player client</td></tr>
+    <tr><td><code>metadata_service</code></td><td>MusicBrainz + Spotify fused autocomplete</td><td>1s throttle (MB rate limit), 900s cache, author index (500 max), persistent client, Spotify fusion boosting confidence</td></tr>
+    <tr><td><code>lyrics_service</code></td><td>Normalized lyrics from LRCLIB</td><td>Synced LRC → lines, plain handling, 1h cache, search fallback, inline first-window localization, background fill, just-in-time windowed translation</td></tr>
+    <tr><td><code>lyrics_localization_service</code></td><td>CaptionLocalizer bridge</td><td>Maps timed LyricsLine objects to CaptionLocalizer segments, supports full/subset/item-based localization, failures non-fatal</td></tr>
+    <tr><td><code>spotify_import_service</code></td><td>PKCE OAuth, playlist/liked import, save-to-library</td><td>Cookie-based tokens, MusicBrainz matching, client-credentials token with lock, <code>/me/library</code> PUT for saves, 5-variant concurrent playback resolution</td></tr>
+    <tr><td><code>apple_music_import_service</code></td><td>Music/iTunes XML + JSON library parsing</td><td>Plist XML parsing (50MB cap), JSON normalization (100MB cap), groups by album, sorts by disc/track, aggregate stats</td></tr>
+    <tr><td><code>import_preview_service</code></td><td>Provider-neutral MusicBrainz matching</td><td>Concurrent matching, multi-variant YouTube resolution with 8s timeout</td></tr>
+    <tr><td><code>musicbrainz_matcher</code></td><td>Track → MusicBrainz recording matching</td><td>ISRC lookup first, text search fallback, title/artist/duration/album scoring, 500-entry cache</td></tr>
+    <tr><td><code>focus_service</code></td><td>Audio-feature focus scoring for ADHD mode</td><td>Weighted blend: BPM 40%, instrumentalness 35%, speech penalty 15%, live penalty 10%; injectable AudioFeatureProvider protocol</td></tr>
+    <tr><td><code>reccobeats_service</code></td><td>Audio features (replaces Spotify deprecated endpoint)</td><td>Two-step: batch resolve Spotify IDs → per-track features; 24h cache; 429 retry with backoff; semaphore-bounded concurrency (5)</td></tr>
+    <tr><td><code>video_service</code></td><td>YouTube video search (music_video, shorts, live)</td><td>Flat extraction, kind-specific scoring, combined audio+video mp4 ≤480p, 4min cache</td></tr>
+    <tr><td><code>lyric_visual_service</code></td><td>Deterministic lyric-to-visual direction</td><td>Keyword mood detection (calm/euphoric/sad/aggressive/dreamy/chaotic), section energy weighting, color pairs, brightness/chaos/pulse params</td></tr>
+    <tr><td><code>translated_vocals_service</code></td><td>Translated vocal synthesis</td><td>Voice policy enforcement (blocks artist_clone), Pika batch/per-segment TTS, macOS <code>say</code>+<code>ffmpeg</code> fallback, content-addressed audio storage</td></tr>
+    <tr><td><code>live_transcription_service</code></td><td>Progressive transcription bridge</td><td>CaptionLocalizer SSE relay, legacy polling adapter + modern streaming path</td></tr>
+    <tr><td><code>beta_auth_service</code></td><td>HMAC-SHA256 session management</td><td>Base64 payload + signature, email normalization, invite code via constant-time comparison, open-redirect prevention</td></tr>
+    <tr><td><code>local_playback_service</code></td><td>Local <code>ffplay</code> playback</td><td>Process lifecycle with lock, SIGTERM→SIGKILL, disabled on Vercel</td></tr>
+    <tr><td><code>component_vault_service</code></td><td>HistoryKit Component Vault search via MCP</td><td>Stateless MCP (no init handshake), embed-mode preview URLs rebuilt from config</td></tr>
+    <tr><td><code>forge_inventory_service</code></td><td>MCP server + database index discovery</td><td>Discovers from ~/.claude.json, .mcp.json, extra HTTP servers; probes via HTTP/stdio; credential redaction; 60s cache</td></tr>
+    <tr><td><code>forge_workbench_service</code></td><td>Base44 app indexing + scaffold</td><td>Scans source for entity usage, integration calls, fan-in; classifies files; scores test risk; generates binding/test scaffolds</td></tr>
+    <tr><td><code>focus_storage</code></td><td>Pluggable focus-profile persistence</td><td><code>build_focus_profile_storage()</code> returns local-JSON or KV backend per settings; per-user subdirs keyed by SHA-256</td></tr>
+    <tr><td><code>text_match</code></td><td>Fuzzy music identity matching</td><td><code>normalize()</code> strips accents/version tags; <code>combined_score()</code> blends title (65%) + artist (35%) via rapidfuzz.WRatio</td></tr>
+    <tr><td><code>audio_feature_provider</code></td><td>Abstract audio feature protocol</td><td>Defines <code>get_features()</code> / <code>get_features_bulk()</code>; honest absence (never fabricates zeros)</td></tr>
+    <tr><td><code>audio_intelligence_service</code></td><td>Essentia MIR sidecar (skeleton)</td><td>Placeholder for future Essentia-backed analysis</td></tr>
+    <tr><td><code>translation_cache</code></td><td>Translation cache (skeleton)</td><td>Protocol for future Redis/Postgres-backed cache</td></tr>
+    <tr><td><code>ytdlp_service</code></td><td>Thin facade over MusicService + LocalPlayback</td><td>Delegates search, play, stop, resume, stream resolution</td></tr>
+  </table>
+
+  <h4>The API contract lives in models.py</h4>
+  <p>Every response is a Pydantic model — <code>SongSearchResult</code>, <code>BrowserPlaybackState</code>, <code>AutocompleteSuggestion</code>, <code>LyricsResponse</code>, <code>ImportedTrack</code>, <code>AppleMusicImportAlbum</code>, <code>LyricVisualAnalysisRequest</code>, <code>TranslatedVocalRequest</code> — so the frontend can rely on stable field names and the docs at <code>/docs</code> stay accurate.</p>
+</section>
+
+<!-- ============================ SECURITY ============================ -->
+<section class="panel-view" id="security">
+  <h2><span class="ix">02</span> Security &amp; auth</h2>
+  <p class="lead">The project has three security surfaces: SSRF defense for the stream proxy, a private-beta auth system with HMAC-signed sessions, and control-auth for machine-to-machine routes. All logging auto-redacts secrets.</p>
+
+  <h3>SSRF defense in depth</h3>
+  <p>Before the server will fetch a stream URL it must pass <b>all</b> of: an allowed scheme, a resolvable host, <em>not</em> a private/loopback/link-local/reserved address, and a host on the allowlist (<code>googlevideo.com</code>, <code>youtube.com</code>, …).</p>
+  <pre class="code"><span class="kw">def</span> <span class="fn">validate_stream_url</span>(url: <span class="type">str</span>) -> <span class="type">str</span>:
+    parsed = <span class="fn">urlparse</span>(url)
+    <span class="kw">if</span> parsed.scheme <span class="kw">not in</span> {<span class="str">"http"</span>, <span class="str">"https"</span>}:  <span class="kw">raise</span> HTTPException(<span class="num">403</span>, ...)
+    <span class="kw">if</span> <span class="kw">not</span> parsed.hostname:                       <span class="kw">raise</span> HTTPException(<span class="num">403</span>, ...)
+    host = parsed.hostname.<span class="fn">lower</span>().<span class="fn">rstrip</span>(<span class="str">"."</span>)
+    <span class="kw">if</span> <span class="fn">_is_private_or_local_host</span>(host):          <span class="kw">raise</span> HTTPException(<span class="num">403</span>, ...)
+    <span class="kw">if</span> <span class="kw">not</span> <span class="fn">_host_allowed</span>(host):                  <span class="kw">raise</span> HTTPException(<span class="num">403</span>, ...)
+    <span class="kw">return</span> url</pre>
+
+  <p>Redirects are followed <b>manually</b>, re-validating each hop and capping the chain at 3:</p>
+  <pre class="code"><span class="kw">async def</span> <span class="fn">open_validated_stream</span>(client, url, headers, max_redirects=<span class="num">3</span>):
+    current_url = <span class="fn">validate_stream_url</span>(url)
+    <span class="kw">for</span> _ <span class="kw">in</span> <span class="fn">range</span>(max_redirects + <span class="num">1</span>):
+        response = <span class="kw">await</span> client.<span class="fn">send</span>(req, stream=<span class="kw">True</span>, follow_redirects=<span class="kw">False</span>)
+        <span class="kw">if</span> response.is_redirect:
+            current_url = <span class="fn">validate_stream_url</span>(<span class="fn">urljoin</span>(current_url, location))  <span class="cm"># re-check!</span>
+            <span class="kw">continue</span>
+        <span class="kw">return</span> response</pre>
+
+  <h3>Private beta auth</h3>
+  <p>The <code>beta_auth_gate</code> middleware enforces session-based access when <code>beta_auth_enabled</code> is true:</p>
+  <ul class="clean">
+    <li><b>Session tokens</b> — HMAC-SHA256 signed (base64 payload + signature), stored in an <code>httponly</code>, <code>secure</code>, <code>samesite=lax</code> cookie. Sessions carry email and expiry (7-day TTL).</li>
+    <li><b>Invite flow</b> — POST <code>/api/auth/login</code> validates email against an allowlist + invite code via constant-time comparison. Rate-limited 10/min.</li>
+    <li><b>Owner routes</b> — Apple Music library export, persistent library access, and Spotify configuration are owner-only (<code>beta_owner_email</code>).</li>
+    <li><b>Per-user storage</b> — Focus profiles stored in per-user subdirectories keyed by SHA-256 hash of email.</li>
+    <li><b>Public bypass</b> — Health, login, auth endpoints, static files, and stream endpoints bypass the gate.</li>
+    <li><b>Open-redirect prevention</b> — <code>safe_next_path()</code> validates redirect targets are same-origin.</li>
+  </ul>
+
+  <h3>Security headers</h3>
+  <p>Every response gets: <code>X-Content-Type-Options: nosniff</code>, <code>Referrer-Policy: same-origin</code>, and <code>X-Frame-Options</code> — SAMEORIGIN for frameable plugin paths (checked via <code>plugin_catalog.is_frameable()</code>), DENY for everything else.</p>
+
+  <h3>Two streaming modes</h3>
+  <div class="flow">
+    <div class="flow-node"><span class="t">Browser</span><span class="s">/api/stream?url=</span></div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node"><span class="t">resolve direct URL</span><span class="s">MusicService (threadpool)</span></div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node"><span class="t">validate</span><span class="s">SSRF guard</span></div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node"><span class="t">proxy or redirect</span><span class="s">mode-dependent</span></div>
+  </div>
+  <table class="tbl">
+    <tr><th>Mode</th><th>What happens</th><th>Trade-off</th></tr>
+    <tr><td><code>proxy</code> (default)</td><td>Server opens the upstream, mirrors its status (200 / <b>206 Partial</b>) and <code>Content-Range</code>/<code>Content-Length</code>/<code>Accept-Ranges</code>, and streams 64KB chunks. Read timeout disabled so a full audio buffer can pause without tripping a timeout.</td><td>Bandwidth flows through the server, but the <code>&lt;audio&gt;</code> element gets working seek + duration with zero CORS.</td></tr>
+    <tr><td><code>redirect</code></td><td>Server just returns a <code>302</code> to the direct URL.</td><td>Cheap for the server; relies on the upstream's CORS/range behavior.</td></tr>
+  </table>
+  <div class="call info"><span class="ic">◆</span><div><b>Why mirror 206.</b><p>If the server collapsed a partial response into a flat 200, the browser would never learn the track duration or be able to seek past the first buffered chunk. Faithfully passing through the range headers is what makes a dumb <code>&lt;audio&gt;</code> tag behave like a real player.</p></div></div>
+
+  <h3>Control-route auth &amp; log redaction</h3>
+  <ul class="clean">
+    <li><b>Control auth</b> — local/MCP control routes (<code>/play</code>, focus profile writes, MCP start/stop) require a bearer or <code>x-dev-music-token</code> when <code>DMS_CONTROL_AUTH_TOKEN</code> is set; on Vercel they're refused outright if no token is configured.</li>
+    <li><b>Redaction</b> — <code>redact_sensitive_data</code> is a structlog processor that recursively masks any key containing <code>authorization / cookie / credential / secret / token / verifier</code> before logs are rendered, so tokens never leak into JSON logs.</li>
+  </ul>
+</section>
+
+<!-- ============================ MUSIC SERVICES ============================ -->
+<section class="panel-view" id="music">
+  <h2><span class="ix">03</span> Music services</h2>
+  <p class="lead">Five services handle the core music pipeline: search, metadata, lyrics, video, and local playback. Each is stateless and framework-agnostic — they raise plain exceptions and know nothing about FastAPI.</p>
+
+  <h3>MusicService — YouTube search &amp; streaming</h3>
+  <p>The core engine. Uses yt-dlp with <code>android_vr</code> player client for reliable extraction. Audio format preference chain: <code>m4a &gt; webm &gt; bestaudio &gt; mp4 &gt; best</code>.</p>
+
+  <div class="collap">
+    <button onclick="tog(this)"><span>Deep dive — how a search candidate gets scored</span><span class="chev">▶</span></button>
+    <div class="body">
+      <p>When the caller knows the duration/title/artist, <code>MusicService.search()</code> oversamples (fetches extra candidates) so it has room to rerank, then picks the best by a composite score:</p>
+      <pre class="code"><span class="kw">def</span> <span class="fn">_entry_score</span>(entry, query, target_duration, expected_artist, expected_title, ...):
+    score = <span class="fn">combined_score</span>(...)               <span class="cm"># normalized + fuzzy identity match</span>
+    <span class="kw">if</span> target_duration <span class="kw">and</span> duration:
+        delta = <span class="fn">abs</span>(duration - target_duration)
+        <span class="kw">if</span> delta > <span class="num">5</span>:                       <span class="cm"># ±5s tolerance window</span>
+            score -= <span class="fn">min</span>(<span class="num">60.0</span>, delta - <span class="num">5</span>)   <span class="cm"># 1pt / extra second, capped</span>
+    score += <span class="fn">_channel_quality_bonus</span>(entry)  <span class="cm"># "- Topic" +25, VEVO/official +15</span>
+    <span class="kw">for</span> bad <span class="kw">in</span> (<span class="str">"cover"</span>,<span class="str">"karaoke"</span>,<span class="str">"remix"</span>,<span class="str">"sped up"</span>,<span class="str">"8d audio"</span>, ...):
+        <span class="kw">if</span> bad <span class="kw">in</span> lowered: score -= <span class="num">12</span>; <span class="kw">break</span>   <span class="cm"># demote non-canonical variants</span>
+    <span class="kw">return</span> score</pre>
+      <p>Candidates more than <b>10×</b> the tolerance off in duration are hard-dropped (kills live versions/loops). The result is the canonical studio audio winning over covers and hour-long uploads.</p>
+    </div>
+  </div>
+
+  <div class="collap">
+    <button onclick="tog(this)"><span>Deep dive — cache priming (the click-to-play latency trick)</span><span class="chev">▶</span></button>
+    <div class="body">
+      <p>The expensive part of playback is yt-dlp extraction. The search extraction <em>already</em> resolved each candidate's direct audio URL + request headers, so <code>_search_entries</code> writes them into the stream cache up front. The follow-up <code>/stream</code> call is then a cache hit instead of a second full extraction:</p>
+      <pre class="code"><span class="kw">for</span> entry <span class="kw">in</span> entries:                     <span class="cm"># only freshly-extracted entries reach here</span>
+    wp, direct = entry.get(<span class="str">"webpage_url"</span>), entry.get(<span class="str">"url"</span>)
+    <span class="kw">if</span> wp <span class="kw">and</span> direct:
+        MusicService.<span class="fn">_cache_set</span>(                  <span class="cm"># prime the stream cache</span>
+            MusicService._stream_cache, wp,
+            (direct, <span class="fn">dict</span>(entry.get(<span class="str">"http_headers"</span>) <span class="kw">or</span> {})),
+            MusicService._STREAM_TTL_SECONDS,
+        )</pre>
+      <div class="call tip"><span class="ic">▲</span><div><b>Why it matters.</b><p>Both search and stream caches use 3-hour TTLs (under YouTube's 6-hour URL expiry). The cache is guarded by a single <code>threading.Lock</code> because yt-dlp runs in a threadpool via <code>run_in_threadpool</code>.</p></div></div>
+    </div>
+  </div>
+
+  <h3>MetadataService — fused autocomplete</h3>
+  <p>Searches MusicBrainz recordings with Lucene queries and fuses with Spotify search results. When both sources agree on a match, confidence is boosted. Results ranked by blended fuzzy + Lucene score. An author index (max 500 entries) enables fast prefix matching. Rate-limited to 1 request/second for MusicBrainz compliance. Cover art fetched from Cover Art Archive.</p>
+
+  <h3>LyricsService — three-path localization</h3>
+  <p>The lyrics pipeline has evolved from a simple LRCLIB fetch into a sophisticated three-path localization system:</p>
+  <div class="grid g3">
+    <div class="card"><span class="tag">Path 1</span><h4>Inline first-window</h4><p>The initial response includes translations for the first N lines (configurable window), computed synchronously before the response is sent.</p></div>
+    <div class="card"><span class="tag">Path 2</span><h4>Background fill</h4><p>A background thread translates remaining lines asynchronously, populating the cache for subsequent requests.</p></div>
+    <div class="card"><span class="tag">Path 3</span><h4>Just-in-time window</h4><p>As the playhead advances, <code>POST /api/lyrics/localize-window</code> translates the upcoming lyric window on demand.</p></div>
+  </div>
+  <p>All translations are cached per (track, locale) key. The <code>LyricsLocalizationService</code> is a thin bridge to CaptionLocalizer's HTTP endpoint, mapping timed LyricsLine objects to segments by stable line index. Failures are non-fatal — the original lines are returned.</p>
+
+  <h3>VideoService — music videos, shorts, live</h3>
+  <p>Uses flat extraction for fast search, then scoring with identity match (title/artist fuzzy), official channel bonus, and kind-specific logic: shorts must be ≤75s, live uses keyword matching. Format chain prefers combined audio+video mp4 at ≤480p. Stream URLs cached 4 minutes.</p>
+
+  <h3>Translated vocals</h3>
+  <p><code>TranslatedVocalsService</code> creates timed translated-vocal segment plans with voice policy enforcement:</p>
+  <ul class="clean">
+    <li><b>neutral</b> mode — no voice profile, no consent required</li>
+    <li><b>user_consent</b> / <b>licensed</b> — requires <code>profile_id</code> + <code>consent_token</code></li>
+    <li><b>artist_clone</b> — blocked outright</li>
+  </ul>
+  <p>Tries Pika batch TTS backend first, then per-segment TTS, then local macOS <code>say</code> + <code>ffmpeg</code> fallback. Generated audio files stored in a content-addressed directory.</p>
+
+  <h3>LyricVisualService — deterministic visual direction</h3>
+  <p>Maps lyric text to visual parameters without external model calls. Keyword-based mood detection (calm, euphoric, sad, aggressive, dreamy, chaotic) weighted by section energy. Produces color pairs, brightness/chaos/pulse parameters, and visual prompts. Also shapes audio features for neutral and provider modes.</p>
+</section>
+
+<!-- ============================ SHADER ENGINE ============================ -->
+<section class="panel-view" id="shaders">
+  <h2><span class="ix">04</span> Phase · Field — the reactive engine</h2>
+  <p class="lead">The gallery is 29 dependency-free JS modules loaded in a deliberate order. It renders fullscreen WebGL "wallpapers" — now <b>43 procedural GLSL shaders</b> — that react to whatever audio is playing. The architecture is a clean pipeline: <b>analyze → map → upload → render</b>, with a strict rule about which signal owns what.</p>
+
+  <h3>The reactivity pipeline</h3>
+  <pre class="diagram">
+   <span class="b">AUDIO</span> (audio.js)                 <span class="c">TrackVisualProfile</span> (reactivity.js)
+   <span class="d">live Web Audio FFT frame</span>          <span class="d">per-track ReccoBeats prior</span>
+   rms·bands·flux·onset·BPM           tempo·energy·dance·valence·key·mode
+   <span class="l">SOURCE OF FRAME TRUTH (drives)</span>      <span class="l">BIASES / CALIBRATES (never replaces)</span>
+            │                                  │
+            └───────────────┬──────────────────┘
+                            ▼
+                   <span class="n">ShaderMapper.map()</span>  (mapper.js)
+                   <span class="d">one T{} tuning block → flat uniform object</span>
+                   <span class="d">{ pulse, energy, intensity, warp, mid, vocal, hue, … }</span>
+                            │
+                            ▼
+                    <span class="n">Tile.draw()</span>  (engine.js)
+                   <span class="d">uploads ~35 uniforms; injectMidVocal() patches</span>
+                   <span class="d">iMid/iVocal/iAccent into each fragment shader</span>
+                            │
+                            ▼
+                    <span class="b">WebGL fragment shader</span>  (shaders.js / API)
+                   <span class="d">43 wallpapers: drift · vellum · halftone · caustics · …</span>
+  </pre>
+
+  <div class="grid g2">
+    <div class="card"><span class="tag">audio.js</span><h4>AudioAnalyzer</h4><p>One global <code>AUDIO</code> object. Log-spaced frequency bands, <b>per-band AGC</b> (running max), an <b>asymmetric envelope follower</b> (fast attack / slow release), spectral centroid + flux, <b>spectral-flux onset detection</b>, a live BPM estimate folded to 70–170, and a phase-locked beat-grid sawtooth.</p><span class="file">sources: synthetic · mic · file · stream</span></div>
+    <div class="card"><span class="tag">reactivity.js</span><h4>TrackVisualProfile + plugin</h4><p>Builds the per-track prior from ReccoBeats audio features; stays fully <b>neutral</b> (<code>has:false</code>) when none are available. <code>reactivityPlugin</code> maps each wallpaper → a reactivity scale from its focus preset (rest/flow/spark/drive) and BPM.</p><span class="file">the "live drives, prior nudges" config</span></div>
+    <div class="card"><span class="tag">mapper.js</span><h4>ShaderMapper</h4><p>The single place that fuses live + prior into ~35 uniforms. All tunable constants live in one <code>T</code> block. Live FFT is always the base; the prior only adds bias. ReccoBeats priors integrated for richer per-track calibration.</p><span class="file">retune here without touching wiring</span></div>
+    <div class="card"><span class="tag">engine.js</span><h4>Tile (WebGL)</h4><p>Owns a canvas + program. <code>injectMidVocal()</code> rewrites each shader's final color line at compile time to fold in <code>iMid·iVocal·iDance·iValence·iAccent</code> — so shaders that never authored those uniforms still respond.</p><span class="file">cursor idle-wave orbit, DPR-aware resize</span></div>
+  </div>
+
+  <h3>Dual shader source</h3>
+  <p>The shader system has a dual-source architecture:</p>
+  <table class="tbl">
+    <tr><th>Source</th><th>When used</th><th>Details</th></tr>
+    <tr><td><b>Bundled</b> (<code>shaders.js</code>)</td><td>Always available, instant offline rendering</td><td>~2,270 lines of GLSL fragment sources for all 43 wallpapers. Fallback when API is unreachable.</td></tr>
+    <tr><td><b>API</b> (<code>/api/shaders/{id}/source</code>)</td><td>Lazily fetched, preferred when available</td><td>Proxied from Phase Field API (port 8787). Supports GLSL, WGSL, MSL, SPIRV formats. Shader IDs validated against regex.</td></tr>
+  </table>
+  <p><code>app.js</code> syncs the API shader catalogue at startup and merges it with the bundled set, so updated shaders from the API take precedence without breaking offline rendering.</p>
+
+  <h3>The 43 wallpapers</h3>
+  <p>Each wallpaper in <code>data.js</code> (<code>ALTS</code> array) carries: a unique GLSL fragment shader, a 5-color palette, a preset category (Flow, Rest, Spark, Drive, Dream…), a BPM, an accessibility risk rating, and an optional demo track pairing. The dot rail in the shell UI provides direct navigation between all 43.</p>
+
+  <h3>EQ spectrum visualizer</h3>
+  <p><code>eq.js</code> renders an ambient FFT spectrum strip along the bottom edge with:</p>
+  <ul class="clean">
+    <li><b>9 view styles</b> — bars, mirror, wave, fill, dots, radial, waterfall, terrain, skyline</li>
+    <li><b>7 palettes</b> — matching the wallpaper color system</li>
+    <li><b>Configurable</b> — bands, response speed, gain, height, axis, curve, flow, spacing, opacity, finish</li>
+  </ul>
+
+  <h3>Motion safety</h3>
+  <p><code>motion-safety.js</code> respects <code>prefers-reduced-motion</code> by slowing the shader clock per wallpaper's a11y risk rating. Each wallpaper declares its risk level; high-risk shaders (rapid strobing, chaotic motion) get stronger dampening.</p>
+
+  <div class="collap">
+    <button onclick="tog(this)"><span>Deep dive — onset detection &amp; live BPM (audio.js)</span><span class="chev">▶</span></button>
+    <div class="body">
+      <p>A beat is declared when spectral flux exceeds an <em>adaptive</em> threshold (mean + 1.4·σ over a rolling window) and enough time has passed. The inter-onset interval feeds a median-based BPM estimate, smoothed exponentially:</p>
+      <pre class="code"><span class="kw">if</span>(flux > fAvg + <span class="num">1.4</span>*<span class="fn">Math.sqrt</span>(fVar) <span class="op">&&</span> flux><span class="num">0.008</span> <span class="op">&&</span> t-<span class="kw">this</span>._lastBeat><span class="num">0.16</span>){
+  <span class="kw">const</span> ibi = t - <span class="kw">this</span>._lastBeat;            <span class="cm">// inter-onset interval</span>
+  <span class="kw">if</span>(ibi><span class="num">0.25</span> <span class="op">&&</span> ibi<<span class="num">2.0</span>){                   <span class="cm">// plausible 30..240 bpm</span>
+    <span class="kw">this</span>._ivl.<span class="fn">push</span>(ibi); <span class="kw">if</span>(<span class="kw">this</span>._ivl.length><span class="num">8</span>) <span class="kw">this</span>._ivl.<span class="fn">shift</span>();
+    <span class="kw">const</span> est = <span class="kw">this</span>.<span class="fn">_estBpm</span>(<span class="kw">this</span>._ivl);
+    <span class="kw">if</span>(est) <span class="kw">this</span>.bpm = <span class="kw">this</span>.bpm ? <span class="kw">this</span>.bpm + (est-<span class="kw">this</span>.bpm)*<span class="num">0.25</span> : est;
+  }
+  <span class="kw">this</span>._anchor = t; <span class="kw">this</span>._onset = <span class="num">1</span>; <span class="kw">this</span>._lastBeat = t;
+}
+<span class="kw">this</span>.pulse = <span class="fn">Math.max</span>(<span class="kw">this</span>._onset*<span class="kw">this</span>._onset, <span class="kw">this</span>.bass*<span class="num">0.55</span>);</pre>
+      <p>The per-band AGC (normalize against a slowly-decaying running max) is what lets a quiet mic and a loud track both drive the visuals with comparable range.</p>
+    </div>
+  </div>
+
+  <h3>Player &amp; orchestration</h3>
+  <div class="grid g2">
+    <div class="card"><span class="tag">player.js</span><h4>Composition over inheritance</h4><p><code>AudioPlayer</code> owns media state; <code>PlayerControls</code> owns DOM; behavior is composed from a <code>PlaybackRuleSet</code> of rules (e.g. <code>LoopTrackRule</code>). Add a rule without touching the player or its controls.</p></div>
+    <div class="card"><span class="tag">service.js</span><h4>loadTrack() orchestrator</h4><p>One call resolves a track and fans out: extract accent color from cover art, fetch per-track features (neutral on failure), <code>/api/search</code> → <code>/api/stream</code> → feed <code>AUDIO.useStream()</code>, then load matching video + lyrics.</p></div>
+    <div class="card"><span class="tag">app.js</span><h4>Wallpaper singleton</h4><p>The single owner of the active shader. Every switch (dots, edges, keys, grid) routes through it; a switch requested mid-transition is <b>coalesced</b> (latest target wins) so the crossfade can never double-swap.</p></div>
+    <div class="card"><span class="tag">app.js</span><h4>One requestAnimationFrame loop</h4><p><code>frame()</code> drives everything: <code>AUDIO.update</code>, control UI, EQ, the centered lyric glow (breathing with the audio), and only the heroes/grid tiles that are currently visible.</p></div>
+    <div class="card"><span class="tag">cast.js</span><h4>Google Cast</h4><p>Web Sender API for Chromecast integration with the native player. Cast button in the now-playing bar.</p></div>
+    <div class="card"><span class="tag">share.js</span><h4>Share system</h4><p>Compact URLs for songs and saved searches. Share banner with toast notifications. Session-scoped recently played list.</p></div>
+  </div>
+
+  <div class="call tip"><span class="ic">▲</span><div><b>Graceful degradation everywhere.</b><p>No Spotify id, a 404 on features, a tainted (CORS) cover-art canvas, no WebGL context, unreachable API shaders — each failure path leaves the system in a working neutral state rather than throwing. The shaders keep running on live audio alone with bundled fallbacks.</p></div></div>
+</section>
+
+<!-- ============================ PLUGIN SYSTEM ============================ -->
+<section class="panel-view" id="plugins">
+  <h2><span class="ix">05</span> Plugin system</h2>
+  <p class="lead">Phase · Field hosts <b>21 plugin surfaces</b> via a catalog-driven architecture. A single JSON file declares every plugin; the backend registers routes dynamically; the frontend mounts them into a shared iframe using the Base44 postMessage protocol.</p>
+
+  <h3>Architecture</h3>
+  <pre class="diagram">
+   <span class="b">plugins.json</span>  ──────┐
+   <span class="d">(single source</span>       │
+   <span class="d"> of truth)</span>          │
+       │                │
+       ├──▶ <span class="n">main.py</span>          <span class="d">_register_surface_routes()</span>
+       │    <span class="d">reads catalog,</span>   <span class="d">registers GET /{plugin_id} for each</span>
+       │    <span class="d">checks flags,</span>    <span class="d">flagged → 404, missing build → 503</span>
+       │    <span class="d">sets frameable</span>
+       │
+       └──▶ <span class="n">apps-launcher.js</span> <span class="d">fetches plugins.json client-side,</span>
+            <span class="d">renders category-filtered list,</span>
+            <span class="d">mounts selected plugin into shared iframe</span>
+
+   <span class="v">Base44AppPlugin</span>  ──postMessage──▶  <span class="c">plugin iframe</span>
+   <span class="d">(host runtime)</span>                    <span class="d">(React/Vite surface)</span>
+   <span class="d">scene push · frame uniforms ·</span>     <span class="d">useHostSurface() hook</span>
+   <span class="d">events · intents</span>                 <span class="d">reads scene, uploads events</span>
+  </pre>
+
+  <h3>The 21 plugins</h3>
+  <table class="tbl">
+    <tr><th>ID</th><th>Name</th><th>Host</th><th>Category</th><th>Description</th></tr>
+    <tr><td><code>canvas</code></td><td>Canvas</td><td>bespoke</td><td>creative</td><td>Multi-note editor with Component Vault search, tag filtering, slash commands</td></tr>
+    <tr><td><code>lyrics-shader-lab</code></td><td>Lyrics Shader Lab</td><td>bespoke</td><td>experimental</td><td>Bilingual lyrics reader with shader uniforms, live audio features</td></tr>
+    <tr><td><code>semi</code></td><td>Pika Voice Profile</td><td>bespoke</td><td>experimental</td><td>Voice config for translated vocals (feature-flagged, lazy-loaded)</td></tr>
+    <tr><td><code>floatdesk</code></td><td>FloatDesk</td><td>generic</td><td>music</td><td>Music reactions for the currently playing track</td></tr>
+    <tr><td><code>tuneshere</code></td><td>TUNESHERE</td><td>generic</td><td>music</td><td>Playlist and library view</td></tr>
+    <tr><td><code>forgetool</code></td><td>ForgeTool</td><td>generic</td><td>development</td><td>Developer workbench — MCP tools, component search</td></tr>
+    <tr><td><code>vertexflow</code></td><td>VertexFlow</td><td>generic</td><td>creative</td><td>Live glTF 3D viewport</td></tr>
+    <tr><td><code>stillshot</code></td><td>StillShot AI</td><td>generic</td><td>creative</td><td>AI photo board and curator</td></tr>
+    <tr><td><code>chronicle</code></td><td>Luminous Chronicle</td><td>generic</td><td>creative</td><td>Print collection browser</td></tr>
+    <tr><td><code>radiant</code></td><td>Radiant Archive</td><td>generic</td><td>creative</td><td>Project archive grid</td></tr>
+    <tr><td><code>digma</code></td><td>Digma</td><td>generic</td><td>development</td><td>Component gallery</td></tr>
+    <tr><td><code>specdoc</code></td><td>Emerald Sky</td><td>generic</td><td>development</td><td>Spec document reader</td></tr>
+    <tr><td><code>orbitjobs</code></td><td>OrbitJobs</td><td>generic</td><td>development</td><td>Application pipeline board</td></tr>
+    <tr><td><code>champions</code></td><td>Champions Hub</td><td>generic</td><td>utility</td><td>Standings board</td></tr>
+    <tr><td><code>flowstate</code></td><td>FlowState</td><td>generic</td><td>utility</td><td>Today's focus list</td></tr>
+    <tr><td><code>flowschedule</code></td><td>FlowSchedule</td><td>generic</td><td>utility</td><td>Daily agenda</td></tr>
+    <tr><td><code>tasks</code></td><td>Task Management</td><td>generic</td><td>utility</td><td>Kanban board</td></tr>
+    <tr><td><code>passportlog</code></td><td>PassportLog</td><td>generic</td><td>utility</td><td>Visited-countries map</td></tr>
+    <tr><td><code>resolutions</code></td><td>Resolution Weaver</td><td>generic</td><td>utility</td><td>Resolution list</td></tr>
+    <tr><td><code>seth</code></td><td>SETH</td><td>generic</td><td>utility</td><td>Learning session view</td></tr>
+  </table>
+
+  <h3>Plugin types</h3>
+  <div class="grid g2">
+    <div class="card"><span class="tag">Bespoke</span><h4>Custom host code</h4><p>Canvas (<code>canvas-plugin.js</code>), Lyrics Shader Lab (<code>lyrics-shader-reader.js</code>), and Pika Voice Profile (<code>semi-plugin.js</code>) each have dedicated host-side JavaScript files that manage state, storage, and communication.</p><span class="file">static/gallery/*-plugin.js</span></div>
+    <div class="card"><span class="tag">Generic (Base44)</span><h4>Uniform iframe protocol</h4><p>All 16 generic plugins are React/Vite exports built from external repos, vendored into <code>static/{id}/</code>, and mounted into a shared iframe. They communicate via the <code>Base44AppPlugin</code> postMessage protocol.</p><span class="file">static/gallery/base44-plugin.js</span></div>
+  </div>
+
+  <h3>Base44 postMessage protocol</h3>
+  <p>The host (<code>Base44AppPlugin</code>) and each plugin iframe communicate over four message types:</p>
+  <table class="tbl">
+    <tr><th>Direction</th><th>Message</th><th>Purpose</th></tr>
+    <tr><td>Host → Plugin</td><td><b>scene</b></td><td>Pushes current state (playing track, audio features, shader uniforms) into the plugin</td></tr>
+    <tr><td>Host → Plugin</td><td><b>frame</b></td><td>Per-rAF uniform uploads (packed shader frames for reader surfaces)</td></tr>
+    <tr><td>Plugin → Host</td><td><b>events</b></td><td>User actions (play track, navigate, toggle setting)</td></tr>
+    <tr><td>Plugin → Host</td><td><b>intents</b></td><td>Declarative requests ("search for X", "open lyrics for Y")</td></tr>
+  </table>
+
+  <h3>Build system</h3>
+  <p>Plugin surfaces are built from external repos and vendored into <code>static/</code>:</p>
+  <pre class="code"><span class="cm"># Universal plugin builder — reads plugins.json, resolves checkout paths,</span>
+<span class="cm"># runs vite build --base=/static/{id}/, vendors output, runs sanitizer</span>
+<span class="fn">node</span> scripts/build-surface.mjs --all
+<span class="fn">node</span> scripts/build-surface.mjs canvas          <span class="cm"># single plugin</span>
+<span class="fn">node</span> scripts/build-surface.mjs --list          <span class="cm"># list buildable plugins</span>
+
+<span class="cm"># Post-build sanitizer strips Base44 favicon, manifest link, page-view beacon</span>
+<span class="fn">node</span> scripts/sanitize-plugin-surface.mjs
+
+<span class="cm"># Vercel deployment: copies static/ → dist/, injects backend origin,</span>
+<span class="cm"># strips non-music sub-apps in prod mode</span>
+<span class="fn">node</span> scripts/build-vercel-frontend.mjs</pre>
+
+  <h3>PluginDock — unified panel layout</h3>
+  <p><code>plugin-dock.js</code> manages all floating panels with a row-based layout system. It handles eviction (when too many panels are open), overlay stacking, and responsive repositioning. Each plugin gets its own panel managed by the dock.</p>
+
+  <h3>PluginChrome — per-plugin styling</h3>
+  <p><code>plugin-chrome.js</code> resolves backdrop styling (background, opacity, blur) per-plugin from the <code>plugins.json</code> configuration, so each surface gets a visually distinct container.</p>
+
+  <h3>Environment modes</h3>
+  <p><code>init.js</code> detects <code>?mode=dev</code> or <code>?mode=prod</code>:</p>
+  <ul class="clean">
+    <li><b>Prod mode</b>: Only music surfaces visible (lyrics, focus, EQ, Spotify, Apple Music, video, translations). Canvas, Apps, Clock, Voice Profile are hidden.</li>
+    <li><b>Dev mode</b>: All 21 sub-apps and development tools available.</li>
+  </ul>
+</section>
+
+<!-- ============================ INTEGRATIONS ============================ -->
+<section class="panel-view" id="integrations">
+  <h2><span class="ix">06</span> Integrations</h2>
+  <p class="lead">Seven integrations extend the core resolve/stream loop: Spotify import, Apple Music import, focus mode, ReccoBeats audio features, the Forge developer workbench, local service proxies, and translated vocal synthesis.</p>
+
+  <h3>Spotify import (PKCE OAuth)</h3>
+  <p>Read + library-modify access via the Authorization Code + <b>PKCE</b> flow — no client secret in the browser path. State and code-verifier are stored in <code>httponly</code>, <code>secure</code>, <code>samesite=lax</code> cookies; the callback validates state, exchanges the code, and drops the access token in a cookie.</p>
+  <div class="flow">
+    <div class="flow-node"><span class="t">/start</span><span class="s">set state+verifier cookies</span></div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node"><span class="t">Spotify authorize</span><span class="s">S256 challenge</span></div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node"><span class="t">/callback</span><span class="s">verify state → token</span></div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node"><span class="t">preview / liked</span><span class="s">→ MusicBrainz match</span></div>
+  </div>
+  <p>Imported tracks are matched against MusicBrainz (<code>MusicBrainzMatcher</code>) and bucketed by confidence (≥80 matched, &gt;0 low-confidence, 0 unmatched). Playing one runs <code>resolve_track_playback()</code>, which tries up to 5 query variants concurrently with <code>asyncio.as_completed(timeout=8)</code> and takes the first that resolves. OAuth scope includes <code>playlist-read-private</code>, <code>user-library-read</code>, <code>user-library-modify</code>, <code>user-top-read</code>, <code>user-read-recently-played</code>.</p>
+
+  <h3>Apple Music import</h3>
+  <p>Two paths for Apple Music libraries:</p>
+  <div class="grid g2">
+    <div class="card"><span class="tag">MusicKit on the Web</span><h4>Catalog search &amp; playback</h4><p>Client-side MusicKit JS with developer token from <code>/api/apple-music/config</code>. Users can search and play from the Apple Music catalog directly in the browser.</p><span class="file">static/gallery/apple-music.js</span></div>
+    <div class="card"><span class="tag">Library import</span><h4>XML + JSON parsing</h4><p>Upload a Music/iTunes XML export (50MB cap) or JSON export (100MB cap). Tracks parsed, grouped by album, sorted by disc/track, and matched to MusicBrainz for preview.</p><span class="file">services/apple_music_import_service.py</span></div>
+  </div>
+
+  <h3>Focus mode (ADHD filtering)</h3>
+  <p><code>FocusService</code> scores tracks against a persisted <b>focus profile</b> (BPM range, instrumentalness floor, energy/valence bands). The score is a weighted blend:</p>
+  <pre class="code">focus_score = (
+    bpm_proximity    × <span class="num">0.40</span>  <span class="cm"># how close to target BPM range</span>
+  + instrumentalness × <span class="num">0.35</span>  <span class="cm"># higher = more focus-friendly</span>
+  - speechiness      × <span class="num">0.15</span>  <span class="cm"># penalty for spoken-word content</span>
+  - liveness         × <span class="num">0.10</span>  <span class="cm"># penalty for live recordings</span>
+) × <span class="num">100</span></pre>
+  <p>Profile storage is pluggable: local JSON (per-user subdirectories keyed by email hash) or KV backend for hosted deployments.</p>
+
+  <h3>ReccoBeats — replacing Spotify's deprecated endpoint</h3>
+  <div class="call warn"><span class="ic">●</span><div><b>Built to survive a deprecation.</b><p>Spotify removed the <code>/audio-features</code> endpoint for new apps. <code>ReccoBeatsProvider</code> implements the <code>AudioFeatureProvider</code> protocol using the ReccoBeats API: two-step flow (batch resolve Spotify IDs → per-track features), 24h cache, 429 retry with backoff, semaphore-bounded concurrency (max 5). Negative results cached — known-missing tracks aren't re-fetched. When features are unavailable, every focus endpoint returns a structured <code>audio_features_available:false</code> payload instead of 500-ing.</p></div></div>
+
+  <h3>Forge — developer workbench</h3>
+  <p>Two services power the Forge developer tools:</p>
+  <div class="grid g2">
+    <div class="card"><span class="tag">forge_inventory_service</span><h4>MCP + database discovery</h4><p>Discovers MCP servers from <code>~/.claude.json</code>, project <code>.mcp.json</code>, and extra HTTP servers. Probes them via HTTP or stdio to list tools. Discovers SQLite indexes from configured roots, counts rows with a step budget (2000) to avoid stalling. Credentials redacted. 60s cache.</p></div>
+    <div class="card"><span class="tag">forge_workbench_service</span><h4>Base44 app indexing + scaffold</h4><p>Scans Base44 app source files for entity usage, integration calls, fan-in. Classifies files (page/component/hook/lib). Scores untested component risk. Generates binding scaffolds (guest hook + host proxy route) and test scaffolds. Writing is opt-in.</p></div>
+  </div>
+
+  <h3>Local service proxies</h3>
+  <p>The backend acts as a same-origin bridge for multiple local services, so framed plugin surfaces can reach them without CORS:</p>
+  <table class="tbl">
+    <tr><th>Service</th><th>Port</th><th>Proxy route</th><th>Purpose</th></tr>
+    <tr><td>Phase Field API</td><td>8787</td><td><code>/api/shaders</code></td><td>Shader catalogue + source (GLSL/WGSL/MSL/SPIRV)</td></tr>
+    <tr><td>StillShot AI</td><td>8788</td><td><code>/api/stillshot/{path}</code></td><td>AI photo index (read-only)</td></tr>
+    <tr><td>Sketchfab CLI</td><td>8795</td><td><code>/api/sketchfab/{path}</code></td><td>3D model API (streaming for GET)</td></tr>
+    <tr><td>Canvas Backend</td><td>39445</td><td><code>/api/canvas/{path}</code></td><td>Notes editor full-method proxy</td></tr>
+    <tr><td>Component Vault</td><td>8766</td><td><code>/api/components/search</code></td><td>HistoryKit MCP component search</td></tr>
+    <tr><td>CaptionLocalizer</td><td>8001</td><td>(internal)</td><td>Lyrics localization + transcription</td></tr>
+    <tr><td>ReccoBeats</td><td>external</td><td>(internal)</td><td>Audio feature provider</td></tr>
+  </table>
+
+  <h3>Component Vault</h3>
+  <p><code>ComponentVaultService</code> searches the local HistoryKit Component Vault over MCP Streamable HTTP transport. Decodes MCP <code>tools/call</code> responses, projects entries to picker/card shape (drops source code, imports, audit detail). Preview URLs are rebuilt from configuration (never trusts the vault's own URL). Stateless MCP — no initialize handshake.</p>
+</section>
+
+<!-- ============================ PATTERNS ============================ -->
+<section class="panel-view" id="patterns">
+  <h2><span class="ix">07</span> Patterns &amp; takeaways</h2>
+  <p class="lead">The same handful of ideas recur across the Python backend and the JS frontend. Recognizing them makes the whole codebase predictable.</p>
+
+  <h3>Design patterns observed</h3>
+  <div class="grid g2">
+    <div class="card"><h4>Composition over inheritance</h4><p><code>PlaybackRuleSet</code> + rules instead of player subclasses; <code>PlayerControls</code> split from <code>AudioPlayer</code>. New behavior = new small object.</p></div>
+    <div class="card"><h4>Strategy / plugin</h4><p>Pluggable focus-profile storage (<code>local-json</code> | <code>kv</code>); reactivity profiles (rest/flow/spark/drive); two stream-delivery modes; injectable AudioFeatureProvider. All selected by config.</p></div>
+    <div class="card"><h4>Proxy / adapter</h4><p>The stream proxy, the same-origin shader proxy, the Canvas/Sketchfab/StillShot proxies, and the Component Vault MCP client all wrap a remote behind a clean local surface.</p></div>
+    <div class="card"><h4>Layered signal (prior + live)</h4><p>The mapper's "live FFT drives, track prior biases" is a disciplined fusion of a slow, reliable signal with a fast, noisy one.</p></div>
+    <div class="card"><h4>Single owner / coalescing</h4><p>The <code>Wallpaper</code> singleton serializes all state transitions and coalesces requests made mid-flight — no race between crossfade and the next switch.</p></div>
+    <div class="card"><h4>Error translation seam</h4><p><code>fail_with_http_error</code> keeps services framework-free; the route layer is the only place that knows HTTP status codes.</p></div>
+    <div class="card"><h4>Cache priming &amp; intent-encoding TTLs</h4><p>Search primes the stream cache; TTLs encode upstream expiry (3h for YouTube URLs, 24h for audio features, 900s for metadata, 4min for video).</p></div>
+    <div class="card"><h4>Catalog-driven routing</h4><p>Plugin surfaces are declared in <code>plugins.json</code> and everything — backend routes, frontend launcher, Vercel rewrites, build scripts — reads from that single source of truth.</p></div>
+    <div class="card"><h4>postMessage protocol</h4><p>The Base44 scene/frame/events/intents protocol is a clean iframe boundary: the host owns state, the plugin owns its view, communication is typed and directional.</p></div>
+    <div class="card"><h4>Graceful degradation</h4><p>Neutral visual profile, audio-features-unavailable payloads, tainted-canvas fallback, bundled shader fallback, negative caching — every optional layer fails soft.</p></div>
+  </div>
+
+  <h3>Security patterns</h3>
+  <ul class="clean">
+    <li><b>SSRF defense in depth</b> — scheme + host + private-IP + allowlist checks, applied to the first URL <em>and every redirect hop</em>.</li>
+    <li><b>Private beta auth</b> — HMAC-signed sessions, invite-code validation with constant-time comparison, per-user storage, owner-only routes.</li>
+    <li><b>Least exposure on Vercel</b> — local playback and unauthenticated control routes are refused in the serverless runtime.</li>
+    <li><b>PKCE, no secret in the browser path</b>; tokens in <code>httponly/secure/lax</code> cookies.</li>
+    <li><b>Log redaction by construction</b> — a structlog processor masks secret-shaped keys before any log is emitted.</li>
+    <li><b>Rate limiting</b> per route with slowapi (e.g. stream 30/min, search 60/min, OAuth 10/min, Apple Music import 5/min).</li>
+    <li><b>Voice policy enforcement</b> — artist cloning blocked, consent tokens required for user-specific voice modes.</li>
+    <li><b>Frame control</b> — <code>X-Frame-Options</code> set to SAMEORIGIN only for declared plugin paths, DENY for everything else.</li>
+  </ul>
+
+  <h3>Takeaways for a developer joining this repo</h3>
+  <ol class="clean" style="padding-left:20px">
+    <li>Start at <code>main.py</code> for the API surface and <code>models.py</code> for the contract; services are stateless classes you can read in isolation.</li>
+    <li>To change <em>how the music feels visually</em>, edit the <code>T</code> block in <code>mapper.js</code> — not the shaders or the engine wiring.</li>
+    <li>To change <em>which audio wins a search</em>, edit <code>_entry_score</code> in <code>music_service.py</code>.</li>
+    <li>Anything that fetches a remote URL must go through <code>validate_stream_url</code> / <code>open_validated_stream</code>.</li>
+    <li>The frontend shell has <b>no build step</b> — 28 scripts load in a fixed order in <code>index.html</code>; respect it (state → shaders → data → reactivity → mapper → engine → audio → player → service → app → features → plugins → init).</li>
+    <li>To add a new plugin: add an entry to <code>plugins.json</code>, vendor the build into <code>static/{id}/</code>, and optionally write a bespoke <code>*-plugin.js</code> host. The build system, Vercel config, and route registration all read from the catalog.</li>
+    <li>Optional layers must fail soft. Match the existing pattern: catch, log/ignore, fall back to neutral.</li>
+    <li>For audio features: the <code>AudioFeatureProvider</code> protocol is the seam. Implement <code>get_features()</code> and <code>get_features_bulk()</code>, return <code>None</code> honestly when unavailable.</li>
+    <li>For lyrics localization: the three-path system (inline, background, just-in-time) means the first response is fast, and subsequent reads hit cache.</li>
+    <li>The beta auth middleware runs on every request. Public paths are exempted by pattern — add new public paths to the bypass list, don't skip the middleware.</li>
+  </ol>
+
+  <div class="call info"><span class="ic">◆</span><div><b>Mental model in one line.</b><p><em>Resolve the canonical audio, proxy it safely, let the live sound — biased by what we know about the track — drive a wallpaper that never stops moving, and host an ecosystem of plugin surfaces that all read from the same signal.</em></p></div></div>
+</section>
+
+</main>
+
+<footer>
+  Generated learning module for <b>dev-music-service</b> · single-file, zero-dependency, works offline.
+  Built by reading <code>main.py</code> (1,927 lines), <code>models.py</code>, <code>config.py</code>, <code>security.py</code>, <code>plugin_catalog.py</code>,
+  all 26 <code>services/</code> modules, the 29-file <code>static/gallery/</code> engine, <code>static/index.html</code>,
+  the <code>scripts/</code> build system, and <code>vercel.ts</code>.
+  Updated September 2026.
+</footer>
+
+<script>
+  const tabs = document.querySelectorAll('.tab');
+  const views = document.querySelectorAll('.panel-view');
+  tabs.forEach(t=>t.addEventListener('click',()=>{
+    const id = t.dataset.t;
+    tabs.forEach(x=>x.classList.toggle('on', x===t));
+    views.forEach(v=>v.classList.toggle('on', v.id===id));
+    window.scrollTo({top:0,behavior:'smooth'});
+  }));
+  function tog(btn){ btn.parentElement.classList.toggle('open'); }
+</script>
+</body>
+</html>

@@ -228,11 +228,9 @@
     }catch(error){statusEl.textContent=error.message||'Album matching failed';}
   }
 
-  async function playOfflineTrack(entry){
+  function offlinePhaseTrack(entry){
     const track=entry?.source||{},match=entry?.musicbrainz||{};
-    setPanel(false);
-    if(typeof loadTrack!=='function'){statusEl.textContent='Player is not ready';return;}
-    await loadTrack({
+    return {
       provider:'apple_music',
       title:match.title||track.title||'Untitled track',
       artist:match.artist||(track.artist_names||[]).join(', ')||'Unknown artist',
@@ -242,7 +240,25 @@
       artwork_source:match.artwork_url?'musicbrainz':'apple_music',
       release_year:match.release_year||track.release_year||undefined,
       provider_track_id:track.provider_track_id||undefined,
-    });
+    };
+  }
+
+  async function playOfflineTrack(entry){
+    setPanel(false);
+    if(typeof loadTrack!=='function'){statusEl.textContent='Player is not ready';return;}
+    const selected=offlinePhaseTrack(entry);
+    const queueTracks=items.filter(item=>item?.kind==='offline-track').map(item=>offlinePhaseTrack(item.entry));
+    if(typeof phasePlaylist!=='undefined'&&queueTracks.length){
+      const snapshot=phasePlaylist.replace(queueTracks,{
+        currentKey:PlaylistSet.keyFor(selected),
+        label:'Imported album',
+        source:'apple_music',
+        reason:'apple-import-selection',
+      });
+      await loadTrack(snapshot.current||selected,{playlistMode:'sync'});
+    }else{
+      await loadTrack(selected);
+    }
   }
 
   function activateItem(item){

@@ -1,0 +1,164 @@
+/* ─── dock.css — dock panel system, overlays, spectrum EQ, apps launcher ─── */
+
+/* ---- floating dock ----------------------------------------------------
+   One origin and one size for every dock panel, so a toggle in the tool row
+   always produces a panel in the same place. Open panels are laid out in a
+   horizontal stack running right to left from the origin; --dock-slot is
+   assigned by PluginDock. Animating `right` is what makes the row reflow
+   when a panel opens or closes. */
+:root{
+  --dock-x:24px;                /* inset from the right edge  */
+  --dock-y:88px;                /* inset from the top         */
+  --dock-w:min(520px,42vw);      /* preferred width, one panel open       */
+  --dock-w-min:320px;            /* below this the row stops shrinking    */
+  --dock-h:min(720px,calc(100dvh - var(--dock-y) - 112px));
+  --dock-gap:14px;
+  --dock-slot:0;
+  --dock-count:1;                /* open panels; set by PluginDock         */
+}
+/* Width is shared, not fixed: the row divides the space it has between the
+   open panels, down to --dock-w-min. Panels get narrower as more open
+   rather than the newest one shoving an older one off the row. */
+.dock-panel{
+  --dock-w-eff:clamp(
+    var(--dock-w-min),
+    calc((100vw - 2 * var(--dock-x) - (var(--dock-count) - 1) * var(--dock-gap)) / var(--dock-count)),
+    var(--dock-w));
+  position:fixed;top:var(--dock-y);
+  right:calc(var(--dock-x) + var(--dock-slot,0) * (var(--dock-w-eff) + var(--dock-gap)));
+  width:var(--dock-w-eff);height:var(--dock-h);z-index:26;
+  display:flex;flex-direction:column;overflow:hidden;
+  border:1px solid var(--hair);border-radius:var(--squircle);
+  background:var(--glass-strong);
+  backdrop-filter:blur(22px) saturate(1.15);-webkit-backdrop-filter:blur(22px) saturate(1.15);
+  box-shadow:0 26px 64px rgba(0,0,0,.5);
+  opacity:0;pointer-events:none;translate:14px 0;
+  transition:right .34s var(--ease),width .34s var(--ease),opacity .26s var(--ease),translate .34s var(--ease)}
+.dock-panel[hidden]{display:none!important}
+#pikaVoiceProfileBtn[hidden]{display:none!important}
+.dock-panel.open{opacity:1;pointer-events:auto;translate:0 0}
+/* An overlay panel leaves the row and takes the whole stage: full-bleed
+   frosted glass, with the writing centred on it. */
+.dock-panel.dock-overlay{
+  inset:0;width:auto;height:auto;
+  border:0;border-radius:0;box-shadow:none;
+  background:var(--panel-bg, rgba(15,16,22,.55));
+  backdrop-filter:blur(var(--panel-blur,28px)) saturate(var(--panel-saturate,1.5));
+  -webkit-backdrop-filter:blur(var(--panel-blur,28px)) saturate(var(--panel-saturate,1.5));
+  translate:0 0;scale:1.015;
+  transition:opacity .6s cubic-bezier(.32,.08,.24,1),
+             scale .78s cubic-bezier(.32,.08,.24,1),
+             backdrop-filter .78s cubic-bezier(.32,.08,.24,1),
+             -webkit-backdrop-filter .78s cubic-bezier(.32,.08,.24,1)}
+.dock-panel.dock-overlay:not(.open){
+  backdrop-filter:blur(0px) saturate(1);
+  -webkit-backdrop-filter:blur(0px) saturate(1)}
+.dock-panel.dock-overlay.open{translate:0 0;scale:1}
+.dock-panel.dock-overlay::before{
+  content:'';position:absolute;left:0;right:0;top:0;height:1px;z-index:1;
+  pointer-events:none;
+  background:linear-gradient(90deg,transparent,rgba(244,244,242,.3),transparent)}
+.dock-panel > iframe{flex:1;width:100%;min-height:0;border:0;background:transparent}
+.dock-host{position:static!important;inset:auto!important;display:contents;
+  background:none!important;opacity:1!important;pointer-events:none}
+.dock-host > .sp-scrim{display:none!important}
+.dock-panel.service-modal-card{max-height:none;margin:0;overflow:auto}
+@media (prefers-reduced-motion: reduce){ .dock-panel{transition:none} }
+
+/* ambient FFT spectrum strip along the bottom edge */
+#eqCanvas{position:fixed;left:0;right:0;bottom:0;width:100%;height:80px;z-index:7;
+  pointer-events:none;opacity:0;transition:opacity .8s var(--ease)}
+#eqCanvas.live{opacity:var(--spectrum-opacity,.55)}
+body.lyrics-spectrum-hidden #eqCanvas{display:none!important;opacity:0!important}
+
+/* spectrum edit controls popover */
+#eqControls{top:74px;right:28px;z-index:22;width:min(340px,calc(100vw - 32px));max-height:calc(100dvh - 112px);overflow-y:auto;padding:14px;border-radius:14px;
+  background:rgba(8,8,11,.86);border:1px solid var(--hair);
+  backdrop-filter:blur(26px) saturate(.8);-webkit-backdrop-filter:blur(26px) saturate(.8);
+  box-shadow:0 24px 60px rgba(0,0,0,.5);
+  opacity:0;transform:translateY(-8px);pointer-events:none;transition:opacity .24s var(--ease),transform .24s var(--ease)}
+#eqControls.show{opacity:1;transform:none;pointer-events:auto}
+.eqHead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 12px 2px}
+.eqTitle{font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:.08em;text-transform:uppercase}
+.eqReset{min-height:34px;padding:6px 9px;border:1px solid var(--hair);border-radius:8px;
+  color:var(--control-muted);font-family:var(--mono);font-size:9.5px;letter-spacing:.04em;text-transform:uppercase}
+.eqReset:hover{color:var(--ink);background:var(--control-bg-hover)}
+.eqRow{display:flex;align-items:flex-start;gap:8px;margin-bottom:9px}
+.eqRow:last-child{margin-bottom:0}
+.eqLbl{width:58px;flex:none;padding-top:12px;font-family:var(--mono);font-size:9.5px;color:var(--faint);letter-spacing:.05em;text-transform:uppercase}
+.eqChips{display:flex;gap:4px;flex-wrap:wrap;flex:1;min-width:0}
+.eqChip{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:40px;padding:7px 10px;border-radius:8px;
+  border:1px solid var(--hair);background:rgba(244,244,242,.035);font-size:11px;color:var(--control-muted);transition:background .16s,border-color .16s,color .16s;cursor:pointer}
+.eqChip:hover{color:var(--ink)}
+.eqChip.on{color:var(--ink);background:var(--control-bg-active)}
+.eqChip i{width:9px;height:9px;border-radius:50%;display:block}
+
+/* clock panel — dock geometry only, chrome lives in chrome.css */
+#clockModal iframe{width:100%;height:100%;border:0;display:block;background:transparent}
+#clockModal .clock-close{position:absolute;right:4px;top:4px;z-index:2;width:24px;height:24px;
+  border-radius:7px;display:grid;place-items:center;color:var(--dim);background:rgba(0,0,0,.35);
+  opacity:0;transition:opacity .2s,background .2s,color .2s}
+#clockModal:hover .clock-close{opacity:1}
+#clockModal .clock-close:hover{color:var(--ink);background:rgba(244,244,242,.08)}
+#clockModal .clock-close svg{width:12px;height:12px;stroke:currentColor;stroke-width:1.8;fill:none;
+  stroke-linecap:round;stroke-linejoin:round}
+
+/* Apps launcher — a row panel listing the localized Base44 plugins, and the
+   overlay the chosen one mounts into. */
+#appsPanel{display:flex;flex-direction:column;gap:2px;padding:10px;overflow:auto}
+#appsList{display:flex;flex-direction:column;gap:2px}
+.app-row{display:flex;flex-direction:column;gap:2px;text-align:left;padding:9px 10px;
+  border:1px solid transparent;border-radius:9px;background:none;color:var(--dim);
+  cursor:pointer;font:inherit}
+.app-row:hover{color:var(--ink);border-color:var(--hair);background:rgba(244,244,242,.05)}
+.app-row.on{color:var(--ink);border-color:var(--dim);background:rgba(244,244,242,.08)}
+.app-row-name{font-size:13px;letter-spacing:.01em}
+.app-row-blurb{font-size:11px;opacity:.62;line-height:1.35}
+/* Phase 4: category tabs */
+.app-categories{display:flex;gap:4px;flex-wrap:wrap;padding:2px 0 8px;border-bottom:1px solid var(--hair);margin-bottom:6px}
+.app-cat{min-height:30px;padding:4px 10px;border-radius:8px;border:1px solid var(--hair);
+  font-family:var(--mono);font-size:10px;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--control-muted);background:rgba(244,244,242,.035);transition:background .16s,border-color .16s,color .16s}
+.app-cat:hover{color:var(--ink)}
+.app-cat.on{color:var(--ink);background:var(--control-bg-active)}
+/* Archived badge */
+.app-archived{display:inline-block;margin-left:6px;padding:1px 5px;border-radius:4px;
+  font-family:var(--mono);font-size:8px;letter-spacing:.05em;text-transform:uppercase;
+  color:#ffc48a;border:1px solid rgba(255,196,138,.32);background:rgba(28,16,6,.6);vertical-align:middle}
+#appSurfacePanel{display:flex;flex-direction:column}
+#appSurfaceBar{display:flex;align-items:center;gap:10px;padding:8px 10px;
+  border-bottom:1px solid var(--hair);flex:0 0 auto}
+#appSurfaceTitle{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
+#appSurfaceStatus{font-size:11px;color:var(--dim);opacity:.75;margin-left:auto}
+#appSurfaceFrame{flex:1 1 auto;width:100%;border:0;display:block;background:transparent}
+.app-surface-close{width:24px;height:24px;border:0;border-radius:6px;background:none;
+  color:var(--dim);cursor:pointer;display:grid;place-items:center}
+.app-surface-close:hover{color:var(--ink);background:rgba(244,244,242,.08)}
+.app-surface-close svg{width:12px;height:12px;stroke:currentColor;stroke-width:1.8;fill:none}
+
+/* ---- panels folded onto the dock ----------------------------------------
+   These four were centred modals with ID-specificity geometry spread across
+   several media queries. Rather than unpick each rule, this block restates
+   the dock geometry at matching specificity and is placed last, so it wins
+   wherever the old centring still applies. */
+#eqControls.dock-panel,
+#appleMusicPanel.dock-panel,
+#spotifyPanel .service-modal-card.dock-panel,
+#focusPanel .service-modal-card.dock-panel{
+  position:fixed;top:var(--dock-y);left:auto;bottom:auto;
+  right:calc(var(--dock-x) + var(--dock-slot,0) * (var(--dock-w-eff) + var(--dock-gap)));
+  width:var(--dock-w-eff);height:var(--dock-h);max-height:none;
+  translate:none;transform:none;z-index:26}
+#eqControls.dock-panel.open,
+#appleMusicPanel.dock-panel.open,
+#spotifyPanel .service-modal-card.dock-panel.open,
+#focusPanel .service-modal-card.dock-panel.open{translate:none;transform:none;opacity:1}
+
+/* ───────── prod mode: hide dev-only dock panels from the menu ─────────
+   Panels are hidden via CSS rather than the `hidden` attribute so that
+   PluginDock can still open them programmatically (e.g. shared links). */
+body[data-env="prod"] #appsPanel:not(.open),
+body[data-env="prod"] #appSurfacePanel:not(.open),
+body[data-env="prod"] #clockModal:not(.open),
+body[data-env="prod"] #pikaVoiceProfilePanel:not(.open){
+  visibility:hidden;pointer-events:none}

@@ -110,6 +110,7 @@ const ReaderPreferences = {
       reader.classList.toggle('background-hidden', !this.backgroundVisible);
     }
     document.body.classList.toggle('lyrics-share-sheet', this.values.windowAppearance === 'shareSheet');
+    document.body.classList.toggle('lyrics-text-only', this.values.windowAppearance === 'textOnly');
     const hidden = this.values.spectrumVisible === false;
     document.body.classList.toggle('lyrics-spectrum-hidden', hidden);
     const spectrum = document.getElementById('eqCanvas');

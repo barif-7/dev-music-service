@@ -133,7 +133,7 @@ class TestFrontendAssets:
         assert "dataset.shaderState = 'fallback'" in engine.text
         assert "standalone ? fragSrc" in engine.text
         assert "const API_FRAGS" in shaders.text
-        assert "34 living shaders" in page.text
+        assert "43 living shaders" in page.text
         assert "uniform float iFlux" in shaders.text
         assert "uniform float iCentroid" in shaders.text
         for shader_id in (
@@ -144,8 +144,16 @@ class TestFrontendAssets:
             "replit",
             "innerspeaker",
             "redroom-sand",
+            "threshold-tunnel",
             "currents-sphere",
+            "purple-wake",
             "tame-triptych",
+            "innerspeaker-album",
+            "kolmanskop",
+            "threshold",
+            "currents",
+            "wake",
+            "gargantua",
         ):
             assert (
                 f"{shader_id}: `" in shaders.text
@@ -158,7 +166,7 @@ class TestFrontendAssets:
         assert "scrolling buffer" in client.get("/static/gallery/data.js").text
         assert "float tameLiveDrive()" in shaders.text
         assert "float tameTrackDrive()" in shaders.text
-        assert shaders.text.count("col=tameUniformFinish(") == 4
+        assert shaders.text.count("col=tameUniformFinish(") == 11
 
     def test_spectrum_view_controls_and_preferences_are_served(self, client: TestClient):
         """The gallery should expose the expanded, persistent spectrum controls."""

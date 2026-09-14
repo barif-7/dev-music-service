@@ -112,7 +112,9 @@ class AudioPlayer {
     for(const fn of this._subscribers){
       try{ fn(event); }catch(error){ console.warn('AudioPlayer subscriber', error); }
     }
-    window.dispatchEvent(new CustomEvent('phase:player', { detail:event }));
+    if(typeof window !== 'undefined'){
+      window.dispatchEvent(new CustomEvent('phase:player', { detail:event }));
+    }
     return event;
   }
 

@@ -152,14 +152,8 @@
           locale:typeof lyricLocale === 'string' ? lyricLocale : '',
         }, 100);
       },
-      vocabulary(payload){
-        if(!payload?.word) return;
-        saveList('phaseField.lyricVocabulary', {
-          ...payload,
-          id:`${payload.word}:${typeof lyricLocale === 'string' ? lyricLocale : ''}`,
-          savedAt:new Date().toISOString(),
-        }, 200);
-      },
+      vocabulary(payload){ return VocabularyPlugin.request(payload); },
+      openVocabulary(){ return VocabularyPlugin.open(); },
     },
   });
 

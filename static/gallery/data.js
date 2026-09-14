@@ -277,7 +277,15 @@ const ALTS = [
     lyric:'the room was red enough to make the sand remember heat'
   },
   {
-    id:'currents-sphere', name:'Currents Sphere', n:'33',
+    id:'threshold-tunnel', name:'Threshold', n:'33',
+    preset:'Flow', bpm:96, a11y:'medium', pairFrom:'Tame Impala · threshold study',
+    desc:'An infinite slate doorway recedes toward a strip of desert light. ReccoBeats tempo and danceability set the forward cadence while energy, loudness, and live onsets illuminate each approaching frame.',
+    palette:['#10151c','#394551','#d4a86d','#f2d39a','#272017'],
+    track:null,
+    lyric:'each doorway opened onto the same impossible horizon'
+  },
+  {
+    id:'currents-sphere', name:'Currents Sphere', n:'34',
     preset:'Spark', bpm:108, a11y:'medium', pairFrom:'Tame Impala · Currents',
     desc:'A liquid chrome sphere holds a field of warped current lines. Bass swells its gravity, mids pull the bands around its surface, and bright onsets split cyan into coral.',
     palette:['#050711','#1b3f73','#66cce8','#e46876','#10182c'],
@@ -285,11 +293,75 @@ const ALTS = [
     lyric:'every current curved when it reached the centre'
   },
   {
-    id:'tame-triptych', name:'Tame Impala Triptych', n:'34',
+    id:'purple-wake', name:'Wake', n:'35',
+    preset:'Drive', bpm:112, a11y:'medium', pairFrom:'Tame Impala · wake study',
+    desc:'Violet flow lines peel around a luminous orange wake. Instrumentalness increases the stream density, valence warms the flare, and live bass, flux, and treble turn the central streak into a responsive current.',
+    palette:['#09051a','#281154','#663f9c','#f47b35','#d9a5ff'],
+    track:null,
+    lyric:'an orange signal kept cutting through the violet current'
+  },
+  {
+    id:'tame-triptych', name:'Tame Impala Triptych', n:'36',
     preset:'Drive', bpm:104, a11y:'high', pairFrom:'Tame Impala · three-panel study',
     desc:'The supplied combined concept rebuilt as one procedural shader: Innerspeaker woodland, red-room dunes, and the Currents sphere share a three-panel audio-reactive field.',
     palette:['#07130d','#9dc35f','#b82f20','#56bde0','#171025'],
     track:null,
     lyric:'three rooms, one pulse moving through all of them'
+  },
+  {
+    id:'innerspeaker-album', name:'Innerspeaker Cloudstairs', n:'37',
+    preset:'Dream', bpm:88, a11y:'medium', pairFrom:'Archive variant · Innerspeaker (2010)',
+    desc:'The ZIP’s distinct album-cover study: a heart-shaped cloud valley, a staircase of light, and autumn foliage at the frame. ReccoBeats energy, acousticness, valence, bass, and onset data shape its drift and colour.',
+    palette:['#0a6070','#bfe6da','#f4f0c0','#e8861a','#7a1d08'],
+    track:null,
+    lyric:'we drove until the radio gave up its station of weather'
+  },
+  {
+    id:'kolmanskop', name:'Sandroom', n:'38',
+    preset:'Heat', bpm:72, a11y:'medium', pairFrom:'Archive variant · Kolmanskop red interior',
+    desc:'A scarlet ghost-town room half-swallowed by a dune, with an arched blue window and a glowing far door. ReccoBeats tempo, acousticness, energy, valence, bass, and live flux animate the sand and light.',
+    palette:['#7a1206','#e84d18','#f0d6a8','#4a86c0','#2a0604'],
+    track:null,
+    lyric:'the desert moved in and never wiped its feet'
+  },
+  {
+    id:'threshold', name:'Threshold Rooms', n:'39',
+    preset:'Drift', bpm:64, a11y:'medium', pairFrom:'Archive variant · Kolmanskop doorway tunnel',
+    desc:'The ZIP’s logarithmic doorway tunnel: slate walls, warm floor, and a desert aperture continuously stepping forward. ReccoBeats tempo and danceability drive the march while loudness, bass, and onsets flood the opening.',
+    palette:['#2a2e38','#c79a5a','#f0e3c0','#5a76a0','#12141c'],
+    track:null,
+    lyric:'door after door, each one a little more daylight'
+  },
+  {
+    id:'currents', name:'Currents Poster', n:'40',
+    preset:'Flux', bpm:104, a11y:'medium', pairFrom:'Archive variant · Currents (2015)',
+    desc:'A chrome sphere interrupts vertical purple striations, a hot filament, and rainbow turbulence. ReccoBeats tempo, instrumentalness, valence, brightness, bass, and spectral flux deform the poster field.',
+    palette:['#1a0830','#5a2c8a','#9a6cd0','#ff5a1e','#10040c'],
+    track:null,
+    lyric:'the ball fell through the lines and the lines let it'
+  },
+  {
+    id:'wake', name:'Wake Sphere', n:'41',
+    preset:'Wake', bpm:96, a11y:'medium', pairFrom:'Archive variant · Currents B-Sides',
+    desc:'Fine purple flow lines bend around a steel sphere while an orange streak cuts in from the corner and leaves a red tail. ReccoBeats tempo, danceability, valence, instrumentalness, bass, and onsets drive the wake.',
+    palette:['#1c0c34','#5e3c8c','#c08adf','#ff7a14','#9a1408'],
+    track:null,
+    lyric:'one bright line in, and the whole field bent to meet it'
+  },
+  {
+    id:'gargantua', name:'Gargantua', n:'42',
+    preset:'Flow', bpm:68, a11y:'medium', pairFrom:'Wallpaper · gargantua-black',
+    desc:'The supplied frame rebuilt procedurally: a tilted galactic dust lane with a rose bloom on its left arm, and a black hole low in the field whose near-side disk lenses into a bowl of fine filaments sweeping in front of its own shadow. ReccoBeats tempo, instrumentalness, and valence set the filament drift and colour while sub, bass, peak, and spectral flux swell the horizon and fire the photon lip.',
+    palette:['#03050c','#0d1b36','#8fb4e6','#f2f6ff','#a8567f'],
+    track:null,
+    lyric:'the light went all the way around before it reached us'
+  },
+  {
+    id:'cells-comb', name:'Comb', n:'43',
+    preset:'Flow', bpm:96, a11y:'medium', pairFrom:'Phase \u00b7 iPad Now Playing',
+    desc:'Cells with its lighting turned inside out \u2014 the voronoi walls are drawn as hot honey filaments and every cell glows from its own core out to black, instead of the seams going dark. Lifted from the Phase iPad Now Playing mood, where it ran behind \u201cComb & Lantern\u201d. The cursor leans the lattice, and single cells take the beat rather than the whole field.',
+    palette:['#140a06','#e88a2a','#ffcf6e','#a8501c','#4a2010'],
+    track:{ title:'Comb & Lantern', artist:'Edda Brun', album:'Apiary', year:2025, src:'mb', conf:'cover-art-archive' },
+    lyric:'every wall we built came back lit from the inside'
   },
 ];

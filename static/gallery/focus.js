@@ -76,7 +76,13 @@
     coverage.innerHTML = `Audio features for <b>${covered}</b> of <b>${total}</b> tracks · <span class="fc-source">${esc(sourceLabel)}</span>`;
     c.appendChild(coverage);
 
-    const renderTrack = (t, hasFeatures) => {
+    const list = d.focus_tracks || [];
+    const queueTracks = [...list, ...noData].map(t=>({
+      title:t.title, artist:t.artist, album:t.album, thumbnail:t.thumbnail,
+      duration:t.duration_ms ? Math.round(t.duration_ms/1000) : undefined,
+      spotifyId:t.id || t.track_id, provider:'spotify',
+    }));
+    const renderTrack = (t, hasFeatures, queueIndex) => {
       const row = document.createElement('button'); row.className = 'fc-track';
       if(!hasFeatures) row.classList.add('nodata');
       row.type = 'button';
@@ -92,14 +98,17 @@
         score;
       row.addEventListener('click', ()=>{
         closeFocusPanel();
-        loadTrack({ title:t.title, artist:t.artist, album:t.album, thumbnail:t.thumbnail,
-          duration: t.duration_ms ? Math.round(t.duration_ms/1000) : undefined,
-          spotifyId: t.id || t.track_id });
+        const selected = queueTracks[queueIndex];
+        if(typeof phasePlaylist !== 'undefined'){
+          const snapshot = phasePlaylist.replace(queueTracks, {
+            currentIndex:queueIndex, label:'Focus set', source:'focus', reason:'focus-selection',
+          });
+          loadTrack(snapshot.current || selected, { playlistMode:'sync' });
+        }else loadTrack(selected);
       });
       c.appendChild(row);
     };
 
-    const list = d.focus_tracks || [];
     if(!list.length){
       const empty = document.createElement('div');
       empty.className = 'fc-load';
@@ -108,7 +117,7 @@
         : 'ReccoBeats had no audio data for these tracks. Try a different time range.';
       c.appendChild(empty);
     } else {
-      list.forEach(t=>renderTrack(t, true));
+      list.forEach((t,index)=>renderTrack(t, true, index));
     }
 
     if(noData.length){
@@ -116,7 +125,7 @@
       head.className = 'fc-nodata-head';
       head.textContent = `No audio data (${d.no_data_count ?? noData.length})`;
       c.appendChild(head);
-      noData.forEach(t=>renderTrack(t, false));
+      noData.forEach((t,index)=>renderTrack(t, false, list.length + index));
     }
   }
 

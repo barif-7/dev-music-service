@@ -4,10 +4,22 @@
    the globals renderNowPlaying() / player consumed by app.js. */
 
 const streamEl = document.getElementById('streamEl');
+let playlistStorage = null;
+try{ playlistStorage = window.sessionStorage; }catch(_error){ /* private mode may block storage */ }
+const phasePlaylist = new PlaylistSet({
+  storage:playlistStorage,
+  storageKey:'phaseField.playlist.v1',
+  maxSize:250,
+});
+window.phasePlaylist = phasePlaylist;
 const playbackSettings = {
   loopCurrentTrack:true,
 };
 const playbackRules = new PlaybackRuleSet([
+  new PlaylistAdvanceRule({
+    playlist:phasePlaylist,
+    onAdvance:track=>loadTrack(track, { playlistMode:'sync' }),
+  }),
   new LoopTrackRule({ enabled:()=>playbackSettings.loopCurrentTrack }),
 ]);
 const player = new AudioPlayer(streamEl, { rules:playbackRules });
@@ -61,8 +73,22 @@ function setMediaSessionHandlers(){
     navigator.mediaSession.setActionHandler('seekto', details=>{
       if(typeof details?.seekTime === 'number') player.seekTo(details.seekTime);
     });
+    navigator.mediaSession.setActionHandler('previoustrack', ()=>playPlaylistOffset(-1, 'media-session'));
+    navigator.mediaSession.setActionHandler('nexttrack', ()=>playPlaylistOffset(1, 'media-session'));
   }catch(e){ /* some browsers only expose a subset of actions */ }
 }
+
+function playPlaylistOffset(offset, reason='transport'){
+  if(offset < 0 && player.currentTime > 3){
+    player.seekTo(0);
+    return true;
+  }
+  const track = phasePlaylist.advance(offset, { reason });
+  if(!track) return false;
+  loadTrack(track, { playlistMode:'sync' });
+  return true;
+}
+window.playPlaylistOffset = playPlaylistOffset;
 
 function restorePlaybackAfterLifecycleChange(){
   if(AUDIO?.ctx && AUDIO.ctx.state === 'suspended'){
@@ -284,9 +310,17 @@ function normalizePhaseTrack(source={}){
 
 let trackLoadSequence = 0;
 let trackSearchController = null;
-async function loadTrack(s, { packagedLyrics=null, packagedStream='' } = {}){
+async function loadTrack(s, { packagedLyrics=null, packagedStream='', playlistMode='ensure' } = {}){
   const loadId = ++trackLoadSequence;
   if(trackSearchController){ trackSearchController.abort(); trackSearchController = null; }
+  s = normalizePhaseTrack(s);
+  if(playlistMode !== 'none'){
+    const queued = phasePlaylist.upsert(s, {
+      select:true,
+      reason:playlistMode === 'sync' ? 'sync-current' : 'manual-play',
+    });
+    if(queued) s = queued;
+  }
   player.pause();
   streamEl.removeAttribute('src');
   streamEl.load();
@@ -294,7 +328,6 @@ async function loadTrack(s, { packagedLyrics=null, packagedStream='' } = {}){
   closeTranscriptStream();
   lyricsToken++;
   if(typeof stopTranslatedVocals === 'function') stopTranslatedVocals({ clear:true });
-  s = normalizePhaseTrack(s);
   const spotifyId = s.spotifyId;
   player.setTrack(s);
   player.setLyrics();
@@ -328,10 +361,14 @@ async function loadTrack(s, { packagedLyrics=null, packagedStream='' } = {}){
       result = results[0];
     }
     if(loadId !== trackLoadSequence) return;
-    const merged = { ...s, ...result, spotifyId,
+    let merged = { ...s, ...result, spotifyId,
       title:  result.title  || s.title,
       artist: result.artist || s.artist,
       album:  result.album  || s.album };
+    if(playlistMode !== 'none'){
+      const queued = phasePlaylist.upsert(merged, { select:true, reason:'resolved-metadata' });
+      if(queued) merged = queued;
+    }
     player.setTrack(merged);
     const duration = result.duration || s.duration || 0;
     if(typeof renderNowPlaying === 'function') renderNowPlaying(merged, 'streaming');

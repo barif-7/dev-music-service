@@ -24,7 +24,7 @@ def test_phase_shell_uses_lab_as_the_primary_center_lyrics_reader(client: TestCl
     assert response.status_code == 200
     assert response.headers["x-frame-options"] == "DENY"
     assert 'id="lyricsShaderReaderFrame"' in response.text
-    assert 'src="/lyrics-shader-lab?surface=reader&amp;v=20260830-wordglow1"' in response.text
+    assert 'src="/lyrics-shader-lab?surface=reader&amp;v=20260904-textonly2"' in response.text
     assert 'allowtransparency="true"' in response.text
     assert 'style="background:transparent"' in response.text
     assert 'id="lyricLanguageBar"' in response.text
@@ -68,7 +68,6 @@ def test_phase_shell_uses_lab_as_the_primary_center_lyrics_reader(client: TestCl
 
 def test_reader_composites_the_animated_shader_over_the_wallpaper():
     repo = Path(__file__).resolve().parents[1]
-    shell = (repo / "static/index.html").read_text()
     reader = (repo / "lyrics-shader-lab/src/pages/LyricsReaderSurface.jsx").read_text()
     panel = (repo / "lyrics-shader-lab/src/components/shader-lab/VisualizerPanel.jsx").read_text()
     bilingual_reader = (repo / "lyrics-shader-lab/src/components/bilingual/BilingualReader.jsx").read_text()
@@ -80,6 +79,8 @@ def test_reader_composites_the_animated_shader_over_the_wallpaper():
     preferences = (repo / "static/gallery/reader-preferences.js").read_text()
     host_surface = (repo / "lyrics-shader-lab/src/lib/base44/hostSurface.js").read_text()
     host_hooks = (repo / "lyrics-shader-lab/src/lib/base44/useHostSurface.js").read_text()
+    main_css = (repo / "static/css/main.css").read_text()
+    dock_css = (repo / "static/css/dock.css").read_text()
 
     # The shader layer is a shell-owned preference, so the reader's own
     # Canvas2D layer can be judged against the shell's WebGL wallpaper
@@ -129,20 +130,20 @@ def test_reader_composites_the_animated_shader_over_the_wallpaper():
     assert ".reader-glass-surface" in styles
     assert "background: transparent" in styles
     assert "border-radius: 28px" in styles
-    assert "padding:0;overflow:visible" in shell
-    assert "padding:0;overflow:visible;border:0" in shell
-    assert "border-radius:28px" in shell
-    assert "box-shadow:inset 0 1px 0 rgba(255,255,255,.1)" not in shell
-    assert "corner-shape:squircle;\n    background:transparent;" in shell
-    assert "background-hidden{background:transparent!important;box-shadow:none}" in shell
-    assert "border-radius:inherit" in shell
-    assert "background-hidden #lyricsShaderReaderFrame" in shell
-    assert "--lyrics-reader-soft-gradient" in shell
-    assert "reader-shape-circle" in shell
-    assert "reader-shape-square" in shell
-    assert "#lyricReader.reader-text-only" in shell
-    assert "#lyricReader.lab-ready.reader-share-sheet" in shell
-    assert "@keyframes lyrics-share-sheet-in" in shell
+    assert "padding:0;overflow:visible" in main_css
+    assert "padding:0;overflow:visible;border:0" in main_css
+    assert "border-radius:28px" in main_css
+    assert "box-shadow:inset 0 1px 0 rgba(255,255,255,.1)" not in main_css
+    assert "corner-shape:squircle;\n  background:transparent;" in main_css
+    assert "background-hidden{background:transparent!important;box-shadow:none}" in main_css
+    assert "border-radius:inherit" in main_css
+    assert "background-hidden #lyricsShaderReaderFrame" in main_css
+    assert "--lyrics-reader-soft-gradient" in main_css
+    assert "reader-shape-circle" in main_css
+    assert "reader-shape-square" in main_css
+    assert "#lyricReader.reader-text-only" in main_css
+    assert "#lyricReader.lab-ready.reader-share-sheet" in main_css
+    assert "@keyframes lyrics-share-sheet-in" in main_css
     assert "BilingualReader" in panel
     assert "TRANSLATION_STATES.LOADING" in bilingual_reader
     assert "learnMode" in bilingual_reader
@@ -199,7 +200,7 @@ def test_reader_composites_the_animated_shader_over_the_wallpaper():
     assert "Math.floor(surface.frame.time * 20)" in host_surface
     assert "surface.onFrameTick" in host_surface
     assert "useSyncExternalStore(subscribe, snapshot" in host_hooks
-    assert "body.lyrics-spectrum-hidden #eqCanvas" in shell
+    assert "body.lyrics-spectrum-hidden #eqCanvas" in dock_css
     app = (repo / "static/gallery/app.js").read_text()
     assert "!document.body.classList.contains('lyrics-spectrum-hidden')" in app
 
@@ -457,10 +458,12 @@ def test_the_notes_editor_is_wired_up_as_an_overlay(client: TestClient):
     repo = Path(__file__).resolve().parents[1]
     shell = (repo / "static/index.html").read_text()
     canvas = (repo / "static/gallery/canvas-plugin.js").read_text()
+    dock_css = (repo / "static/css/dock.css").read_text()
+    chrome_css = (repo / "static/css/chrome.css").read_text()
 
     # The panel opts out of the row; the rule that places it exists.
     assert "overlay:true" in canvas
-    assert ".dock-panel.dock-overlay{" in shell
+    assert ".dock-panel.dock-overlay{" in dock_css
 
     # The guest cannot see how it is framed, so the host tells it in the URL.
     assert 'src="/canvas?surface=editor&amp;chrome=overlay"' in shell
@@ -472,7 +475,7 @@ def test_the_notes_editor_is_wired_up_as_an_overlay(client: TestClient):
 
     # A full-viewport panel that covered its own toggle would have no way out,
     # so the tool cluster is stacked above it and exempt from the idle fade.
-    assert "#stage.idle #topR{opacity:1;pointer-events:auto" in shell
+    assert "#stage.idle #topR{opacity:1;pointer-events:auto" in chrome_css
 
 
 def test_component_vault_lookups_are_answered_by_the_shell(client: TestClient):
@@ -513,7 +516,7 @@ def test_component_vault_lookups_are_answered_by_the_shell(client: TestClient):
         # The card is stored as HTML in the host's note, so Parchment has to be
         # able to match it back by class or the embed is lost on reload.
         assert 'ComponentEmbed.className = "canvas-component-embed"' in embed_code
-        assert "allow-scripts allow-same-origin" in embed_code
+        assert "componentSandbox(previewUrl)" in embed_code
         # Never navigation, popups, forms or downloads, whichever branch is taken.
         for granted in ("allow-top-navigation", "allow-popups", "allow-forms",
                         "allow-downloads", "allow-modals"):
@@ -583,19 +586,20 @@ def test_dock_panels_share_one_geometry_and_stack_horizontally(client: TestClien
     dock = (repo / "static/gallery/plugin-dock.js").read_text()
     canvas = (repo / "static/gallery/canvas-plugin.js").read_text()
     clock = (repo / "static/gallery/clock-modal.js").read_text()
+    dock_css = (repo / "static/css/dock.css").read_text()
 
     # One origin and one size, expressed as tokens.
     for token in ("--dock-x:", "--dock-y:", "--dock-w:", "--dock-h:", "--dock-gap:"):
-        assert token in shell
+        assert token in dock_css
     # Stacking is the slot offset; animating right and width makes it reflow.
-    assert "var(--dock-x) + var(--dock-slot,0) * (var(--dock-w-eff) + var(--dock-gap))" in shell
-    assert "transition:right" in shell and "width .34s" in shell
+    assert "var(--dock-x) + var(--dock-slot,0) * (var(--dock-w-eff) + var(--dock-gap))" in dock_css
+    assert "transition:right" in dock_css and "width .34s" in dock_css
 
     # Width is shared between open panels rather than fixed, so panels narrow
     # as more open instead of the newest shoving an older one off the row.
-    assert "--dock-w-min:" in shell
-    assert "--dock-count:" in shell
-    assert "clamp(" in shell and "--dock-w-eff" in shell
+    assert "--dock-w-min:" in dock_css
+    assert "--dock-count:" in dock_css
+    assert "clamp(" in dock_css and "--dock-w-eff" in dock_css
     assert "--dock-count" in dock, "the manager must publish the open count"
 
     # Placement is declared in markup, so it holds even if no script registers
@@ -603,7 +607,7 @@ def test_dock_panels_share_one_geometry_and_stack_horizontally(client: TestClien
     for dock_id in ("clock", "notes", "spectrum", "apple-music", "spotify", "focus"):
         assert f'data-dock-id="{dock_id}"' in shell, dock_id
     assert shell.count('class="chrome dock-panel"') >= 1
-    assert ".dock-panel[hidden]{display:none" in shell
+    assert ".dock-panel[hidden]{display:none" in dock_css
 
     # Both toggles are registered with the dock rather than placing themselves.
     assert "PluginDock.register" in canvas
@@ -646,6 +650,7 @@ def test_settings_panels_are_docked_and_no_longer_modal(client: TestClient):
     app = (repo / "static/gallery/app.js").read_text()
     eq = (repo / "static/gallery/eq.js").read_text()
     apple = (repo / "static/gallery/apple-music.js").read_text()
+    dock_css = (repo / "static/css/dock.css").read_text()
 
     for panel_id, source in (("spotify", app), ("focus", app),
                              ("spectrum", eq), ("apple-music", apple)):
@@ -666,11 +671,11 @@ def test_settings_panels_are_docked_and_no_longer_modal(client: TestClient):
     # modality it belonged to.
     assert "$('#spotifyPanel .service-modal-card')" in app
     assert "$('#focusPanel .service-modal-card')" in app
-    assert ".dock-host > .sp-scrim{display:none" in shell
+    assert ".dock-host > .sp-scrim{display:none" in dock_css
 
     # The dock has to exist before app.js registers with it at module level.
     assert shell.index("plugin-dock.js") < shell.index("gallery/app.js")
 
     # Old centring is restated at matching specificity, placed last to win.
-    assert "#eqControls.dock-panel" in shell
-    assert "#focusPanel .service-modal-card.dock-panel" in shell
+    assert "#eqControls.dock-panel" in dock_css
+    assert "#focusPanel .service-modal-card.dock-panel" in dock_css
