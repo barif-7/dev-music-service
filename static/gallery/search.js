@@ -20,6 +20,13 @@
     if(!v) input.removeAttribute('aria-activedescendant');
   }
 
+  function lyricsBadge(status){
+    const map = {synced:['LRC','ok','Synced lyrics available'], plain:['TXT','mid','Plain lyrics available'], instrumental:['INST','off','Instrumental'], none:['NO LYR','off','No lyrics found']};
+    if(!map[status]) return '';
+    const [label,cls,title] = map[status];
+    return `<span class="r-lyr ${cls}" title="${title}">${label}</span>`;
+  }
+
   function render(pool){
     results = pool; sel = pool.length ? 0 : -1;
     if(!pool.length){
@@ -40,7 +47,7 @@
           <span class="r-name">${esc(s.title||'Untitled')}</span>
           <span class="r-meta">${meta[0]} <span class="r-dim">· ${meta[1]} · ${meta[2]}</span></span>
         </span>
-        <span class="r-conf ${tier}">${conf}%</span>
+        <span class="r-conf ${tier}">${conf}%</span>${lyricsBadge(s.lyrics)}
       </button>`;
     }).join('');
     [...drop.querySelectorAll('.result')].forEach(el=>{

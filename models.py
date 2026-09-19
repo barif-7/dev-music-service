@@ -18,6 +18,10 @@ class AutocompleteSuggestion(BaseModel):
     spotify_id: Optional[str] = None
     recording_mbid: Optional[str] = None
     release_mbid: Optional[str] = None
+    lyrics: str = Field(
+        default="unknown",
+        description="Known LRCLIB lyric availability: synced|plain|instrumental|none|unknown",
+    )
 
 
 class SongSearchResult(BaseModel):
