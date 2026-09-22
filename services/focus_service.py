@@ -158,15 +158,34 @@ def _resolve_provider(provider: "AudioFeatureProvider | None") -> "AudioFeatureP
 
 class FocusProfile:
 
+    _HISTORY_KEY = "_profile_history"
+    _HISTORY_LIMIT = 20
+
+    @staticmethod
+    def _public_profile(profile: dict) -> dict:
+        return {key: profile.get(key, value) for key, value in DEFAULT_PROFILE.items()}
+
     @staticmethod
     def load(user_id: str | None = None) -> dict:
         with _PROFILE_LOCK:
             profile = build_focus_profile_storage(get_settings(), user_id).load()
-            return {**DEFAULT_PROFILE, **profile} if profile else dict(DEFAULT_PROFILE)
+            return FocusProfile._public_profile(profile) if profile else dict(DEFAULT_PROFILE)
+
+    @staticmethod
+    def history(user_id: str | None = None) -> list[dict]:
+        """Actual saved profiles, oldest first, scoped like the active profile."""
+        with _PROFILE_LOCK:
+            stored = build_focus_profile_storage(get_settings(), user_id).load() or {}
+            history = stored.get(FocusProfile._HISTORY_KEY)
+            if isinstance(history, list):
+                return [FocusProfile._public_profile(p) for p in history[-FocusProfile._HISTORY_LIMIT:]
+                        if isinstance(p, dict)]
+            # A profile saved before history tracking is still a real preference.
+            return [FocusProfile._public_profile(stored)] if stored else []
 
     @staticmethod
     def save(profile: dict, user_id: str | None = None) -> dict:
-        merged = {**DEFAULT_PROFILE, **profile}
+        merged = FocusProfile._public_profile(profile)
         # clamp values
         merged["bpm_min"] = max(40, min(220, int(merged["bpm_min"])))
         merged["bpm_max"] = max(merged["bpm_min"] + 5, min(220, int(merged["bpm_max"])))
@@ -176,7 +195,15 @@ class FocusProfile:
         merged["valence_min"] = max(0.0, min(1.0, float(merged["valence_min"])))
         merged["valence_max"] = max(merged["valence_min"], min(1.0, float(merged["valence_max"])))
         with _PROFILE_LOCK:
-            build_focus_profile_storage(get_settings(), user_id).save(merged)
+            storage = build_focus_profile_storage(get_settings(), user_id)
+            stored = storage.load() or {}
+            history = stored.get(FocusProfile._HISTORY_KEY)
+            if not isinstance(history, list):
+                history = [FocusProfile._public_profile(stored)] if stored else []
+            history = [FocusProfile._public_profile(p) for p in history if isinstance(p, dict)]
+            if not history or history[-1] != merged:
+                history.append(merged)
+            storage.save({**merged, FocusProfile._HISTORY_KEY: history[-FocusProfile._HISTORY_LIMIT:]})
         return merged
 
     @staticmethod

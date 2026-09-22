@@ -253,13 +253,18 @@ function extractAccent(url){
 /* per-track ReccoBeats features → TrackVisualProfile (the track-level visual
    prior). Optional layer: no Spotify id, a failed fetch, or missing fields all
    leave the profile NEUTRAL so the shaders keep running on live FFT alone. */
+let featureLoadSequence = 0;
 async function fetchTrackFeatures(spotifyId){
+  const featureLoad = ++featureLoadSequence;
   trackFeatures = null; buildTrackVisualProfile();          // reset to neutral
   if(!spotifyId) return;
   try{
     const r = await fetch(`/api/focus/track/${encodeURIComponent(spotifyId)}`);
     if(!r.ok) return;                                        // 404/403 → stay neutral
-    trackFeatures = await r.json(); buildTrackVisualProfile();
+    const features = await r.json();
+    if(featureLoad !== featureLoadSequence) return;
+    trackFeatures = features; buildTrackVisualProfile();
+    window.dispatchEvent(new CustomEvent('phase:features'));
   }catch(e){ /* network/parse error → stay neutral */ }
 }
 

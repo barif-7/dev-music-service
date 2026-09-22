@@ -277,3 +277,37 @@ class LyricVisualAnalysisRequest(BaseModel):
     artist: str = Field(min_length=1, max_length=500)
     lyric_line: str = Field(alias="lyricLine", min_length=1, max_length=1000)
     section: Literal["intro", "verse", "chorus", "bridge", "outro"] = "verse"
+
+
+class RecommendationTrack(BaseModel):
+    """Portable track metadata; absent measurements stay unknown, never zeroed."""
+
+    model_config = ConfigDict(str_strip_whitespace=True, allow_inf_nan=False)
+
+    title: str = Field(min_length=1, max_length=500)
+    key: Optional[str] = Field(default=None, max_length=1000)
+    artist: Optional[str] = Field(default=None, max_length=500)
+    album: Optional[str] = Field(default=None, max_length=500)
+    thumbnail: Optional[str] = Field(default=None, max_length=2048)
+    duration: Optional[float] = Field(default=None, ge=0, le=86400)
+    spotify_id: Optional[str] = Field(default=None, pattern=r"^[A-Za-z0-9]{1,100}$")
+    provider: Optional[str] = Field(default=None, max_length=60)
+    provider_track_id: Optional[str] = Field(default=None, max_length=300)
+    webpage_url: Optional[str] = Field(default=None, max_length=2048)
+    tempo: Optional[float] = Field(default=None, gt=0, le=400)
+    energy: Optional[float] = Field(default=None, ge=0, le=1)
+    instrumentalness: Optional[float] = Field(default=None, ge=0, le=1)
+    valence: Optional[float] = Field(default=None, ge=0, le=1)
+    speechiness: Optional[float] = Field(default=None, ge=0, le=1)
+    liveness: Optional[float] = Field(default=None, ge=0, le=1)
+    feature_source: Optional[str] = Field(default=None, max_length=100)
+    play_count: int = Field(default=1, ge=1, le=10000)
+    played_at: Optional[float] = Field(default=None, ge=0, le=100000000000000)
+
+
+class RecommendationRequest(BaseModel):
+    mode: Literal["blend", "listening", "focus"] = "blend"
+    candidates: List[RecommendationTrack] = Field(default_factory=list, max_length=300)
+    history: List[RecommendationTrack] = Field(default_factory=list, max_length=100)
+    current_track: Optional[RecommendationTrack] = None
+    limit: int = Field(default=20, ge=1, le=50)

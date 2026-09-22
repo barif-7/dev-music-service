@@ -15,7 +15,7 @@
 <link rel="stylesheet" href="/static/css/dock.css">
 <link rel="stylesheet" href="/static/css/grid.css">
 <link rel="stylesheet" href="/static/css/search.css">
-<link rel="stylesheet" href="/static/css/playlist.css?v=20260906-set1">
+<link rel="stylesheet" href="/static/css/playlist.css?v=20260921-recommendations1">
 <link rel="stylesheet" href="/static/css/responsive.css">
 <script src="/static/js/state.js"></script>
 </head>
@@ -360,7 +360,7 @@
   </div>
 
   <!-- provider-neutral playing set: lightweight metadata tells the player what comes next -->
-  <section class="chrome" id="playlistCarousel" aria-label="Playing set" aria-hidden="true" hidden>
+  <section class="chrome" id="playlistCarousel" aria-label="Playing set and recommendations" aria-hidden="true" hidden>
     <header class="pc-head">
       <div class="pc-heading"><span class="pc-kicker">Playing set</span><strong id="playlistTitle">Playing set</strong><span id="playlistPosition">0 / 0</span></div>
       <div class="pc-actions" aria-label="Playing set controls">
@@ -370,7 +370,22 @@
         <button type="button" class="pc-action" id="playlistClose" aria-label="Close playing set">×</button>
       </div>
     </header>
+    <div class="pc-sources" id="playlistSources" role="group" aria-label="Songs to show" hidden>
+      <button type="button" class="pc-source" id="playlistSourceQueue" aria-pressed="true">Playing set</button>
+      <button type="button" class="pc-source" id="playlistSourceRecommendations" aria-pressed="false">Recommendations</button>
+    </div>
+    <div class="pc-recommendation-controls" id="playlistRecommendationControls" hidden>
+      <label for="playlistRecommendationMode">Based on</label>
+      <select id="playlistRecommendationMode">
+        <option value="listening">Listening BPM</option>
+        <option value="focus">Focus history</option>
+        <option value="blend" selected>Both</option>
+      </select>
+      <button type="button" class="pc-refresh" id="playlistRecommendationRefresh">Refresh</button>
+    </div>
+    <p class="pc-status" id="playlistRecommendationStatus" role="status" aria-live="polite" hidden></p>
     <div class="pc-rail" id="playlistTrackRail" role="list" aria-label="Tracks in playing order"></div>
+    <p class="pc-status pc-action-status" id="playlistRecommendationActionStatus" role="status" aria-live="polite" hidden></p>
     <footer class="pc-foot"><span id="playlistNext" aria-live="polite">No track queued</span><span class="pc-scale">Metadata only · capped at 250</span></footer>
   </section>
 
@@ -608,8 +623,9 @@
 <script src="/static/gallery/engine.js?v=20260814-a11y1"></script>
 <script src="/static/gallery/audio.js"></script>
 <script src="/static/gallery/player.js?v=20260825-realtime1"></script>
-<script src="/static/gallery/playlist.js?v=20260906-set1"></script>
+<script src="/static/gallery/playlist.js?v=20260921-recommendations1"></script>
 <script src="/static/gallery/service.js?v=20260825-realtime1"></script>
+<script src="/static/gallery/recommendations.js?v=20260921-recommendations1"></script>
 <script src="/static/gallery/cast.js"></script>
 <script async src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1"></script>
 <script src="/static/gallery/plugin-dock.js?v=20260814-dock1"></script>

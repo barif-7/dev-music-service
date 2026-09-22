@@ -40,6 +40,7 @@ from models import (
     ImportedPlaylistTrack,
     LocalizeWindowRequest,
     LyricVisualAnalysisRequest,
+    RecommendationRequest,
     SpotifySaveTrackRequest,
     TranslatedVocalRequest,
 )
@@ -70,6 +71,7 @@ from services.component_vault_service import (
 from services.forge_inventory_service import ForgeInventoryError, ForgeInventoryService
 from services.forge_workbench_service import ForgeWorkbenchError, ForgeWorkbenchService
 from services.reccobeats_service import get_audio_feature_provider
+from services.recommendation_service import RecommendationService
 from services.import_preview_service import ImportPreviewError, ImportPreviewService
 from services.local_playback_service import LocalPlaybackService
 from services.metadata_service import MetadataService, MetadataServiceError
@@ -1772,7 +1774,22 @@ def resume_song(request: Request):
         fail_with_http_error(exc)
 
 
-# ── Focus / ADHD mode routes ──────────────────────────────────────────────────
+# ── Personal recommendations and focus / ADHD mode routes ────────────────────
+
+@app.post("/api/recommendations")
+@limiter.limit("20 per minute")
+async def recommend_tracks(request: Request, payload: RecommendationRequest):
+    """Rank browser/Spotify tracks by measured listening BPM and focus history."""
+    try:
+        return await RecommendationService.recommend(
+            payload,
+            user_id=request_user(request),
+            spotify_access_token=request.cookies.get(SpotifyImportService._TOKEN_COOKIE),
+        )
+    except Exception as exc:
+        logger.error("recommendations_failed", error_type=type(exc).__name__)
+        raise HTTPException(status_code=503, detail="Recommendations are temporarily unavailable.") from exc
+
 
 @app.get("/api/focus/profile")
 def get_focus_profile(request: Request):

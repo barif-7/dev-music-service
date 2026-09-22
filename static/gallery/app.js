@@ -333,6 +333,16 @@ function renderRecentlyPlayed(){
 window.renderRecentlyPlayed = renderRecentlyPlayed;
 
 /* ---- playing set carousel: view over the provider-neutral ordered set ---- */
+let listeningStorage = null;
+try{ listeningStorage = window.localStorage; }catch(_error){}
+const recommendationClient = new RecommendationClient({
+  playlist:phasePlaylist, player, storage:listeningStorage,
+  getFeatures:()=>trackFeatures,
+  getLiveTempo:()=>AUDIO.bpm,
+  playTrack:(track, options)=>loadTrack(track, options),
+  onChange:()=>window.playlistCarousel?.invalidateRecommendations(),
+});
+window.recommendationClient = recommendationClient;
 const playlistCarousel = new PlaylistCarousel({
   playlist:phasePlaylist,
   root:$('#playlistCarousel'),
@@ -347,10 +357,15 @@ const playlistCarousel = new PlaylistCarousel({
   clearButton:$('#playlistClear'),
   closeButton:$('#playlistClose'),
   onPlay:track=>loadTrack(track, { playlistMode:'sync' }),
+  recommendationSource:recommendationClient,
   renderLimit:30,
 });
 window.playlistCarousel = playlistCarousel;
+recommendationClient.start();
+window.addEventListener('phase:features', ()=>recommendationClient.updateFeatures());
+window.addEventListener('phase:focus-profile', ()=>recommendationClient.invalidate());
 phasePlaylist.subscribe(snapshot=>{
+  recommendationClient.invalidate();
   if(typeof PhaseState === 'undefined') return;
   PhaseState.batch(()=>{
     PhaseState.set('playlist', snapshot);

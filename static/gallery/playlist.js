@@ -260,7 +260,7 @@ class PlaylistAdvanceRule {
 class PlaylistCarousel {
   constructor({ playlist, root, rail, toggleButton, countElement, titleElement, positionElement,
     nextElement, previousPageButton, nextPageButton, clearButton, closeButton,
-    onPlay = ()=>{}, renderLimit = 30 } = {}) {
+    onPlay = ()=>{}, renderLimit = 30, recommendationSource = null } = {}) {
     this.playlist = playlist;
     this.root = root;
     this.rail = rail;
@@ -274,6 +274,27 @@ class PlaylistCarousel {
     this.clearButton = clearButton;
     this.closeButton = closeButton;
     this.onPlay = onPlay;
+    this.recommendationSource = recommendationSource;
+    this.view = 'queue';
+    this.recommendationMode = 'blend';
+    this.recommendationData = null;
+    this.recommendationLoading = false;
+    this.recommendationError = '';
+    this._recommendationGeneration = 0;
+    this._recommendationTimer = null;
+    this._scrollPositions = { queue:0, recommendations:0 };
+    this._pendingRecommendationActions = new Set();
+    this.sourcesElement = root?.querySelector('#playlistSources');
+    this.queueSourceButton = root?.querySelector('#playlistSourceQueue');
+    this.recommendationsSourceButton = root?.querySelector('#playlistSourceRecommendations');
+    this.recommendationControls = root?.querySelector('#playlistRecommendationControls');
+    this.recommendationModeElement = root?.querySelector('#playlistRecommendationMode');
+    this.recommendationRefreshButton = root?.querySelector('#playlistRecommendationRefresh');
+    this.recommendationStatusElement = root?.querySelector('#playlistRecommendationStatus');
+    this.recommendationActionStatusElement = root?.querySelector('#playlistRecommendationActionStatus');
+    this.scaleElement = root?.querySelector('.pc-scale');
+    this.kickerElement = root?.querySelector('.pc-kicker');
+    if(this.sourcesElement) this.sourcesElement.hidden = !this._hasRecommendations();
     this.renderLimit = Math.max(5, Number(renderLimit) || 30);
     this.opened = false;
     this.userClosed = false;
@@ -282,20 +303,35 @@ class PlaylistCarousel {
     clearButton?.addEventListener('click', ()=>playlist?.clear({ keepCurrent:true, reason:'clear-upcoming' }));
     previousPageButton?.addEventListener('click', ()=>this.scroll(-1));
     nextPageButton?.addEventListener('click', ()=>this.scroll(1));
+    this.queueSourceButton?.addEventListener('click', ()=>this.setView('queue'));
+    this.recommendationsSourceButton?.addEventListener('click', ()=>this.setView('recommendations'));
+    this.recommendationModeElement?.addEventListener('change', event=>{
+      const mode = event.target.value;
+      if(!['listening', 'focus', 'blend'].includes(mode)) return;
+      this.recommendationMode = mode;
+      this._scrollPositions.recommendations = 0;
+      this.invalidateRecommendations();
+    });
+    this.recommendationRefreshButton?.addEventListener('click', ()=>this._loadRecommendations(true));
     this.unsubscribe = playlist?.subscribe((snapshot, event)=>{
+      if(event.type !== 'init') this._clearRecommendations();
       this.render(snapshot, event);
       if(snapshot.size > 1 && ['replace', 'append'].includes(event.type) && !this.userClosed) this.open();
+      this._scheduleRecommendations();
     });
   }
 
+  _hasRecommendations() { return typeof this.recommendationSource?.load === 'function'; }
+
   open() {
-    if(!this.playlist?.size) return;
+    if(!this.playlist?.size && !this._hasRecommendations()) return;
     this.opened = true;
     this.userClosed = false;
     document.body?.classList.add('playlist-carousel-open');
     this.root?.classList.add('show');
     this.root?.setAttribute('aria-hidden', 'false');
     this.toggleButton?.setAttribute('aria-expanded', 'true');
+    this._scheduleRecommendations();
   }
 
   close({ user = false } = {}) {
@@ -305,9 +341,77 @@ class PlaylistCarousel {
     this.root?.classList.remove('show');
     this.root?.setAttribute('aria-hidden', 'true');
     this.toggleButton?.setAttribute('aria-expanded', 'false');
+    this._cancelRecommendationLoad();
   }
 
   toggle() { this.opened ? this.close({ user:true }) : this.open(); }
+
+  setView(view) {
+    if(!['queue', 'recommendations'].includes(view) || view === this.view) return;
+    if(view === 'recommendations' && !this._hasRecommendations()) return;
+    this._scrollPositions[this.view] = this.rail?.scrollLeft || 0;
+    this._cancelRecommendationLoad();
+    this.view = view;
+    this.render();
+    if(this.rail) this.rail.scrollLeft = this._scrollPositions[view];
+    this._loadRecommendations();
+  }
+
+  _cancelRecommendationLoad() {
+    clearTimeout(this._recommendationTimer);
+    this._recommendationTimer = null;
+    this._recommendationGeneration += 1;
+    this.recommendationLoading = false;
+  }
+
+  _clearRecommendations() {
+    this._cancelRecommendationLoad();
+    this.recommendationData = null;
+    this.recommendationError = '';
+  }
+
+  invalidateRecommendations() {
+    this._clearRecommendations();
+    this.render();
+    this._scheduleRecommendations();
+  }
+
+  _scheduleRecommendations() {
+    // Track resolution updates queue metadata and listening history together.
+    clearTimeout(this._recommendationTimer);
+    if(!this.opened || this.view !== 'recommendations' || !this._hasRecommendations()) return;
+    this._recommendationTimer = setTimeout(()=>{
+      this._recommendationTimer = null;
+      this._loadRecommendations();
+    }, 150);
+  }
+
+  async _loadRecommendations(force = false) {
+    if(!this.opened || this.view !== 'recommendations' || !this._hasRecommendations()) return;
+    if(!force && (this.recommendationLoading || this.recommendationData)) return;
+    const generation = ++this._recommendationGeneration;
+    const mode = this.recommendationMode;
+    this.recommendationLoading = true;
+    this.recommendationError = '';
+    this.recommendationData = null;
+    this._showRecommendationAction('');
+    this.render();
+    try{
+      const result = await this.recommendationSource.load({ mode, force });
+      if(generation !== this._recommendationGeneration) return;
+      if(!result || !Array.isArray(result.tracks)) throw new Error('The recommendations service returned an invalid response.');
+      this.recommendationData = { ...result, tracks:result.tracks.filter(track=>track && typeof track === 'object') };
+    }catch(error){
+      if(generation !== this._recommendationGeneration) return;
+      this.recommendationError = error?.message || 'Recommendations are unavailable. Try again.';
+    }finally{
+      if(generation === this._recommendationGeneration){
+        this.recommendationLoading = false;
+        this.render();
+        if(this.rail) this.rail.scrollLeft = this._scrollPositions.recommendations;
+      }
+    }
+  }
 
   scroll(direction) {
     this.rail?.scrollBy({ left:direction * Math.max(220, this.rail.clientWidth * 0.78), behavior:'smooth' });
@@ -318,6 +422,29 @@ class PlaylistCarousel {
     const lead = Math.min(4, Math.floor(this.renderLimit / 3));
     const start = Math.max(0, Math.min(snapshot.size - this.renderLimit, snapshot.currentIndex - lead));
     return { items:snapshot.items.slice(start, start + this.renderLimit), start };
+  }
+
+  _cardContent(track, label) {
+    const art = document.createElement('span');
+    art.className = 'pc-art';
+    if(track.thumbnail){
+      const image = document.createElement('img');
+      image.src = track.thumbnail;
+      image.alt = '';
+      image.loading = 'lazy';
+      art.appendChild(image);
+    } else art.textContent = '♪';
+    const copy = document.createElement('span');
+    copy.className = 'pc-copy';
+    const order = document.createElement('span');
+    order.className = 'pc-order';
+    order.textContent = label;
+    const title = document.createElement('strong');
+    title.textContent = track.title || 'Untitled track';
+    const artist = document.createElement('span');
+    artist.textContent = track.artist || track.album || 'Unknown artist';
+    copy.append(order, title, artist);
+    return [art, copy];
   }
 
   _card(track, index, snapshot) {
@@ -332,26 +459,8 @@ class PlaylistCarousel {
     play.className = 'pc-card-main';
     play.setAttribute('aria-label', `${index === snapshot.currentIndex ? 'Restart' : 'Play'} ${track.title}`);
     if(index === snapshot.currentIndex) play.setAttribute('aria-current', 'true');
-    const art = document.createElement('span');
-    art.className = 'pc-art';
-    if(track.thumbnail){
-      const image = document.createElement('img');
-      image.src = track.thumbnail;
-      image.alt = '';
-      image.loading = 'lazy';
-      art.appendChild(image);
-    } else art.textContent = '♪';
-    const copy = document.createElement('span');
-    copy.className = 'pc-copy';
-    const order = document.createElement('span');
-    order.className = 'pc-order';
-    order.textContent = index === snapshot.currentIndex ? 'Playing' : index > snapshot.currentIndex ? `Up next · ${index + 1}` : `Played · ${index + 1}`;
-    const title = document.createElement('strong');
-    title.textContent = track.title || 'Untitled track';
-    const artist = document.createElement('span');
-    artist.textContent = track.artist || track.album || 'Unknown artist';
-    copy.append(order, title, artist);
-    play.append(art, copy);
+    const label = index === snapshot.currentIndex ? 'Playing' : index > snapshot.currentIndex ? `Up next · ${index + 1}` : `Played · ${index + 1}`;
+    play.append(...this._cardContent(track, label));
     play.addEventListener('click', ()=>{
       const selected = this.playlist.select(track.playlistKey, { reason:'carousel-pick' });
       if(selected) this.onPlay(selected, { reason:'carousel-pick' });
@@ -367,16 +476,124 @@ class PlaylistCarousel {
     return item;
   }
 
+  _recommendationCard(track) {
+    const item = document.createElement('div');
+    item.className = 'pc-card pc-recommendation-card';
+    item.setAttribute('role', 'listitem');
+    item.dataset.key = PlaylistSet.keyFor(track);
+    const main = document.createElement('div');
+    main.className = 'pc-card-main';
+    const score = Number(track.score);
+    const scoreLabel = track.score != null && Number.isFinite(score) ? `${Math.round(score)}% match` : 'Recommended';
+    main.append(...this._cardContent(track, scoreLabel));
+    const reason = document.createElement('p');
+    reason.className = 'pc-recommendation-reason';
+    reason.textContent = track.reason || 'Selected for your listening preferences.';
+    const actions = document.createElement('div');
+    actions.className = 'pc-recommendation-actions';
+    for(const [action, label] of [['play', 'Play'], ['addNext', 'Add next']]){
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'pc-recommendation-action';
+      button.textContent = label;
+      button.setAttribute('aria-label', action === 'play' ? `Play ${track.title}` : `Add ${track.title} next`);
+      button.disabled = typeof this.recommendationSource?.[action] !== 'function' || this._pendingRecommendationActions.has(`${action}:${PlaylistSet.keyFor(track)}`);
+      button.addEventListener('click', ()=>this._performRecommendationAction(track, action, button));
+      actions.appendChild(button);
+    }
+    item.append(main, reason, actions);
+    return item;
+  }
+
+  _showRecommendationAction(message, error = false) {
+    if(!this.recommendationActionStatusElement) return;
+    this.recommendationActionStatusElement.textContent = message;
+    this.recommendationActionStatusElement.hidden = !message || this.view !== 'recommendations';
+    this.recommendationActionStatusElement.classList.toggle('error', error);
+  }
+
+  async _performRecommendationAction(track, action, button) {
+    const callback = this.recommendationSource?.[action];
+    const key = `${action}:${PlaylistSet.keyFor(track)}`;
+    if(typeof callback !== 'function' || this._pendingRecommendationActions.has(key)) return;
+    this._pendingRecommendationActions.add(key);
+    button.disabled = true;
+    this._showRecommendationAction(action === 'play' ? `Starting ${track.title}…` : `Adding ${track.title} next…`);
+    try{
+      const result = await callback.call(this.recommendationSource, track);
+      if(result === false) throw new Error(action === 'play' ? 'Could not start this track.' : 'Could not add this track next.');
+      this._showRecommendationAction(action === 'play' ? `Playing ${track.title}` : `Added ${track.title} next`);
+    }catch(error){
+      this._showRecommendationAction(error?.message || 'Could not update playback. Try again.', true);
+    }finally{
+      this._pendingRecommendationActions.delete(key);
+      if(button.isConnected) button.disabled = false;
+    }
+  }
+
+  _renderRecommendations() {
+    const data = this.recommendationData;
+    const tracks = data?.tracks || [];
+    const status = this.recommendationStatusElement;
+    let message = '';
+    if(this.recommendationLoading) message = 'Finding songs for you…';
+    else if(this.recommendationError) message = this.recommendationError;
+    else if(data && !tracks.length) message = data.message || 'No recommendations yet. Listen to a song or use a focus profile, then refresh.';
+    else if(data){
+      const details = [];
+      if(Number(data.target_bpm) > 0) details.push(`Around ${Math.round(data.target_bpm)} BPM`);
+      if(Number(data.history_count) > 0) details.push(`${data.history_count} recent ${Number(data.history_count) === 1 ? 'listen' : 'listens'}`);
+      if(Number(data.profile_history_count) > 0) details.push(`${data.profile_history_count} focus ${Number(data.profile_history_count) === 1 ? 'selection' : 'selections'}`);
+      message = [data.message, details.join(' · ')].filter(Boolean).join(' ');
+    }
+    if(Array.isArray(data?.warnings) && data.warnings.length) message = [message, ...data.warnings].filter(Boolean).join(' ');
+    if(status){
+      status.textContent = message;
+      status.hidden = !message;
+      status.classList.toggle('error', Boolean(this.recommendationError));
+    }
+    if(this.recommendationRefreshButton){
+      this.recommendationRefreshButton.disabled = this.recommendationLoading;
+      this.recommendationRefreshButton.textContent = this.recommendationError ? 'Retry' : 'Refresh';
+    }
+    if(this.positionElement) this.positionElement.textContent = tracks.length ? `${tracks.length} picks` : '';
+    if(this.scaleElement) this.scaleElement.textContent = 'Personalized picks';
+    this.rail.setAttribute('aria-busy', String(this.recommendationLoading));
+    this.rail.replaceChildren(...tracks.slice(0, this.renderLimit).map(track=>this._recommendationCard(track)));
+    if(this.previousPageButton) this.previousPageButton.disabled = tracks.length < 2;
+    if(this.nextPageButton) this.nextPageButton.disabled = tracks.length < 2;
+  }
+
   render(snapshot = this.playlist?.snapshot(), event = { type:'render' }) {
     if(!snapshot || !this.root || !this.rail) return;
-    this.root.hidden = snapshot.size === 0;
-    if(this.toggleButton) this.toggleButton.disabled = snapshot.size === 0;
+    const recommendations = this.view === 'recommendations';
+    this.root.hidden = snapshot.size === 0 && !this._hasRecommendations();
+    this.root.dataset.view = this.view;
+    if(this.toggleButton) this.toggleButton.disabled = this.root.hidden;
     if(this.countElement) this.countElement.textContent = String(snapshot.size);
-    if(this.titleElement) this.titleElement.textContent = snapshot.label || 'Playing set';
+    if(this.titleElement) this.titleElement.textContent = recommendations ? 'For your next listen' : snapshot.label || 'Playing set';
+    if(this.kickerElement) this.kickerElement.textContent = recommendations ? 'Discover' : 'Playing set';
     if(this.positionElement) this.positionElement.textContent = snapshot.size ? `${snapshot.currentIndex + 1} / ${snapshot.size}` : '0 / 0';
-    if(this.nextElement) this.nextElement.textContent = snapshot.next ? `Next · ${snapshot.next.title}` : 'End of set · current track will loop';
-    if(this.clearButton) this.clearButton.disabled = !snapshot.hasNext && !snapshot.hasPrevious;
-    this.toggleButton?.setAttribute('aria-label', `Open playing set, ${snapshot.size} tracks`);
+    if(this.nextElement) this.nextElement.textContent = snapshot.next ? `Next · ${snapshot.next.title}` : snapshot.size ? 'End of set · current track will loop' : 'No track queued';
+    if(this.clearButton){
+      this.clearButton.hidden = recommendations;
+      this.clearButton.disabled = !snapshot.hasNext && !snapshot.hasPrevious;
+    }
+    this.toggleButton?.setAttribute('aria-label', `Open playing set${this._hasRecommendations() ? ' and recommendations' : ''}, ${snapshot.size} tracks`);
+    this.queueSourceButton?.setAttribute('aria-pressed', String(!recommendations));
+    this.recommendationsSourceButton?.setAttribute('aria-pressed', String(recommendations));
+    if(this.recommendationControls) this.recommendationControls.hidden = !recommendations;
+    if(this.recommendationStatusElement) this.recommendationStatusElement.hidden = !recommendations;
+    if(this.recommendationActionStatusElement) this.recommendationActionStatusElement.hidden = !recommendations || !this.recommendationActionStatusElement.textContent;
+    this.rail.setAttribute('aria-label', recommendations ? 'Recommended songs' : 'Tracks in playing order');
+    if(recommendations){
+      this._renderRecommendations();
+      return;
+    }
+    this.rail.removeAttribute('aria-busy');
+    if(this.scaleElement) this.scaleElement.textContent = 'Metadata only · capped at 250';
+    if(this.previousPageButton) this.previousPageButton.disabled = snapshot.size < 2;
+    if(this.nextPageButton) this.nextPageButton.disabled = snapshot.size < 2;
     const windowed = this._visibleWindow(snapshot);
     const fragment = document.createDocumentFragment();
     windowed.items.forEach((track, localIndex)=>fragment.appendChild(this._card(track, windowed.start + localIndex, snapshot)));
@@ -384,7 +601,7 @@ class PlaylistCarousel {
     if(['replace', 'select', 'advance'].includes(event.type)){
       requestAnimationFrame(()=>this.rail.querySelector('.pc-card.current')?.scrollIntoView({ block:'nearest', inline:'center' }));
     }
-    if(!snapshot.size) this.close();
+    if(!snapshot.size && !this._hasRecommendations()) this.close();
   }
 }
 

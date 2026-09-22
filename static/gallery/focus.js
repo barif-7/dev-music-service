@@ -28,10 +28,18 @@
     };
     try{
       const r = await fetch('/api/focus/profile', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(profile)});
-      if(r.ok && data) analyse();
+      if(r.ok){
+        window.dispatchEvent(new CustomEvent('phase:focus-profile'));
+        if(data) analyse();
+      }
     }catch(e){}
   }
-  async function resetProfile(){ await fetch('/api/focus/profile/reset',{method:'POST'}); await loadProfile(); if(data) analyse(); }
+  async function resetProfile(){
+    const response = await fetch('/api/focus/profile/reset',{method:'POST'});
+    if(!response.ok) return;
+    window.dispatchEvent(new CustomEvent('phase:focus-profile'));
+    await loadProfile(); if(data) analyse();
+  }
 
   async function checkStatus(){
     try{
@@ -81,6 +89,9 @@
       title:t.title, artist:t.artist, album:t.album, thumbnail:t.thumbnail,
       duration:t.duration_ms ? Math.round(t.duration_ms/1000) : undefined,
       spotifyId:t.id || t.track_id, provider:'spotify',
+      tempo:t.tempo, energy:t.energy, instrumentalness:t.instrumentalness,
+      valence:t.valence, speechiness:t.speechiness, liveness:t.liveness,
+      feature_source:t.source,
     }));
     const renderTrack = (t, hasFeatures, queueIndex) => {
       const row = document.createElement('button'); row.className = 'fc-track';
