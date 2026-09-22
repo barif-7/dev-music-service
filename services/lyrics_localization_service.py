@@ -22,7 +22,9 @@ from models import LyricsLine
 logger = logging.getLogger(__name__)
 
 _TOOL_PATH = "/tools/localize_lyrics/run"
-_REQUEST_TIMEOUT_SECONDS = 180.0
+# Kept short: a window is only a handful of lines, and when the localizer is
+# down the UI should fall back to the original text in seconds, not minutes.
+_REQUEST_TIMEOUT_SECONDS = 45.0
 _DEFAULT_FALLBACK_LOCALIZER_URL = "http://127.0.0.1:8001"
 
 LyricItem = tuple[int, str] | tuple[int, str, int | None, int | None]
