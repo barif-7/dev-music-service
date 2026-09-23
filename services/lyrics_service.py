@@ -12,6 +12,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from config import get_settings
+from services.lyrics_availability import get_store
 from models import LyricsLine, LyricsResponse
 from services.lyrics_localization_service import LyricsLocalizationService
 from services.music_service import MusicServiceError
@@ -257,6 +258,18 @@ class LyricsService:
         )
 
     @staticmethod
+    def _remember_availability(query: _LyricsQuery, response: LyricsResponse) -> None:
+        """Persist the availability category we just observed for this track."""
+        status = "none"
+        if response.instrumental:
+            status = "instrumental"
+        elif response.synced:
+            status = "synced"
+        elif response.plain_lyrics:
+            status = "plain"
+        get_store().record(query.artist, query.title, status)
+
+    @staticmethod
     def get_lyrics(
         title: str,
         artist: str,
@@ -296,7 +309,9 @@ class LyricsService:
                     "duration": query.duration,
                 },
             )
-            return LyricsService._cache_set(cache_key, LyricsService._build_response(payload, query))
+            response = LyricsService._build_response(payload, query)
+            LyricsService._remember_availability(query, response)
+            return LyricsService._cache_set(cache_key, response)
         except LyricsNotFoundError:
             pass
         except LyricsProviderError as exc:
@@ -307,8 +322,11 @@ class LyricsService:
         except LyricsNotFoundError:
             if provider_error is not None:
                 return LyricsService._unavailable_response(query, provider_error)
+            get_store().record(query.artist, query.title, "none")
             raise
-        return LyricsService._cache_set(cache_key, LyricsService._build_response(payload, query))
+        response = LyricsService._build_response(payload, query)
+        LyricsService._remember_availability(query, response)
+        return LyricsService._cache_set(cache_key, response)
 
     # ── Live (windowed) localization ────────────────────────────────────────
 

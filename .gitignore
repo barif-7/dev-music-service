@@ -29,3 +29,6 @@ dist/
 
 # generated weekly summaries
 weekly-summary-*.html
+
+# Lyric availability memory (services/lyrics_availability.py)
+*.sqlite3

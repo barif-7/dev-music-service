@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import logging
 import re
 import threading
 import time
@@ -11,6 +12,9 @@ import httpx
 
 from models import AutocompleteSuggestion
 from services.text_match import combined_score, normalize
+from services.lyrics_availability import get_store
+
+logger = logging.getLogger(__name__)
 
 
 class MetadataServiceError(Exception):
@@ -19,6 +23,12 @@ class MetadataServiceError(Exception):
 
 class MetadataService:
     _cache_lock = threading.Lock()
+
+    _LYRICS_RANK_BOOST = {"synced": 12, "plain": 6, "unknown": 0, "instrumental": -4, "none": -10}
+    # Bounds LRCLIB load per query; latency is bounded by the budget, not this.
+    _LYRICS_PROBE_LIMIT = 8
+    _LYRICS_PROBE_BUDGET_SECONDS = 0.25
+
     _request_lock = asyncio.Lock()
     _autocomplete_cache: dict[str, tuple[list[AutocompleteSuggestion], float]] = {}
     _author_index: dict[str, list[AutocompleteSuggestion]] = {}
@@ -282,9 +292,59 @@ class MetadataService:
         # Primary: fuzzy combined match of "artist title" against query.
         # Tie-breakers: confidence, then prefer shorter normalized titles
         # (less likely to be a long live/edit variant).
+        # Lyrics availability is a small nudge, not a primary ranking key,
+        # so strong text matches still win over weak lyric-boosted ones.
         combined = combined_score(query, suggestion.title, suggestion.artist)
         norm_title_len = len(normalize(suggestion.title))
-        return (combined, suggestion.confidence, -norm_title_len)
+        boost = MetadataService._LYRICS_RANK_BOOST.get(suggestion.lyrics, 0)
+        return (combined + boost, suggestion.confidence, -norm_title_len)
+
+    @staticmethod
+    def _annotate_lyrics(suggestions: list[AutocompleteSuggestion]) -> None:
+        """Fill lyrics availability on each suggestion using the local store."""
+        keys = [(s.artist or "", s.title) for s in suggestions if s.artist]
+        statuses = get_store().get_many(keys)
+        for suggestion in suggestions:
+            if not suggestion.artist:
+                continue
+            suggestion.lyrics = statuses.get((suggestion.artist, suggestion.title), "unknown")
+
+    @staticmethod
+    async def _probe_lyrics(
+        suggestions: list[AutocompleteSuggestion],
+        budget_seconds: float = _LYRICS_PROBE_BUDGET_SECONDS,
+    ) -> None:
+        """Probe LRCLIB for a few unknown suggestions in the background.
+
+        Pending probes are left running so they can populate the store for
+        future requests even if this call's budget runs out.
+        """
+        from services.lyrics_service import LyricsService
+
+        candidates = [
+            s for s in suggestions
+            if s.lyrics == "unknown" and s.artist and s.title
+        ][: MetadataService._LYRICS_PROBE_LIMIT]
+
+        async def _probe_one(suggestion: AutocompleteSuggestion) -> None:
+            try:
+                await asyncio.get_running_loop().run_in_executor(
+                    None,
+                    LyricsService.get_lyrics,
+                    suggestion.title,
+                    suggestion.artist,
+                    suggestion.album,
+                    suggestion.duration or None,
+                )
+            except Exception:
+                # Probing is best-effort; failures should not affect ranking.
+                logger.debug("Background lyrics probe failed", exc_info=True)
+
+        tasks = [asyncio.create_task(_probe_one(s)) for s in candidates]
+        if tasks:
+            await asyncio.wait(tasks, timeout=budget_seconds)
+        # Refresh statuses; pending tasks continue filling the store.
+        MetadataService._annotate_lyrics(candidates)
 
     @staticmethod
     def _index_authors(suggestions: list[AutocompleteSuggestion]) -> None:
@@ -485,6 +545,15 @@ class MetadataService:
         cache_key = f"{normalized}|spotify" if spotify_token else normalized
         cached = MetadataService._cache_get(cache_key)
         if cached is not None:
+            MetadataService._annotate_lyrics(cached)
+            # Keep learning on cache hits, without waiting: probes that miss the
+            # first request's budget would otherwise never get another chance.
+            if any(item.lyrics == "unknown" for item in cached):
+                asyncio.create_task(MetadataService._probe_lyrics(cached, budget_seconds=0))
+            cached.sort(
+                key=lambda item: MetadataService._suggestion_rank(item, query),
+                reverse=True,
+            )
             return cached[:limit]
 
         oversample = max(limit, 8)
@@ -538,6 +607,8 @@ class MetadataService:
                 continue
             merged_seen.add(key)
             merged.append(suggestion)
+        MetadataService._annotate_lyrics(merged)
+        await MetadataService._probe_lyrics(merged)
         merged.sort(key=lambda item: MetadataService._suggestion_rank(item, query), reverse=True)
 
         return MetadataService._cache_set(cache_key, merged)[:limit]

@@ -86,3 +86,18 @@ def sample_playlist_data() -> dict:
         "track_count": 10,
         "owner": "test_user",
     }
+
+
+@pytest.fixture(autouse=True)
+def _isolated_lyrics_availability_store(tmp_path, monkeypatch):
+    """Keep the lyric-availability SQLite file out of the repo root.
+
+    Any test that reaches LyricsService.get_lyrics writes to the store, and the
+    default DMS_DATA_DIR is the working directory.
+    """
+    from services.lyrics_availability import reset_store_for_tests
+
+    monkeypatch.setenv("DMS_DATA_DIR", str(tmp_path))
+    reset_store_for_tests()
+    yield
+    reset_store_for_tests()
