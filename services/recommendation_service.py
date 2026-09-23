@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 import structlog
 
-from models import RecommendationRequest
+from models import FocusSessionRequest, RecommendationRequest
 from services.focus_service import FocusProfile, _resolve_provider
 from services.spotify_import_service import SpotifyImportService
 
@@ -50,8 +50,10 @@ def _unique_tracks(tracks: list[dict]) -> list[dict]:
             result.append(dict(track))
         else:
             # Preserve queue identity; fill missing measurements from history.
-            result[index] = {**track, **{key: value for key, value in result[index].items()
-                                        if value is not None}}
+            result[index] = {
+                **track,
+                **{key: value for key, value in result[index].items() if value is not None},
+            }
         for key in identities:
             indices[key] = index
     return result
@@ -147,6 +149,19 @@ class RecommendationService:
         spotify_access_token: str | None = None, provider: "AudioFeatureProvider | None" = None,
         now_ms: float | None = None,
     ) -> dict:
+        ranked = await cls._rank(
+            payload, user_id=user_id, spotify_access_token=spotify_access_token,
+            provider=provider, now_ms=now_ms,
+        )
+        return {**ranked, "tracks": ranked["tracks"][:payload.limit]}
+
+    @classmethod
+    async def _rank(
+        cls, payload: RecommendationRequest, *, user_id: str | None = None,
+        spotify_access_token: str | None = None, provider: "AudioFeatureProvider | None" = None,
+        now_ms: float | None = None, include_current: bool = False,
+    ) -> dict:
+        """Rank the bounded candidate pool before a caller selects its results."""
         warnings: list[str] = []
         candidates = [track.model_dump(exclude_none=True) for track in payload.candidates]
         history = _unique_tracks([track.model_dump(exclude_none=True) for track in payload.history])
@@ -165,9 +180,12 @@ class RecommendationService:
         if not history and spotify_candidates:
             history = [dict(track) for track in spotify_candidates]
             history_source = "Spotify"
-        candidates = _unique_tracks([*candidates, *history, *spotify_candidates])
-        current_ids = _identities(current)
-        candidates = [track for track in candidates if not current_ids.intersection(_identities(track))]
+        candidates = _unique_tracks([
+            *candidates, *history, *spotify_candidates, *([current] if include_current and current else []),
+        ])
+        if not include_current:
+            current_ids = _identities(current)
+            candidates = [track for track in candidates if not current_ids.intersection(_identities(track))]
 
         enrichment_ids = list(dict.fromkeys(
             track["spotify_id"] for track in [*history, current, *candidates]
@@ -237,9 +255,72 @@ class RecommendationService:
         elif payload.mode == "blend" and target_bpm is None:
             message = "Using your focus profile until listening BPM is available."
         return {
-            "tracks": scored[:payload.limit], "mode": payload.mode,
+            "tracks": scored, "mode": payload.mode,
             "target_bpm": round(target_bpm, 1) if target_bpm is not None else None,
             "history_count": len(history), "profile_history_count": len(profile_history),
             "features_covered": features_covered, "candidates_total": len(candidates),
+            "message": message, "warnings": warnings,
+        }
+
+    @classmethod
+    async def focus_session(
+        cls, payload: FocusSessionRequest, *, user_id: str | None = None,
+        spotify_access_token: str | None = None, provider: "AudioFeatureProvider | None" = None,
+        now_ms: float | None = None,
+    ) -> dict:
+        """Curate a focus-profile playlist long enough to cover a Pomodoro preset.
+
+        Songs are taken in focus-profile order until their known lengths cover
+        the preset. A song of unknown length cannot be counted towards the
+        timer, so it is left out and reported rather than padding the total.
+        """
+        ranked = await cls._rank(
+            RecommendationRequest(
+                mode="focus", candidates=payload.candidates, history=payload.history,
+                current_track=payload.current_track,
+            ),
+            user_id=user_id, spotify_access_token=spotify_access_token,
+            provider=provider, now_ms=now_ms, include_current=True,
+        )
+        target_seconds = payload.preset_minutes * 60
+        tracks: list[dict] = []
+        total_seconds = 0.0
+        unmeasured = 0
+        for track in ranked["tracks"]:
+            if total_seconds >= target_seconds:
+                break
+            duration = track.get("duration")
+            if not isinstance(duration, (int, float)) or not math.isfinite(duration) or duration <= 0:
+                unmeasured += 1
+                continue
+            tracks.append(track)
+            total_seconds += float(duration)
+        covered = total_seconds >= target_seconds
+        shortfall = max(0.0, target_seconds - total_seconds)
+        message = ranked["message"]
+        if not tracks:
+            message = (f"No songs with a known length are available for a {payload.preset_minutes} minute "
+                       "session. Add songs to your playing set and try again.")
+        elif not covered:
+            minutes_short = max(1, round(shortfall / 60))
+            message = (f"Only {len(tracks)} song{'s' if len(tracks) != 1 else ''} with a known length fit this "
+                       f"{payload.preset_minutes} minute session — about {minutes_short} minute"
+                       f"{'s' if minutes_short != 1 else ''} short. Add more songs to your playing set.")
+        warnings = list(ranked["warnings"])
+        unscored = sum(track["score"] is None for track in tracks)
+        if unscored:
+            warnings.append(f"{unscored} selected song{'s' if unscored != 1 else ''} "
+                            "had no audio measurements and could not be matched to your focus profile.")
+        # A skipped song only cost the session something if the timer went uncovered.
+        if unmeasured and not covered:
+            warnings.append(f"{unmeasured} recommended song{'s' if unmeasured != 1 else ''} "
+                            "had no known length and could not fill the timer.")
+        return {
+            "tracks": tracks, "preset_minutes": payload.preset_minutes,
+            "target_seconds": target_seconds, "total_seconds": round(total_seconds, 1),
+            "covered": covered, "shortfall_seconds": round(shortfall, 1),
+            "unmeasured_count": unmeasured,
+            "profile_history_count": ranked["profile_history_count"],
+            "candidates_total": ranked["candidates_total"],
             "message": message, "warnings": warnings,
         }

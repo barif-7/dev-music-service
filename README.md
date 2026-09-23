@@ -15,6 +15,8 @@ Phase is more than a thin `yt-dlp` wrapper. The repository now acts as the orche
 - **Translated vocals** — builds timed translated-vocal segments through permitted voices while explicitly refusing artist voice cloning.
 - **Library import** — supports Spotify OAuth/playlist import and owner-only Apple Music/iTunes library export ingestion.
 - **Focus mode** — scores tracks against persisted focus profiles using a swappable audio-feature provider; ReccoBeats is the current provider.
+- **Personal recommendations** — switch between Playing set and Recommendations, then choose Listening BPM, Focus history, or Both. Picks use measured listening history, saved focus preferences, and Spotify top tracks when connected; each has Play and Add next actions.
+- **Focus timer** — choose a 5, 10, 15, 20, or 25 minute session to build a focus-ranked playing set. Known song lengths determine coverage; shortfalls and missing audio measurements are shown. Pause, resume, reset, and completion control both the timer and playback.
 - **Embedded creative surfaces** — hosts the Lyrics Shader Lab, Canvas editor, optional Semi/Pika voice-profile surface, Component Vault previews, and a shared plugin-dock/message runtime.
 - **Developer + agent integrations** — exposes local playback/control routes and a TypeScript MCP wrapper around the FastAPI backend.
 - **Private beta controls** — optional invite-code sessions, framing policies, rate limits, structured logging, and control-route authentication.
@@ -71,6 +73,7 @@ That split keeps the system understandable despite the repo spanning Python, pla
 | `services/live_transcription_service.py` | CaptionLocalizer-backed transcription + server-sent events fallback |
 | `services/translated_vocals_service.py` | Policy-aware translated-vocal synthesis |
 | `services/focus_service.py` | Focus profiles and audio-feature scoring |
+| `services/recommendation_service.py` | Listening/focus ranking and duration-based focus-session playlists |
 | `services/reccobeats_service.py` | Current audio-feature provider with caching/backoff |
 | `services/spotify_import_service.py` | Spotify PKCE OAuth, playlists, liked tracks, playback resolution |
 | `services/apple_music_import_service.py` | Local Music/iTunes XML/JSON export parsing |
@@ -151,12 +154,18 @@ FastAPI's interactive reference is available at `/docs` while the service is run
 | Spotify import | `/api/import/spotify/*` |
 | Apple Music import | `/api/apple-music/*`, `/api/import/apple-music/*` |
 | Focus | `/api/focus/*` |
+| Recommendations | `POST /api/recommendations` |
+| Focus sessions | `POST /api/recommendations/focus-session` |
 | Components | `GET /api/components/search` |
 | Auth | `/api/auth/login`, `/api/auth/logout`, `/api/auth/status` |
 | Local control | `/api/integrations/openclaw/*` |
 | MCP process | `/api/mcp/status`, `/api/mcp/start`, `/api/mcp/stop` |
 
 See [`docs/developer-api.md`](docs/developer-api.md) for configuration and endpoint details.
+
+Recommendation requests accept `mode` (`listening`, `focus`, or `blend`), `candidates`, `history`, optional `current_track`, and `limit` (1–50). Tracks carry a `title`, optional artist/provider identifiers, `duration` in seconds, and available audio measurements such as `tempo` in BPM. Candidate and history lists are bounded at 300 and 100 tracks respectively.
+
+Focus-session requests use the same track inputs and `preset_minutes` (5, 10, 15, 20, or 25). The response includes selected `tracks`, `target_seconds`, `total_seconds`, `covered`, `shortfall_seconds`, and explanatory `message`/`warnings`. Sessions consider all candidates, including the current song, and skip unknown song lengths. Starting a session replaces the playing set; insufficient total duration is reported, and songs without audio measurements can fill time with a warning that they could not be matched to the focus profile.
 
 ## Quick start
 
@@ -249,6 +258,9 @@ uv run --extra dev pytest
 
 # Browser-level design assertions
 npm run audit:design
+
+# Focus timer browser regression audit
+node scripts/audit-pomodoro.mjs
 
 # MCP server
 cd mcp-server

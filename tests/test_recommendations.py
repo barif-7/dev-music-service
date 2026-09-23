@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from models import RecommendationRequest
+from models import FocusSessionRequest, RecommendationRequest
 from services.focus_service import AudioFeatures, DEFAULT_PROFILE, FocusProfile
 from services.recommendation_service import RecommendationService
 from services.spotify_import_service import SpotifyImportService
@@ -230,3 +230,171 @@ def test_route_uses_authenticated_users_profile_history(client, monkeypatch):
         assert response.status_code == 200
         assert response.json()["tracks"][0]["title"] == expected
         assert response.json()["profile_history_count"] == 1
+
+
+# ── Pomodoro focus sessions ──────────────────────────────────────────────────
+
+def session_track(title, tempo, duration):
+    return track(title, tempo, duration=duration, instrumentalness=0.9)
+
+
+async def test_focus_session_takes_only_enough_songs_to_cover_the_preset():
+    result = await RecommendationService.focus_session(FocusSessionRequest(
+        preset_minutes=5,
+        candidates=[session_track(name, 110, 200) for name in ("A", "B", "C", "D")],
+    ))
+    # Two 200s songs already cover 300s, so the rest stay out of the session.
+    assert len(result["tracks"]) == 2
+    assert result["total_seconds"] == 400
+    assert result["target_seconds"] == 300
+    assert result["covered"] is True
+    assert result["shortfall_seconds"] == 0
+    assert result["message"] == ""
+
+
+@pytest.mark.parametrize("minutes", [5, 10, 15, 20, 25])
+async def test_every_preset_is_covered_when_the_queue_is_long_enough(minutes):
+    result = await RecommendationService.focus_session(FocusSessionRequest(
+        preset_minutes=minutes,
+        candidates=[session_track(f"Song {index}", 110, 210) for index in range(12)],
+    ))
+    assert result["covered"] is True
+    assert result["preset_minutes"] == minutes
+    assert result["total_seconds"] >= minutes * 60
+
+
+async def test_focus_session_checks_beyond_recommendation_limit_for_known_lengths():
+    candidates = [track(f"Untimed {index}", 90, instrumentalness=0.9) for index in range(50)]
+    candidates.append(session_track("Timed", 110, 300))
+    result = await RecommendationService.focus_session(FocusSessionRequest(
+        preset_minutes=5, candidates=candidates,
+    ))
+    assert result["covered"] is True
+    assert [song["title"] for song in result["tracks"]] == ["Timed"]
+    assert result["unmeasured_count"] == 50
+    assert result["warnings"] == []
+    # Ordinary recommendations still respect the public result cap.
+    recommendations = await RecommendationService.recommend(RecommendationRequest(
+        mode="focus", candidates=candidates, limit=50,
+    ))
+    assert len(recommendations["tracks"]) == 50
+
+
+async def test_focus_session_can_use_more_than_fifty_short_songs():
+    result = await RecommendationService.focus_session(FocusSessionRequest(
+        preset_minutes=25,
+        candidates=[session_track(f"Short {index}", 90, 25) for index in range(65)],
+    ))
+    assert result["covered"] is True
+    assert len(result["tracks"]) == 60
+    assert result["total_seconds"] == 1500
+
+
+@pytest.mark.parametrize("in_queue", [True, False])
+async def test_focus_session_can_restart_the_current_song(in_queue):
+    current = session_track("Long current song", 90, 1800)
+    result = await RecommendationService.focus_session(FocusSessionRequest(
+        preset_minutes=25, candidates=[current] if in_queue else [], current_track=current,
+    ))
+    assert result["covered"] is True
+    assert [song["title"] for song in result["tracks"]] == ["Long current song"]
+    assert result["candidates_total"] == 1
+    recommendations = await RecommendationService.recommend(RecommendationRequest(
+        candidates=[current], current_track=current,
+    ))
+    assert recommendations["tracks"] == []
+
+
+async def test_current_song_can_fill_a_session_with_the_maximum_candidate_input():
+    result = await RecommendationService.focus_session(FocusSessionRequest(
+        preset_minutes=5,
+        candidates=[track(f"Untimed {index}", 90) for index in range(300)],
+        current_track=session_track("Current", 110, 300),
+    ))
+    assert result["covered"] is True
+    assert [song["title"] for song in result["tracks"]] == ["Current"]
+    assert result["candidates_total"] == 301
+
+
+async def test_covered_session_keeps_missing_audio_measurements_visible():
+    result = await RecommendationService.focus_session(FocusSessionRequest(
+        preset_minutes=5, candidates=[track("Known length only", duration=300)],
+    ))
+    assert result["covered"] is True
+    assert result["tracks"][0]["score"] is None
+    assert "No audio measurements" in result["message"]
+    assert any("could not be matched to your focus profile" in warning for warning in result["warnings"])
+
+
+async def test_partially_ranked_session_reports_unscored_songs_used_for_coverage():
+    result = await RecommendationService.focus_session(FocusSessionRequest(
+        preset_minutes=5, candidates=[session_track("Measured", 90, 200),
+                                      track("Unmeasured", duration=200)],
+    ))
+    assert result["covered"] is True
+    assert result["tracks"][0]["score"] is not None
+    assert result["tracks"][1]["score"] is None
+    assert any("1 selected song had no audio measurements" in warning for warning in result["warnings"])
+
+
+async def test_short_queue_reports_the_shortfall_instead_of_padding():
+    result = await RecommendationService.focus_session(FocusSessionRequest(
+        preset_minutes=25, candidates=[session_track("Only", 110, 240)],
+    ))
+    assert result["covered"] is False
+    assert result["total_seconds"] == 240
+    assert result["shortfall_seconds"] == 1260
+    assert "21 minutes short" in result["message"]
+
+
+async def test_songs_without_a_known_length_cannot_fill_the_timer():
+    result = await RecommendationService.focus_session(FocusSessionRequest(
+        preset_minutes=25,
+        candidates=[track("Unknown length", 110, instrumentalness=0.9), session_track("Timed", 108, 400)],
+    ))
+    assert [song["title"] for song in result["tracks"]] == ["Timed"]
+    assert result["unmeasured_count"] == 1
+    assert result["covered"] is False
+    assert any("no known length" in warning for warning in result["warnings"])
+
+
+async def test_a_song_left_out_of_a_covered_session_is_not_a_shortfall():
+    result = await RecommendationService.focus_session(FocusSessionRequest(
+        preset_minutes=5,
+        candidates=[session_track("Timed", 110, 400), track("Unknown length", 108, instrumentalness=0.9)],
+    ))
+    assert [song["title"] for song in result["tracks"]] == ["Timed"]
+    assert result["covered"] is True
+    assert result["unmeasured_count"] == 1
+    assert result["warnings"] == []
+    assert result["message"] == ""
+
+
+async def test_focus_session_ranks_against_the_saved_profile(tmp_path):
+    FocusProfile.save({"bpm_min": 60, "bpm_max": 80})
+    result = await RecommendationService.focus_session(FocusSessionRequest(
+        preset_minutes=5, candidates=[session_track("Fast", 150, 400), session_track("Slow", 70, 400)],
+    ))
+    assert result["tracks"][0]["title"] == "Slow"
+    assert result["profile_history_count"] == 1
+
+
+def test_route_builds_a_session_and_rejects_unsupported_presets(client):
+    response = client.post("/api/recommendations/focus-session", json={
+        "preset_minutes": 5,
+        "candidates": [session_track("One", 110, 200), session_track("Two", 112, 200)],
+    })
+    assert response.status_code == 200
+    assert response.json()["covered"] is True
+    assert response.json()["target_seconds"] == 300
+    for preset in (0, 7, 30, 25.5):
+        assert client.post("/api/recommendations/focus-session",
+                           json={"preset_minutes": preset}).status_code == 422
+
+
+def test_route_reports_an_empty_session_without_failing(client):
+    response = client.post("/api/recommendations/focus-session", json={"preset_minutes": 25})
+    assert response.status_code == 200
+    assert response.json()["tracks"] == []
+    assert response.json()["covered"] is False
+    assert "Add songs to your playing set" in response.json()["message"]

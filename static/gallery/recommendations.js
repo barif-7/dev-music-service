@@ -180,6 +180,46 @@
       return value;
     }
 
+    async createFocusSession(minutes){
+      if(![5,10,15,20,25].includes(minutes)) throw new Error('Choose a 5, 10, 15, 20, or 25 minute session.');
+      await this.initialize();
+      const snapshot = this.playlist?.snapshot() || {items:[]};
+      const response = await this.fetcher('/api/recommendations/focus-session', {
+        method:'POST', headers:{'Content-Type':'application/json'}, signal:AbortSignal.timeout(20000),
+        body:JSON.stringify({preset_minutes:minutes,
+          candidates:snapshot.items.slice(0,250).map(track=>apiTrack(track)), history:this.history,
+          current_track:this.player?.current ? apiTrack(this.player.current, this.getFeatures()) : null}),
+      });
+      if(!response.ok) throw new Error(response.status === 401 || response.status === 403
+        ? 'Sign in again to build a focus playlist.' : 'The focus playlist could not load. Try again.');
+      const payload = await response.json();
+      if(!Array.isArray(payload.tracks)) throw new Error('The focus playlist returned an invalid response.');
+      return {...payload, tracks:payload.tracks.map(phaseTrack)};
+    }
+
+    /* A session replaces the playing set: the preset is the whole sitting, and
+       the curated order is what makes it cover the timer. */
+    async launchSession(session, minutes){
+      const tracks = (session?.tracks || []).filter(track=>track && track.title);
+      if(!tracks.length) throw new Error('This session has no songs to play.');
+      this.playlist.replace(tracks, {
+        label:`Focus session · ${minutes} min`, source:'focus-session', reason:'focus-session',
+      });
+      const first = this.playlist.snapshot().items[0];
+      if(!first) throw new Error('This session has no songs to play.');
+      const result = await this.playTrack(first, {playlistMode:'sync'});
+      // Track resolution also handles failures in the now-playing bar. It can
+      // resolve without a source, so the timer must verify playback separately.
+      if(result === false || !this.player?.hasSource){
+        throw new Error('The first song could not play. Try building the session again.');
+      }
+      if(this.player.current?.playlistKey !== first.playlistKey){
+        throw new Error('Playback changed before the session could start. Try again.');
+      }
+      await this.player.play();
+      return true;
+    }
+
     addNext(track){
       const currentKey = this.playlist.currentKey;
       const index = this.playlist.currentIndex + 1;

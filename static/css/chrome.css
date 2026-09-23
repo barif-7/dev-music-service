@@ -263,5 +263,4 @@ body:not(.grid-mode):not(.search-mode) .zone:hover::before{opacity:.8}
 /* ───────── prod mode: hide dev-only surfaces ───────── */
 body[data-env="prod"] #canvasToggle,
 body[data-env="prod"] #appsBtn,
-body[data-env="prod"] #clockOpenBtn,
 body[data-env="prod"] #pikaVoiceProfileBtn{display:none}

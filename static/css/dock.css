@@ -159,6 +159,5 @@ body.lyrics-spectrum-hidden #eqCanvas{display:none!important;opacity:0!important
    PluginDock can still open them programmatically (e.g. shared links). */
 body[data-env="prod"] #appsPanel:not(.open),
 body[data-env="prod"] #appSurfacePanel:not(.open),
-body[data-env="prod"] #clockModal:not(.open),
 body[data-env="prod"] #pikaVoiceProfilePanel:not(.open){
   visibility:hidden;pointer-events:none}

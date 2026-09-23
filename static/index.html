@@ -11,11 +11,12 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Fraunces:ital,opsz,wght@1,9..144,300;1,9..144,400;1,9..144,500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/css/main.css">
-<link rel="stylesheet" href="/static/css/chrome.css">
-<link rel="stylesheet" href="/static/css/dock.css">
+<link rel="stylesheet" href="/static/css/chrome.css?v=20260922-focus2">
+<link rel="stylesheet" href="/static/css/dock.css?v=20260922-focus2">
 <link rel="stylesheet" href="/static/css/grid.css">
 <link rel="stylesheet" href="/static/css/search.css">
 <link rel="stylesheet" href="/static/css/playlist.css?v=20260921-recommendations1">
+<link rel="stylesheet" href="/static/css/pomodoro.css?v=20260922-focus2">
 <link rel="stylesheet" href="/static/css/responsive.css">
 <script src="/static/js/state.js"></script>
 </head>
@@ -285,7 +286,7 @@
             aria-controls="appsPanel" hidden>
       <svg viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.4"/></svg>
     </button>
-    <button id="clockOpenBtn" type="button" class="tool" aria-label="Toggle solar clock" data-label="Clock" aria-expanded="false">
+    <button id="clockOpenBtn" type="button" class="tool" aria-label="Toggle focus timer" data-label="Focus timer" aria-expanded="false">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>
     </button>
     <button id="canvasToggle" type="button" class="tool" aria-label="Toggle notes editor" data-label="Notes" aria-pressed="false" aria-expanded="false" aria-controls="canvasEditor">
@@ -546,11 +547,31 @@
     </div>
   </div>
 
-  <div class="chrome dock-panel" data-dock-id="clock" id="clockModal" role="complementary" aria-label="Solar clock">
-    <button class="clock-close" id="clockModalCloseBtn" type="button" aria-label="Close solar clock">
+  <div class="chrome dock-panel" data-dock-id="clock" id="clockModal" role="complementary" aria-label="Focus timer">
+    <button class="clock-close" id="clockModalCloseBtn" type="button" aria-label="Close focus timer">
       <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
     </button>
-    <iframe id="clockFrame" src="/static/clock/index.html" title="Solar clock" allow="geolocation; autoplay"></iframe>
+    <iframe id="clockFrame" data-src="/static/clock/index.html" title="Solar clock" allow="geolocation; autoplay"></iframe>
+    <!-- The focus timer removes the clock iframe and unhides this panel; the
+         solar clock stays reachable behind ?clock=1, which keeps the iframe -->
+    <section class="pom" id="pomodoro" hidden>
+      <div class="pom-head"><span class="pom-kicker">Focus timer</span><span id="pomodoroPhase">Ready</span></div>
+      <p class="pom-clock" id="pomodoroClock" role="timer">25:00</p>
+      <div class="pom-presets" role="group" aria-label="Session length">
+        <button type="button" class="pom-preset" data-minutes="5" aria-pressed="false">5<span class="pom-preset-unit">min</span></button>
+        <button type="button" class="pom-preset" data-minutes="10" aria-pressed="false">10<span class="pom-preset-unit">min</span></button>
+        <button type="button" class="pom-preset" data-minutes="15" aria-pressed="false">15<span class="pom-preset-unit">min</span></button>
+        <button type="button" class="pom-preset" data-minutes="20" aria-pressed="false">20<span class="pom-preset-unit">min</span></button>
+        <button type="button" class="pom-preset" data-minutes="25" aria-pressed="true">25<span class="pom-preset-unit">min</span></button>
+      </div>
+      <div class="pom-actions">
+        <button type="button" class="pom-action pom-start" id="pomodoroStart">Start 25 minute session</button>
+        <button type="button" class="pom-action" id="pomodoroPause" hidden>Pause</button>
+        <button type="button" class="pom-action" id="pomodoroReset" hidden>Reset</button>
+      </div>
+      <p class="pom-status" id="pomodoroStatus" role="status" aria-live="polite" hidden></p>
+      <ol class="pom-list" id="pomodoroPlaylist" aria-label="Session playlist"></ol>
+    </section>
   </div>
 
   <!-- Focus mode modal -->
@@ -625,7 +646,7 @@
 <script src="/static/gallery/player.js?v=20260825-realtime1"></script>
 <script src="/static/gallery/playlist.js?v=20260921-recommendations1"></script>
 <script src="/static/gallery/service.js?v=20260825-realtime1"></script>
-<script src="/static/gallery/recommendations.js?v=20260921-recommendations1"></script>
+<script src="/static/gallery/recommendations.js?v=20260922-focus2"></script>
 <script src="/static/gallery/cast.js"></script>
 <script async src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1"></script>
 <script src="/static/gallery/plugin-dock.js?v=20260814-dock1"></script>
@@ -635,7 +656,8 @@
 <script src="/static/gallery/spotify.js"></script>
 <script src="/static/gallery/focus.js"></script>
 <script src="/static/gallery/search.js"></script>
-<script src="/static/gallery/clock-modal.js?v=20260814-dock1"></script>
+<script src="/static/gallery/clock-modal.js?v=20260922-focus2"></script>
+<script src="/static/gallery/pomodoro.js?v=20260922-focus2"></script>
 <script src="/static/gallery/wallpaper-palette.js?v=20260814-plugin1"></script>
 <script src="/static/gallery/reader-preferences.js?v=20260814-plugin1"></script>
 <script src="/static/gallery/lyric-scene.js?v=20260814-plugin1"></script>
@@ -647,6 +669,6 @@
 <script src="/static/gallery/apple-music.js"></script>
 <script src="/static/gallery/apps-launcher.js?v=20260904-launcher1"></script>
 <script src="/static/gallery/share.js?v=20260812-language1"></script>
-<script src="/static/js/init.js"></script>
+<script src="/static/js/init.js?v=20260922-focus2"></script>
 </body>
 </html>

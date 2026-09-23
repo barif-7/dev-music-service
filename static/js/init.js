@@ -4,7 +4,7 @@
  * Runs after all gallery scripts have loaded. Detects the environment
  * (prod/dev) and applies the appropriate surface visibility rules.
  *
- * Prod mode: only music-related surfaces visible (lyrics, focus, EQ, Spotify,
+ * Prod mode: only music-related surfaces visible (lyrics, focus timer, EQ, Spotify,
  *            Apple Music, video, translations, wallpaper picker).
  * Dev mode:  all surfaces available including Base44 plugins, canvas, apps.
  *
@@ -23,14 +23,12 @@
     'pikaVoiceProfilePanel',  // Voice profile (under development)
     'appsPanel',              // Apps launcher
     'appSurfacePanel',        // App surface overlay
-    'clockModal',             // Solar clock
   ];
 
   /* ── Dock menu buttons hidden in prod mode ── */
   const DEV_ONLY_BUTTONS = [
     'canvasToggle',           // Notes toggle
     'appsBtn',                // Apps button
-    'clockOpenBtn',           // Clock button
     'pikaVoiceProfileBtn',    // Voice profile button
   ];
 

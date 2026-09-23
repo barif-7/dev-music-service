@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const { PlaylistSet, PlaylistAdvanceRule } = require('../static/gallery/playlist.js');
+const { RecommendationClient } = require('../static/gallery/recommendations.js');
 
 class MemoryStorage {
   constructor(){ this.values = new Map(); }
@@ -60,4 +61,38 @@ const tracks = [
   assert.equal(rule.handle('ended', {}), false, 'loop rules may handle the end of the set');
 }
 
-console.log('playlist tests: ok');
+async function testFocusSessionPlayback(){
+  const playlist = new PlaylistSet();
+  let plays = 0;
+  const player = {hasSource:false, current:null, play:async()=>{ plays++; }};
+  const client = new RecommendationClient({playlist, player, playTrack:async track=>{
+    player.current = track;
+    player.hasSource = true;
+  }});
+  assert.equal(await client.launchSession({tracks}, 5), true);
+  assert.equal(playlist.label, 'Focus session · 5 min');
+  assert.deepEqual(playlist.snapshot().items.map(track=>track.title), ['One', 'Two', 'Three']);
+  assert.equal(player.current.playlistKey, playlist.currentKey);
+  assert.equal(plays, 1, 'session launch confirms media playback before the timer starts');
+
+  client.playTrack = async()=>{ player.hasSource = false; };
+  await assert.rejects(client.launchSession({tracks}, 5), /first song could not play/,
+    'a resolved search failure must not count as successful session playback');
+
+  client.playTrack = async()=>{
+    player.hasSource = true;
+    player.current = {playlistKey:'different-song'};
+  };
+  await assert.rejects(client.launchSession({tracks}, 5), /Playback changed/,
+    'a manual track change during resolution must not start the session timer');
+
+  client.playTrack = async track=>{ player.current = track; player.hasSource = true; };
+  player.play = async()=>{ throw new Error('Playback was blocked'); };
+  await assert.rejects(client.launchSession({tracks}, 5), /Playback was blocked/,
+    'media play rejection must reach the timer rather than silently counting down');
+}
+
+testFocusSessionPlayback().then(()=>console.log('playlist tests: ok')).catch(error=>{
+  console.error(error);
+  process.exitCode = 1;
+});

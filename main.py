@@ -37,6 +37,7 @@ from api.vocabulary import router as vocabulary_router
 from config import get_settings
 from models import (
     AppleMusicImportAlbum,
+    FocusSessionRequest,
     ImportedPlaylistTrack,
     LocalizeWindowRequest,
     LyricVisualAnalysisRequest,
@@ -1789,6 +1790,21 @@ async def recommend_tracks(request: Request, payload: RecommendationRequest):
     except Exception as exc:
         logger.error("recommendations_failed", error_type=type(exc).__name__)
         raise HTTPException(status_code=503, detail="Recommendations are temporarily unavailable.") from exc
+
+
+@app.post("/api/recommendations/focus-session")
+@limiter.limit("20 per minute")
+async def build_focus_session(request: Request, payload: FocusSessionRequest):
+    """Curate a focus playlist long enough to cover a Pomodoro preset."""
+    try:
+        return await RecommendationService.focus_session(
+            payload,
+            user_id=request_user(request),
+            spotify_access_token=request.cookies.get(SpotifyImportService._TOKEN_COOKIE),
+        )
+    except Exception as exc:
+        logger.error("focus_session_failed", error_type=type(exc).__name__)
+        raise HTTPException(status_code=503, detail="Focus sessions are temporarily unavailable.") from exc
 
 
 @app.get("/api/focus/profile")

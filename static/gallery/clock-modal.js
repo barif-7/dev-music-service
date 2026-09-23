@@ -4,28 +4,29 @@
    stage goes idle. The iframe src is deferred until first open so the bundle
    (and its geolocation prompt) never loads for sessions that don't use it. */
 (function(){
-  /* Feature flag — clock is parked until the pomodoro/focus-session idea is
-     fleshed out. Flip to true, add ?clock=1, or set
-     localStorage['pf.clock.enabled']='1' to bring it back. */
-  const CLOCK_ENABLED = false;
+  /* The panel is the Pomodoro focus timer by default — pomodoro.js owns it,
+     and this file stands down. The solar clock is still one query parameter
+     away: add ?clock=1 or set localStorage['pf.clock.enabled']='1'. */
+  let override = false;
+  try{
+    override = new URLSearchParams(location.search).has('clock') ||
+      localStorage.getItem('pf.clock.enabled') === '1';
+  }catch(_error){ /* a blocked localStorage just means the default panel */ }
+  if(!override) return;
 
   const $ = (s,r=document)=> r.querySelector(s);
   const btn = $('#clockOpenBtn'), panel = $('#clockModal'), frame = $('#clockFrame');
   if(!btn || !panel || !frame) return;
+  btn.setAttribute('aria-label', 'Toggle solar clock');
+  btn.dataset.label = 'Solar clock';
+  panel.setAttribute('aria-label', 'Solar clock');
+  $('#clockModalCloseBtn')?.setAttribute('aria-label', 'Close solar clock');
+  /* The timer markup ships in the same panel; only one of them is ever live. */
+  $('#pomodoro')?.remove();
 
-  const override = new URLSearchParams(location.search).has('clock') ||
-    localStorage.getItem('pf.clock.enabled') === '1';
-  if(!CLOCK_ENABLED && !override){
-    btn.style.display = 'none';
-    /* Take the panel out of the layout entirely. It carries dock-panel in the
-       markup so it is placed correctly without this script, but a disabled
-       feature should not leave an invisible box sitting in the row. */
-    panel.hidden = true;
-    return;
-  }
-
-  const src = frame.getAttribute('src');
-  frame.removeAttribute('src');
+  /* The markup carries the URL in data-src so neither the clock bundle nor its
+     geolocation prompt loads for the sessions that never open the panel. */
+  const src = frame.dataset.src;
 
   /* Placement, sizing, stacking, Escape and the toggle's pressed state come
      from the dock, so this file keeps only the deferred-src behaviour. */

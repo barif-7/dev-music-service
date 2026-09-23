@@ -54,6 +54,28 @@ It needs a Chromium that `playwright-core` can drive; `npx playwright install
 chromium` provides one. The Component Vault checks skip cleanly when the vault
 is not running.
 
+## Recommendations and focus timer
+
+Run the backend ranking and duration-coverage tests, then the browser audit:
+
+```bash
+.venv/bin/pytest tests/test_recommendations.py
+node scripts/audit-pomodoro.mjs
+```
+
+The audit requires the project Python environment, `playwright-core`, and a
+local Playwright Chromium (`npx playwright install chromium`). It starts an
+isolated app server on a free port and stops it afterward. It checks production
+access, all five timer presets and playlist coverage, empty results,
+pause/resume/reset, preset changes, completion and restart, playback failures,
+narrow-screen layout, and the `?clock=1` solar-clock override.
+
+Ranking requests use the real recommendation API with supplied test tracks.
+Player controls use the real browser player, while source resolution and audio
+play/pause are stubbed; timer completion uses a wall-clock jump. The audit does
+not verify audible output, live provider metadata, real media streaming, or
+uninterrupted playback for a full session. Those require a manual playback check.
+
 ## Running Tests
 
 ### All Tests

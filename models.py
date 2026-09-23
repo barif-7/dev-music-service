@@ -311,3 +311,12 @@ class RecommendationRequest(BaseModel):
     history: List[RecommendationTrack] = Field(default_factory=list, max_length=100)
     current_track: Optional[RecommendationTrack] = None
     limit: int = Field(default=20, ge=1, le=50)
+
+
+class FocusSessionRequest(BaseModel):
+    """A Pomodoro preset and the tracks the browser can offer to fill it."""
+
+    preset_minutes: Literal[5, 10, 15, 20, 25] = 25
+    candidates: List[RecommendationTrack] = Field(default_factory=list, max_length=300)
+    history: List[RecommendationTrack] = Field(default_factory=list, max_length=100)
+    current_track: Optional[RecommendationTrack] = None

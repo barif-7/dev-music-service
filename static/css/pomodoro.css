@@ -1,0 +1,44 @@
+/* Focus timer — the Pomodoro surface inside the clock dock panel. Panel
+   placement, width and height still come from the --dock-* tokens in
+   dock.css; everything here is the content that replaced the solar clock. */
+#pomodoro{display:flex;flex-direction:column;gap:11px;height:100%;min-height:0;padding:13px 13px 12px;overflow-y:auto;overscroll-behavior:contain}
+#pomodoro[hidden]{display:none}
+.pom-head{display:flex;align-items:baseline;gap:8px;padding-right:26px}
+.pom-kicker{font-family:var(--mono);font-size:9px;letter-spacing:.09em;text-transform:uppercase;color:var(--focus)}
+#pomodoroPhase{font-family:var(--mono);font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);font-weight:400}
+
+.pom-clock{margin:0;font-family:var(--mono);font-size:44px;line-height:1;font-variant-numeric:tabular-nums;
+  letter-spacing:.01em;color:var(--ink);transition:color .2s}
+.pom-running .pom-clock{color:var(--focus)}
+
+.pom-presets{display:flex;gap:4px;padding:3px;border:1px solid var(--hair);border-radius:12px;background:rgba(0,0,0,.15)}
+.pom-preset{flex:1;min-width:0;min-height:34px;border-radius:9px;font-family:var(--mono);font-size:11px;
+  color:var(--control-muted);transition:background .16s,color .16s,box-shadow .16s}
+.pom-preset:hover:not(:disabled){color:var(--ink)}
+.pom-preset[aria-pressed="true"]{color:var(--focus);background:rgba(138,255,196,.12);box-shadow:inset 0 0 0 1px rgba(138,255,196,.18)}
+.pom-preset:disabled{opacity:.42;cursor:default}
+.pom-preset-unit{font-size:8px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin-left:2px}
+
+.pom-actions{display:flex;gap:6px}
+.pom-action{flex:1;min-height:36px;padding:0 11px;border:1px solid var(--hair);border-radius:10px;
+  font-family:var(--mono);font-size:10.5px;color:var(--ink);transition:background .16s,border-color .16s,color .16s}
+.pom-action:hover:not(:disabled){background:var(--control-bg-hover)}
+.pom-action:disabled{opacity:.42;cursor:default}
+.pom-action[hidden]{display:none}
+.pom-start{background:rgba(138,255,196,.12);border-color:rgba(138,255,196,.18);color:var(--focus)}
+
+.pom-status{margin:0;font-family:var(--mono);font-size:9.5px;line-height:1.65;color:var(--dim)}
+.pom-status[hidden]{display:none}
+.pom-status.error{color:#ffc1ab}
+
+.pom-list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:3px;min-height:0}
+.pom-track{display:flex;align-items:center;gap:9px;padding:6px 8px;border:1px solid transparent;border-radius:9px;
+  background:rgba(255,255,255,.035)}
+.pom-track-copy{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
+.pom-track-copy strong{font-size:11px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pom-track-copy span{font-family:var(--mono);font-size:8.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pom-track-length{font-family:var(--mono);font-size:9px;font-variant-numeric:tabular-nums;color:var(--faint);flex:none}
+
+.pom-preset:focus-visible,.pom-action:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+@media (max-width:700px){.pom-clock{font-size:38px}#pomodoro{gap:9px;padding:11px}}
+@media (prefers-reduced-motion:reduce){.pom-clock,.pom-preset,.pom-action{transition:none}}
