@@ -46,9 +46,17 @@ const U_NAMES = ['iResolution','iTime','iMouse','iClick','iPulse','iEnergy','iIn
                 'iDance','iValence','iAcoustic','iInstrum','iLive','iSpeech','iTrackEnergy','iLoud',
                 'iTempo','iBpm','iBeat','iProgress','iAccent'];
 
+/* View-independent uniform policies. The host selects a config; the renderer
+   keeps its real canvas resolution, audio inputs and motion-safe clock. */
+const ShaderUniformConfigs = Object.freeze({
+  fullscreen:Object.freeze({ mode:'fullscreen' }),
+  gallery:Object.freeze({ mode:'gallery' }),
+});
+
 class Tile {
-  constructor(canvas, fragId, presetBPM, maxDpr){
+  constructor(canvas, fragId, presetBPM, maxDpr, config=ShaderUniformConfigs.fullscreen){
     this.canvas = canvas;
+    this.setConfig(config);
     this.maxDpr = maxDpr || 1.75;
     this.reactScale = 1;
     this.fragId = fragId;
@@ -64,12 +72,8 @@ class Tile {
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
     this.mouse = {x:0.5, y:0.5};
     this.target = {x:0.5, y:0.5};
-    // Idle wave: cursor auto-orbits in a gentle sinusoid (matching how main
-    // renders its shader previews). `idlePhase` offsets the wave per tile.
-    // `idleWaveAuto` (player hero) limits the full orbit to when audio is NOT
-    // live; during playback the real pointer drives with only a subtle drift.
-    this.idleWave = false;
-    this.idleWaveAuto = false;
+    // Fullscreen keeps the hero's phase; gallery phase follows the shader so
+    // selecting that configuration produces the same orbit in either view.
     this.idlePhase = 0;
     this.click = 0;
     this.start = performance.now();
@@ -80,12 +84,21 @@ class Tile {
     this.load(fragId, presetBPM);
 
     canvas.addEventListener('pointermove', (e)=>{
-      const r = canvas.getBoundingClientRect();
-      this.target.x = (e.clientX - r.left)/r.width;
-      this.target.y = 1 - (e.clientY - r.top)/r.height;
+      this.setPointer(e.clientX, e.clientY);
     });
     canvas.addEventListener('pointerleave', ()=>{ this.target.x = 0.5; this.target.y = 0.5; });
     canvas.addEventListener('pointerdown', ()=>{ this.click = 1; });
+  }
+  setConfig(config){
+    this.config = config?.mode === 'gallery' ? ShaderUniformConfigs.gallery : ShaderUniformConfigs.fullscreen;
+    this.canvas.dataset.uniformMode = this.config.mode;
+  }
+  setPointer(clientX, clientY){
+    if(!this.target) return;
+    const r = this.canvas.getBoundingClientRect();
+    if(!r.width || !r.height) return;
+    this.target.x = Math.max(0, Math.min(1, (clientX - r.left)/r.width));
+    this.target.y = Math.max(0, Math.min(1, 1 - (clientY - r.top)/r.height));
   }
   setFallback(fragId){
     const meta = typeof ALTS !== 'undefined' ? ALTS.find(item=>item.id===fragId) : null;
@@ -97,6 +110,7 @@ class Tile {
   load(fragId, presetBPM){
     this.fragId = fragId;
     this.bpm = presetBPM;
+    this.galleryPhase = Math.max(0, ALTS.findIndex(item=>item.id===fragId)) * 1.7;
     this.setFallback(fragId);
     if(!this.gl) return;
     const gl = this.gl;
@@ -163,30 +177,28 @@ class Tile {
       tSec, nominalBpm: this.bpm, reactScale: this.reactScale, fragId: this.fragId,
     });
 
-    /* ---- cursor: real pointer, or the synthetic "idle wave" orbit ----
-       Idle-wave rule:
-       • grid previews (idleWaveAuto=false) always orbit.
-       • the player hero (idleWaveAuto=true) only orbits when audio is NOT live;
-         during active playback it tracks the real pointer with a *subtle*
-         secondary drift so the motion still breathes. */
-    const i = this.idlePhase;
-    if(this.idleWave && (!this.idleWaveAuto || !m.live)){
-      this.target.x = this.mouse.x = 0.5 + 0.15*Math.sin(tSec*0.4 + i);
-      this.target.y = this.mouse.y = 0.5 + 0.15*Math.cos(tSec*0.3 + i*1.3);
+    /* Only cursor policy differs: gallery always orbits, fullscreen follows
+       the pointer during playback. Both keep the same live audio mapping. */
+    const gallery = this.config.mode === 'gallery';
+    const i = gallery ? this.galleryPhase : this.idlePhase;
+    let mouseX, mouseY;
+    if(gallery || !m.live){
+      mouseX = 0.5 + 0.15*Math.sin(tSec*0.4 + i);
+      mouseY = 0.5 + 0.15*Math.cos(tSec*0.3 + i*1.3);
     } else {
       this.mouse.x += (this.target.x - this.mouse.x)*0.08;
       this.mouse.y += (this.target.y - this.mouse.y)*0.08;
-      if(this.idleWave && this.idleWaveAuto){   // subtle secondary drift over live pointer
-        this.mouse.x += 0.03*Math.sin(tSec*0.4 + i);
-        this.mouse.y += 0.03*Math.cos(tSec*0.3 + i*1.3);
-      }
+      // Offset the uploaded value, not the smoothed state: adding this to
+      // mouse each frame amplified the intended .03 drift to roughly .375.
+      mouseX = Math.max(0, Math.min(1, this.mouse.x + 0.03*Math.sin(tSec*0.4 + i)));
+      mouseY = Math.max(0, Math.min(1, this.mouse.y + 0.03*Math.cos(tSec*0.3 + i*1.3)));
     }
     this.click *= 0.92;
 
     gl.useProgram(this.prog);
     gl.uniform2f(this.u.iResolution, this.canvas.width, this.canvas.height);
     gl.uniform1f(this.u.iTime, tSec);
-    gl.uniform2f(this.u.iMouse, this.mouse.x, this.mouse.y);
+    gl.uniform2f(this.u.iMouse, mouseX, mouseY);
     gl.uniform1f(this.u.iClick, this.click);
     gl.uniform1f(this.u.iPulse, m.pulse);
     gl.uniform1f(this.u.iEnergy, m.energy);

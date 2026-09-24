@@ -9,8 +9,15 @@
   exports — scene snapshots and packed frames in, named events and intents in
   either direction, with optional request results.
   `docs/base44-plugin-pipeline.md` is the full contract, with diagrams.
-- `static/gallery/plugin-dock.js`: shared placement for every floating panel,
-  laid out as a horizontal stack that divides its width between them.
+- `static/gallery/plugin-dock.js`: floating host view. Normalizes every
+  registration as a `PhasePluginFeature`; owns placement, constraints,
+  visibility and focus. See `docs/plugin-features.md` for the config/view boundary.
+- `static/gallery/pomodoro-view.js`: config-only timer UI; `pomodoro.js` owns
+  its session state, playback and API effects.
+- `static/gallery/engine.js`: config-driven shader renderer. `app.js` owns the
+  persisted fullscreen/gallery behavior choice and supplies a
+  `ShaderUniformConfigs` object to each tile; `mapper.js` owns the shared live
+  audio uniforms. Rendering resolution and motion safety remain per canvas.
 - `static/gallery/canvas-plugin.js`: mounts the Canvas editor as the notes
   panel; the shell owns the notes.
 - `static/gallery/lyrics-shader-reader.js`: mounts the Shader Lab reader on

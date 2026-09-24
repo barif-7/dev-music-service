@@ -34,7 +34,7 @@
   .dot::before{transition:none !important}
   .zone::before{transition:none !important}
   .chrome{transition:none !important}
-  #stage.idle .chrome{opacity:.15}
+  #stage.idle .chrome:not(.dock-panel){opacity:.15}
 }
 
 /* Second 560px breakpoint (now-playing responsive) */
@@ -51,7 +51,8 @@
   .nb-scrub{min-width:34px}
   .nb-time{width:28px;font-size:9px}
   #castLauncher{width:40px;height:40px;padding:9px}
-  .service-modal-card{width:100vw;border-left:0;padding-left:18px;padding-right:18px}
+  .service-modal-card{padding-left:18px;padding-right:18px}
+  .service-modal-card:not(.dock-panel){width:100vw;border-left:0}
   .fc-row{align-items:flex-start;flex-wrap:wrap}
   .fc-row > span:first-child{width:100%;margin-bottom:2px}
   .fc-row input[type=range]{width:calc(50% - 16px);min-width:110px}
@@ -63,10 +64,8 @@
   #videoTools{gap:6px}
   #search{padding-left:16px;padding-right:16px}
   .search-keys{display:none}
-  #eqControls{left:16px;right:16px;width:auto;max-height:calc(100dvh - 180px)}
   #topR{overflow-x:auto;justify-content:flex-start;scrollbar-width:none}
   #topR::-webkit-scrollbar{display:none}
-  #appleMusicPanel{left:16px;right:16px;top:74px;width:auto}
 }
 
 /* 700px breakpoint (dock + modals responsive) */
@@ -85,11 +84,10 @@
   #lyricReader{padding:19px;border-radius:26px}.lyric-reader-head{align-items:flex-start;margin-bottom:18px}
   #lyricLocaleWrap{align-items:flex-end;flex-direction:column;gap:3px}#lyricLocale{max-width:170px}
   #lyricLine{font-size:clamp(29px,9vw,46px)}#lyricCompareLine{font-size:clamp(23px,7vw,36px)}
-  .service-modal-card{width:calc(100vw - 24px);height:calc(100dvh - 24px);padding:20px;border:1px solid rgba(255,255,255,.18)}
+  .service-modal-card{padding:20px}
+  .service-modal-card:not(.dock-panel){width:calc(100vw - 24px);height:calc(100dvh - 24px);border:1px solid rgba(255,255,255,.18)}
   #translationSettingsPanel .translation-settings-card{width:calc(100vw - 24px);height:auto;padding:20px}
   .translation-language-meta{grid-template-columns:1fr}
-  #eqControls{left:12px;right:12px;width:auto;translate:0 -47%}#eqControls.show{translate:0 -50%}
-  #appleMusicPanel{left:12px;right:12px;width:auto;translate:0 -47%}#appleMusicPanel.show{translate:0 -50%}
 }
 
 /* Reduced motion (share sheet) */

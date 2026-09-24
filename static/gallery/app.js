@@ -20,13 +20,26 @@ const state = {
 // example the lyric language) may call wake() while this script is still booting.
 let idleTimer = null;
 
+/* One host preference selects a uniform config for both rendering surfaces.
+   Auto preserves each view's default; explicit modes let either view use the
+   other one's behavior without changing rendering resolution or audio. */
+const SHADER_UNIFORM_MODE_KEY = 'phaseField.shaderUniformMode';
+function normalizeShaderUniformMode(value){
+  return value === 'fullscreen' || value === 'gallery' ? value : 'auto';
+}
+let savedUniformMode = 'auto';
+try{ savedUniformMode = localStorage.getItem(SHADER_UNIFORM_MODE_KEY); }catch(_error){ /* storage optional */ }
+PhaseState.set('shaderUniformMode', normalizeShaderUniformMode(savedUniformMode));
+function shaderUniformConfig(surface){
+  const mode = PhaseState.get('shaderUniformMode');
+  return ShaderUniformConfigs[mode === 'auto' ? surface : mode];
+}
+
 /* ---- heroes (two layers for crossfade) ---- */
 const heroLayer = $('#heroLayer');
 const heroEls = [$('#heroA'), $('#heroB')];
-const heroes = heroEls.map(c => new Tile(c, ALTS[0].id, ALTS[0].bpm, 1.75));
-// Player hero: idle-wave orbit when audio is inactive/paused, with only a subtle
-// secondary drift during active playback (real audio features dominate then).
-heroes.forEach((h, i)=>{ h.idleWave = true; h.idleWaveAuto = true; h.idlePhase = i * 1.7; });
+const heroes = heroEls.map(c => new Tile(c, ALTS[0].id, ALTS[0].bpm, 1.75, shaderUniformConfig('fullscreen')));
+heroes.forEach((h, i)=>{ h.idlePhase = i * 1.7; });
 let front = 0; // index into heroes that is currently shown
 
 /* ---- chrome refs ---- */
@@ -864,12 +877,11 @@ function activateGridPreview(index, cell){
   if(!gridPreviewCanvas){
     gridPreviewCanvas = document.createElement('canvas');
     gridPreviewCanvas.className = 'grid-live-preview';
-    gridPreviewTile = new Tile(gridPreviewCanvas, w.id, w.bpm, 1.0);
-    gridPreviewTile.idleWave = true;
+    gridPreviewTile = new Tile(gridPreviewCanvas, w.id, w.bpm, 1.0, shaderUniformConfig('gallery'));
   }else if(gridPreviewTile.fragId !== w.id){
     gridPreviewTile.load(w.id, w.bpm);
   }
-  gridPreviewTile.idlePhase = index * 1.7;
+  gridPreviewTile.idlePhase = heroes[front].idlePhase;
   gridPreviewCell = cell;
   cell.prepend(gridPreviewCanvas);
   gridPreviewTile.resize();
@@ -897,6 +909,14 @@ function buildGrid(){
       `${highMotion ? '<span class="c-motion" title="High motion">motion</span>' : ''}</div>`;
     cell.addEventListener('click', ()=> Wallpaper.openImmersive(i, cell));
     cell.addEventListener('pointerenter', ()=>activateGridPreview(i, cell));
+    cell.addEventListener('pointermove', event=>{
+      if(gridPreviewCell === cell) gridPreviewTile?.setPointer(event.clientX, event.clientY);
+    });
+    cell.addEventListener('pointerleave', ()=>{
+      if(gridPreviewCell === cell && gridPreviewTile?.target){
+        gridPreviewTile.target.x = gridPreviewTile.target.y = 0.5;
+      }
+    });
     cell.addEventListener('focus', ()=>activateGridPreview(i, cell));
     gridEl.appendChild(cell);
     // One shared live canvas moves between cards on hover/focus. Creating a
@@ -937,7 +957,12 @@ function wake(){
 }
 
 /* ---- input ---- */
-window.addEventListener('pointermove', wake, {passive:true});
+window.addEventListener('pointermove', event=>{
+  wake();
+  // Hero canvases are decorative (pointer-events:none); the shell supplies
+  // pointer input rather than asking the canvas to intercept UI interaction.
+  if(state.mode === 'immersive') heroes.forEach(tile=>tile.setPointer(event.clientX, event.clientY));
+}, {passive:true});
 window.addEventListener('pointerdown', wake, {passive:true});
 
 /* Edge click zones for prev/next in immersive.
@@ -1043,6 +1068,22 @@ $('#focusClose').addEventListener('click', closeFocusPanel);
 $('#focusCloseBtn').addEventListener('click', closeFocusPanel);
 
 /* ---- reactivity preset picker: Auto follows each wallpaper, else force one ---- */
+function reflectShaderUniformMode(){
+  const mode = PhaseState.get('shaderUniformMode');
+  document.querySelectorAll('[data-shader-uniform-mode]').forEach(select=>{ select.value = mode; });
+  heroes.forEach(tile=>tile.setConfig(shaderUniformConfig('fullscreen')));
+  if(gridPreviewTile) gridPreviewTile.setConfig(shaderUniformConfig('gallery'));
+}
+document.querySelectorAll('[data-shader-uniform-mode]').forEach(select=>{
+  select.addEventListener('change', ()=>{
+    const mode = normalizeShaderUniformMode(select.value);
+    PhaseState.set('shaderUniformMode', mode);
+    try{ localStorage.setItem(SHADER_UNIFORM_MODE_KEY, mode); }catch(_error){ /* storage optional */ }
+  });
+});
+PhaseState.on('shaderUniformMode', reflectShaderUniformMode);
+reflectShaderUniformMode();
+
 const reactToggle = $('#reactToggle');
 function refreshReactScales(){
   heroes.forEach(h=> h.reactScale = reactivityPlugin.scaleFor(h.fragId));

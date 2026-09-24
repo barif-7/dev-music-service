@@ -11,13 +11,13 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Fraunces:ital,opsz,wght@1,9..144,300;1,9..144,400;1,9..144,500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/css/main.css">
-<link rel="stylesheet" href="/static/css/chrome.css?v=20260922-focus2">
-<link rel="stylesheet" href="/static/css/dock.css?v=20260922-focus2">
-<link rel="stylesheet" href="/static/css/grid.css">
-<link rel="stylesheet" href="/static/css/search.css">
+<link rel="stylesheet" href="/static/css/chrome.css?v=20260924-shadermodes1">
+<link rel="stylesheet" href="/static/css/dock.css?v=20260923-features1">
+<link rel="stylesheet" href="/static/css/grid.css?v=20260924-shadermodes1">
+<link rel="stylesheet" href="/static/css/search.css?v=20260923-features1">
 <link rel="stylesheet" href="/static/css/playlist.css?v=20260921-recommendations1">
 <link rel="stylesheet" href="/static/css/pomodoro.css?v=20260922-focus2">
-<link rel="stylesheet" href="/static/css/responsive.css">
+<link rel="stylesheet" href="/static/css/responsive.css?v=20260923-features1">
 <script src="/static/js/state.js"></script>
 </head>
 <body>
@@ -466,6 +466,14 @@
         <div class="gh-sub" id="shaderApiStatus" role="status" aria-live="polite">43 living shaders · checking API…</div>
       </div>
       <div class="gh-actions">
+        <label class="shader-uniform-control" for="galleryUniformMode">
+          <span>Shader behavior</span>
+          <select id="galleryUniformMode" data-shader-uniform-mode>
+            <option value="auto">By view</option>
+            <option value="fullscreen">Fullscreen</option>
+            <option value="gallery">Gallery preview</option>
+          </select>
+        </label>
         <button type="button" class="tool over-grid" id="btnClose" aria-label="Close" title="Close  Esc">
           <svg viewBox="0 0 24 24" style="width:19px;height:19px;stroke:currentColor;stroke-width:1.5;fill:none;stroke-linecap:round;stroke-linejoin:round"><path d="M6 6l12 12M18 6L6 18"/></svg>
         </button>
@@ -596,6 +604,15 @@
           <button type="button" data-p="spark" aria-pressed="false">Spark</button>
           <button type="button" data-p="drive" aria-pressed="false">Drive</button>
         </div>
+        <label class="shader-uniform-control" for="shaderUniformMode">
+          <span>Shader behavior</span>
+          <select id="shaderUniformMode" data-shader-uniform-mode aria-describedby="shaderUniformHint">
+            <option value="auto">By view</option>
+            <option value="fullscreen">Fullscreen</option>
+            <option value="gallery">Gallery preview</option>
+          </select>
+        </label>
+        <p class="shader-uniform-hint" id="shaderUniformHint">Gallery preview keeps motion orbiting during playback. By view uses each view’s default.</p>
       </div>
       <div class="fc-profile">
         <label class="fc-row"><span>BPM</span>
@@ -641,7 +658,7 @@
 <script src="/static/gallery/reactivity.js"></script>
 <script src="/static/gallery/motion-safety.js?v=20260814-a11y1"></script>
 <script src="/static/gallery/mapper.js?v=20260812-agents2"></script>
-<script src="/static/gallery/engine.js?v=20260814-a11y1"></script>
+<script src="/static/gallery/engine.js?v=20260924-shadermodes1"></script>
 <script src="/static/gallery/audio.js"></script>
 <script src="/static/gallery/player.js?v=20260825-realtime1"></script>
 <script src="/static/gallery/playlist.js?v=20260921-recommendations1"></script>
@@ -649,15 +666,16 @@
 <script src="/static/gallery/recommendations.js?v=20260922-focus2"></script>
 <script src="/static/gallery/cast.js"></script>
 <script async src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1"></script>
-<script src="/static/gallery/plugin-dock.js?v=20260814-dock1"></script>
+<script src="/static/gallery/plugin-dock.js?v=20260923-features1"></script>
 <script src="/static/gallery/plugin-chrome.js?v=20260904-chrome1"></script>
-<script src="/static/gallery/app.js?v=20260812-api2"></script>
+<script src="/static/gallery/app.js?v=20260924-shadermodes1"></script>
 <script src="/static/gallery/eq.js?v=20260830-shaderpalette1"></script>
 <script src="/static/gallery/spotify.js"></script>
 <script src="/static/gallery/focus.js"></script>
 <script src="/static/gallery/search.js"></script>
 <script src="/static/gallery/clock-modal.js?v=20260922-focus2"></script>
-<script src="/static/gallery/pomodoro.js?v=20260922-focus2"></script>
+<script src="/static/gallery/pomodoro-view.js?v=20260923-features1"></script>
+<script src="/static/gallery/pomodoro.js?v=20260923-features1"></script>
 <script src="/static/gallery/wallpaper-palette.js?v=20260814-plugin1"></script>
 <script src="/static/gallery/reader-preferences.js?v=20260814-plugin1"></script>
 <script src="/static/gallery/lyric-scene.js?v=20260814-plugin1"></script>
