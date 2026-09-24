@@ -446,15 +446,6 @@ class TestStreamEndpoint:
         assert response.status_code == 200
         assert "audio" in response.headers.get("content-type", "")
 
-    def test_stream_cors_headers(self, client: TestClient):
-        """Stream should include CORS headers."""
-        # Test with invalid URL to get error but check headers are set
-        response = client.get("/stream?url=invalid")
-        
-        if response.status_code == 200:
-            assert response.headers.get("Access-Control-Allow-Origin") == "*"
-            assert "Accept-Ranges" in response.headers
-
     def test_stream_blocks_private_direct_target(self, client: TestClient):
         """Stream proxy should reject private resolved media URLs."""
         with patch("main.MusicService.get_stream_source") as mock_source:
@@ -463,8 +454,10 @@ class TestStreamEndpoint:
 
         assert response.status_code == 403
 
-    def test_stream_allows_expected_media_target(self, client: TestClient):
-        """Stream proxy should allow expected media hosts."""
+    @pytest.mark.parametrize("origin", ["http://127.0.0.1:8000", "https://phase.example.com"])
+    def test_stream_allows_expected_media_target(self, client: TestClient, monkeypatch, origin):
+        """Stream proxy allows expected hosts and sends the configured origin."""
+        monkeypatch.setenv("DEV_MUSIC_FRONTEND_ORIGIN", origin)
 
         class FakeStream:
             status_code = 200
@@ -492,6 +485,8 @@ class TestStreamEndpoint:
 
         assert response.status_code == 200
         assert response.content == b"audio"
+        assert response.headers["Access-Control-Allow-Origin"] == origin
+        assert "Accept-Ranges" in response.headers
 
     def test_stream_retries_rejected_audio_source_with_progressive_fallback(
         self,
@@ -566,7 +561,7 @@ class TestStreamEndpoint:
 
         assert response.status_code == 302
         assert response.headers["location"] == "https://rr1---sn.googlevideo.com/videoplayback"
-        assert response.headers["Access-Control-Allow-Origin"] == "*"
+        assert response.headers["Access-Control-Allow-Origin"] == "http://127.0.0.1:8000"
 
 
 class TestVideoEndpoints:

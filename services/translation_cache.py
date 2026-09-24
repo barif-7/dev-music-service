@@ -1,8 +1,9 @@
 """Durable translation cache/job storage backed by SQLite.
 
-Step 9: the current lyrics path uses in-process memory for translated line
-windows. This module provides a thread-safe SQLite implementation that can be
-swapped in behind the :class:`TranslationCacheBackend` protocol. The original
+The live lyrics path uses this backend beneath its in-process cache, with a
+source and policy fingerprint per line shared by eager and windowed requests.
+This module provides a thread-safe implementation behind the
+:class:`TranslationCacheBackend` protocol. The original
 :class:`InMemoryTranslationCacheSkeleton` is kept as a backwards-compatible
 subclass of the new implementation.
 """
@@ -44,10 +45,10 @@ class TranslationCacheBackend(Protocol):
         """Return cached localized lines for a track/locale/source revision."""
 
     def put_lines(self, key: TranslationCacheKey, lines: dict[int, str]) -> None:
-        """Persist translated line results and quality metadata in a later pass."""
+        """Persist translated text by line index."""
 
     def enqueue_job(self, key: TranslationCacheKey, indices: tuple[int, ...]) -> TranslationJob:
-        """Create a durable background translation job in Redis/Postgres."""
+        """Store a queued job record; job execution is a separate concern."""
 
 
 class SqliteTranslationCache:
@@ -59,7 +60,11 @@ class SqliteTranslationCache:
         self._lock = threading.Lock()
         # check_same_thread=False is safe because every access is guarded by _lock.
         self._conn = sqlite3.connect(str(self._path), check_same_thread=False)
-        self._init_schema()
+        try:
+            self._init_schema()
+        except sqlite3.Error:
+            self._conn.close()
+            raise
 
     def _init_schema(self) -> None:
         with self._lock:
@@ -115,7 +120,7 @@ class SqliteTranslationCache:
         return {int(line_index): text for line_index, text in rows}
 
     def put_lines(self, key: TranslationCacheKey, lines: dict[int, str]) -> None:
-        """Persist translated line results and quality metadata in a later pass."""
+        """Persist translated text by line index."""
         if not lines:
             return
 
@@ -145,7 +150,7 @@ class SqliteTranslationCache:
             )
 
     def enqueue_job(self, key: TranslationCacheKey, indices: tuple[int, ...]) -> TranslationJob:
-        """Create a durable background translation job in Redis/Postgres."""
+        """Store a queued job record; this method does not execute it."""
         job_id = uuid.uuid4().hex
         serialized_key = self._serialize_track_key(key.track_key)
         serialized_indices = json.dumps(list(indices))

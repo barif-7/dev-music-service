@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     )
 
     dev_music_base_url: str = "http://127.0.0.1:8000"
-    dev_music_frontend_origin: str = "*"
+    dev_music_frontend_origin: str = "http://127.0.0.1:8000"
     dev_music_backend_origin: str | None = None
     dev_music_mcp_origin: str | None = None
     dms_data_dir: Path = Path(".")

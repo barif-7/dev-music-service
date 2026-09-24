@@ -9,6 +9,39 @@ Running context for whoever picks this up next. Newest first.
 - Dev tooling (pytest, flake8, bandit) lives in the `dev` optional-dependency
   group.
 
+## 2026-09-24 — Finish Qwen's translation-cache and benchmark follow-up
+
+Recovered Qwen session `947b410e-12a2-4e0d-b1d5-d1f5d071bfea` from September 23.
+The user selected model comparisons, live translation-cache integration, and
+the pending local changes; multi-node scheduling was deferred. The follow-up
+is submitted on new branches for PR review, as requested September 24.
+
+- `LyricsService` now reads and writes SQLite beneath its memory cache in the
+  eager, background-fill, and playback-window paths. Per-line source/timing and
+  policy fingerprints let overlapping windows share translations while changed
+  input causes a miss. Plain-lyric synthetic timing uses the stable line index
+  consistently across the eager and window paths.
+- Cache initialization/read/write failures leave translation available through
+  memory. Tests exercise actual SQLite persistence, a fresh Python process,
+  overlapping windows, changed text/timing/options/track identity, partial
+  upstream output, and unwritable/corrupt storage.
+- Preserved and completed the pending explicit frontend-origin default and
+  iPad client. Replaced a vacuous stream-header test with real proxy assertions
+  for local and deployed origins. Added the client's missing Info.plist and
+  ignored Xcode user state. The unsigned simulator build succeeds for arm64 and
+  x86_64; physical-device playback and AirPlay remain unverified.
+- Qwen's background comparison already finished 32 jobs. DeepSeek accepted 8/8;
+  Qwen 27B accepted 2 then hit six quota errors; Qwen Flash hit eight quota
+  errors; Kimi K3 hit eight provider URL errors. The gateway report preserves
+  all terminal results and distinguishes availability from coding quality.
+  No provider billing restriction or routing policy was changed.
+
+Validation: full Python suite and focused regression checks, flake8, frontend
+lint, Bandit, both Python entry-point imports, and the iPad simulator build.
+The gateway's 56 offline tests pass. See `backlog.md` for remaining work,
+including provider availability, repeated benchmarks, shared reservations,
+durable job execution, translation retention, and device verification.
+
 ## 2026-09-13 — Restore audio and muted video resolution
 
 **Mac mini follow-up:** SSH access restored; applied the same targeted resolver
