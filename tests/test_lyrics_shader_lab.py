@@ -676,6 +676,8 @@ def test_settings_panels_are_docked_and_no_longer_modal(client: TestClient):
     # The dock has to exist before app.js registers with it at module level.
     assert shell.index("plugin-dock.js") < shell.index("gallery/app.js")
 
-    # Old centring is restated at matching specificity, placed last to win.
-    assert "#eqControls.dock-panel" in dock_css
-    assert "#focusPanel .service-modal-card.dock-panel" in dock_css
+    # Modal geometry excludes dock containers instead of fighting them with
+    # ID-specific overrides. Browser layout is covered by audit-plugin-dock.
+    search_css = (repo / "static/css/search.css").read_text()
+    assert ".service-modal-card:not(.dock-panel)" in search_css
+    assert "#focusPanel:not(.dock-host)" in search_css

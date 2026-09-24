@@ -26,6 +26,39 @@
    data-dock-id. Placement is therefore pure CSS and holds whether or not a
    script has registered them; registering only adds behaviour. A panel behind
    a feature flag that never registers still sits where it should. */
+/* The host boundary. Controllers own effects and project a config; a native
+   view only renders that config. Existing iframe scenes remain their config
+   transport, and old registrations pass through the same normalization.
+   `el` is the host container, not the feature's content root. */
+const PhasePluginFeature = {
+  config(value = {}){
+    if(!value || typeof value !== 'object' || Array.isArray(value)){
+      throw new TypeError('PhasePluginFeature config must be an object');
+    }
+    return Object.freeze({ ...value });
+  },
+
+  normalize(input){
+    if(typeof input?.id !== 'string' || !input.id.trim() || !input.el) return null;
+    return {
+      id:input.id.trim(),
+      el:input.el,
+      layout:Object.freeze({
+        mode:(input.layout?.mode ?? (input.overlay ? 'overlay' : 'row')) === 'overlay' ? 'overlay' : 'row',
+        scroll:input.layout?.scroll === 'hidden' ? 'hidden' : 'auto',
+      }),
+      config:this.config(input.config),
+      render:typeof input.render === 'function' ? input.render : null,
+      toggle:input.toggle || null,
+      host:input.host || null,
+      showClass:input.showClass || null,
+      focusFirst:input.focusFirst || null,
+      onOpen:typeof input.onOpen === 'function' ? input.onOpen : null,
+      onClose:typeof input.onClose === 'function' ? input.onClose : null,
+    };
+  },
+};
+
 const PluginDock = {
   panels: new Map(),        // id -> spec
   order: [],                // registration order — drives slot assignment
@@ -37,16 +70,22 @@ const PluginDock = {
   _metrics(){
     if(!this._probe){
       const probe = document.createElement('div');
-      probe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;'
+      /* Global motion styles must not animate the measurement between token
+         values: capacity needs the target geometry immediately on resize. */
+      probe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;transition:none!important;'
         + 'width:var(--dock-w-min);height:var(--dock-gap);margin-left:var(--dock-x)';
       document.body.appendChild(probe);
       this._probe = probe;
     }
     const style = getComputedStyle(this._probe);
+    const measure = (value, fallback)=>{
+      const number = parseFloat(value);
+      return Number.isFinite(number) ? Math.max(0, number) : fallback;
+    };
     return {
-      min:parseFloat(style.width) || 320,
-      gap:parseFloat(style.height) || 14,
-      inset:parseFloat(style.marginLeft) || 24,
+      min:Math.max(1, measure(style.width, 320)),
+      gap:measure(style.height, 14),
+      inset:measure(style.marginLeft, 24),
     };
   },
 
@@ -70,12 +109,14 @@ const PluginDock = {
      overlay   the panel covers the viewport instead of taking a slot in the
                row. Placement is still pure CSS; this only keeps the layout
                from counting it. */
-  register(spec){
-    if(!spec?.id || !spec.el) return null;
+  register(input){
+    const spec = PhasePluginFeature.normalize(input);
+    if(!spec) return null;
     this.panels.set(spec.id, spec);
     if(!this.order.includes(spec.id)) this.order.push(spec.id);
     spec.el.classList.add('dock-panel');
-    spec.el.classList.toggle('dock-overlay', Boolean(spec.overlay));
+    spec.el.classList.toggle('dock-overlay', spec.layout.mode === 'overlay');
+    spec.el.style.setProperty('--dock-overflow', spec.layout.scroll);
     spec.el.dataset.dockId = spec.id;
     if(spec.host){
       spec.host.classList.add('dock-host');
@@ -84,18 +125,30 @@ const PluginDock = {
       spec.host.removeAttribute('inert');
       spec.host.setAttribute('aria-hidden', 'false');
     }
+    spec.render?.(spec.config);
     this._reflect(spec.id);
+    this._evictToFit();
+    this._layout();
     return {
       open:()=>this.open(spec.id),
       close:()=>this.close(spec.id),
       toggle:()=>this.toggle(spec.id),
       isOpen:()=>this.isOpen(spec.id),
+      updateConfig:config=>this.updateConfig(spec.id, config),
     };
+  },
+
+  /* Replace a projected snapshot without touching host layout or visibility. */
+  updateConfig(id, config){
+    const spec = this.panels.get(id);
+    if(!spec) return;
+    spec.config = PhasePluginFeature.config(config);
+    spec.render?.(spec.config);
   },
 
   isOpen(id){ return this.recency.includes(id); },
 
-  _isOverlay(id){ return Boolean(this.panels.get(id)?.overlay); },
+  _isOverlay(id){ return this.panels.get(id)?.layout.mode === 'overlay'; },
   /* The open panels that actually occupy the row, least recently opened first. */
   _rowOpen(){ return this.recency.filter(id => !this._isOverlay(id)); },
 
@@ -144,6 +197,7 @@ const PluginDock = {
     if(open) spec.el.removeAttribute('inert'); else spec.el.setAttribute('inert', '');
     if(open && spec.focusFirst){
       requestAnimationFrame(()=>{
+        if(!this.isOpen(id)) return;
         spec.el.querySelector(spec.focusFirst)?.focus({ preventScroll:true });
       });
     }

@@ -226,6 +226,14 @@ npm run build:semi
 
 `build:semi` is only relevant when the pre-release Pika/Semi voice-profile feature is enabled.
 
+### Shader behavior
+
+Use **Shader behavior** in the shader gallery or Focus panel to choose
+**Fullscreen** (pointer response during playback), **Gallery preview**
+(continuous orbit), or **By view** (the original default for each view).
+The choice applies to both views and persists across reloads. Both modes keep
+live audio reactivity; canvas size and aspect ratio still follow the view.
+
 ## Configuration
 
 Copy `.env.example` to `.env`. Important settings include:
@@ -261,6 +269,9 @@ npm run audit:design
 
 # Focus timer browser regression audit
 node scripts/audit-pomodoro.mjs
+
+# Shader behavior and halftone uniform regression audit
+node scripts/audit-shader-modes.mjs
 
 # MCP server
 cd mcp-server

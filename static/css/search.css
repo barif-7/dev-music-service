@@ -151,16 +151,14 @@
 .recentEmpty{flex:1;min-width:100%;padding:18px;border:1px dashed var(--hair);border-radius:18px;text-align:center}
 
 /* ───────── Spotify library modal ───────── */
-#spotifyPanel{position:fixed;inset:0;z-index:1000;pointer-events:none;opacity:0;
+#spotifyPanel:not(.dock-host){position:fixed;inset:0;z-index:1000;pointer-events:none;opacity:0;
   transition:opacity .42s var(--ease);isolation:isolate;touch-action:auto}
-#spotifyPanel.show{opacity:1;pointer-events:auto}
+#spotifyPanel:not(.dock-host).show{opacity:1;pointer-events:auto}
 .sp-scrim{position:absolute;inset:0;background:rgba(4,4,6,.5);
   backdrop-filter:blur(14px) saturate(.8);-webkit-backdrop-filter:blur(14px) saturate(.8);z-index:0;pointer-events:auto}
-.service-modal-card{position:absolute;top:0;right:0;bottom:0;width:min(440px,100vw);
-  background:rgba(12,12,15,.86);border-left:1px solid var(--hair);
+.service-modal-card{background:rgba(12,12,15,.86);border-left:1px solid var(--hair);
   display:flex;flex-direction:column;padding:calc(26px + env(safe-area-inset-top)) 24px max(18px,env(safe-area-inset-bottom));
-  transform:translateX(24px);transition:transform .5s var(--ease);z-index:1;pointer-events:auto;touch-action:auto}
-#spotifyPanel.show .service-modal-card{transform:none}
+  touch-action:auto}
 .sp-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:18px}
 .sp-id b{display:block;font-size:18px;font-weight:500;letter-spacing:-.01em}
 .sp-id span{font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:.04em;margin-top:4px;display:block}
@@ -209,8 +207,8 @@ button.spotifyLoadMore:hover{color:var(--ink);background:rgba(244,244,242,.06)}
 .spotifyPreviewSub{font-family:var(--mono);font-size:10.5px;color:var(--dim);margin-top:3px}
 
 /* ───────── Focus mode panel ───────── */
-#focusPanel{position:fixed;inset:0;z-index:1000;pointer-events:none;opacity:0;transition:opacity .42s var(--ease);isolation:isolate;touch-action:auto}
-#focusPanel.show{opacity:1;pointer-events:auto}
+#focusPanel:not(.dock-host){position:fixed;inset:0;z-index:1000;pointer-events:none;opacity:0;transition:opacity .42s var(--ease);isolation:isolate;touch-action:auto}
+#focusPanel:not(.dock-host).show{opacity:1;pointer-events:auto}
 .fc-modal{gap:0}
 .fc-react{padding:6px 0 14px;border-bottom:1px solid var(--hair);margin-bottom:14px}
 .fc-react-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
@@ -269,14 +267,15 @@ button.spotifyLoadMore:hover{color:var(--ink);background:rgba(244,244,242,.06)}
 .fc-bar{display:block;width:46px;height:3px;border-radius:2px;background:rgba(255,255,255,.12);margin-top:4px;overflow:hidden}
 .fc-bar i{display:block;height:100%;background:#8affc4}
 
-/* Every service panel now lands in the center */
-#spotifyPanel,#focusPanel,#translationSettingsPanel{display:grid;place-items:center}
-.service-modal-card{top:50%;left:50%;right:auto;bottom:auto;width:min(820px,calc(100vw - 32px));height:min(720px,calc(100dvh - 32px));
-  padding:clamp(20px,3vw,30px);border-left:1px solid rgba(255,255,255,.18);overflow:hidden;
+/* Modal geometry never applies to a dock host or its feature container. */
+#spotifyPanel:not(.dock-host),#focusPanel:not(.dock-host),#translationSettingsPanel{display:grid;place-items:center}
+.service-modal-card{padding:clamp(20px,3vw,30px);border-left:1px solid rgba(255,255,255,.18)}
+.service-modal-card:not(.dock-panel){position:absolute;top:50%;left:50%;right:auto;bottom:auto;width:min(820px,calc(100vw - 32px));height:min(720px,calc(100dvh - 32px));
+  overflow:hidden;z-index:1;pointer-events:auto;
   transform:translate(-50%,-47%) scale(.98);opacity:0;transition:transform .38s var(--ease),opacity .25s var(--ease)}
-#spotifyPanel.show .service-modal-card,#focusPanel.show .service-modal-card,
+#spotifyPanel.show .service-modal-card:not(.dock-panel),#focusPanel.show .service-modal-card:not(.dock-panel),
 #translationSettingsPanel.show .service-modal-card{transform:translate(-50%,-50%) scale(1);opacity:1}
-#focusPanel .service-modal-card{width:min(760px,calc(100vw - 32px))}
+#focusPanel .service-modal-card:not(.dock-panel){width:min(760px,calc(100vw - 32px))}
 
 /* ───────── Translation settings modal ───────── */
 #translationSettingsPanel{position:fixed;inset:0;z-index:1002;pointer-events:none;opacity:0;
@@ -338,12 +337,9 @@ button.spotifyLoadMore:hover{color:var(--ink);background:rgba(244,244,242,.06)}
 #videoResults{max-height:52vh}
 
 /* ───────── Apple Music compact panel ───────── */
-#appleMusicPanel{position:fixed;top:82px;right:28px;z-index:35;width:min(390px,calc(100vw - 32px));
-  max-height:min(640px,calc(100dvh - 110px));padding:14px;border:1px solid rgba(255,255,255,.14);
+#appleMusicPanel{padding:22px;border:1px solid rgba(255,255,255,.14);
   border-radius:17px;background:rgba(7,8,11,.42);backdrop-filter:blur(28px) saturate(.9);
-  -webkit-backdrop-filter:blur(28px) saturate(.9);box-shadow:0 24px 70px rgba(0,0,0,.28);
-  opacity:0;translate:0 -8px;pointer-events:none;transition:opacity .2s var(--ease),translate .24s var(--ease)}
-#appleMusicPanel.show{opacity:1;translate:0 0;pointer-events:auto}
+  -webkit-backdrop-filter:blur(28px) saturate(.9);box-shadow:0 24px 70px rgba(0,0,0,.28)}
 .am-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
 .am-mark{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:linear-gradient(145deg,#ff5b74,#fa243c);font-size:18px;color:#fff}
 .am-title{flex:1;min-width:0}.am-title b{display:block;font-size:13px}.am-title span{display:block;margin-top:2px;font-family:var(--mono);font-size:9.5px;color:var(--faint)}
@@ -367,12 +363,3 @@ button.spotifyLoadMore:hover{color:var(--ink);background:rgba(244,244,242,.06)}
 .am-name{display:block;margin-top:7px;font-size:11px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .am-artist{display:block;margin-top:2px;font-family:var(--mono);font-size:8.5px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #appleMusicStatus{min-height:18px;margin-top:5px;font-family:var(--mono);font-size:9.5px;color:var(--faint);line-height:1.4}
-/* Apple Music centered panel override */
-#appleMusicPanel{top:50%;left:50%;right:auto;width:min(560px,calc(100vw - 32px));max-height:calc(100dvh - 32px);padding:22px;
-  translate:-50% -47%;z-index:1001}
-#appleMusicPanel.show{translate:-50% -50%}
-
-/* EQ controls centered panel override */
-#eqControls{position:fixed;top:50%;left:50%;right:auto;translate:-50% -47%;z-index:1001;width:min(680px,calc(100vw - 32px));
-  max-height:calc(100dvh - 32px);opacity:0;transform:scale(.98)}
-#eqControls.show{translate:-50% -50%;opacity:1;transform:none}

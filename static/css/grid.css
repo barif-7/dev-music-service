@@ -8,11 +8,15 @@
 body.grid-mode #gridScrim{opacity:1}
 body.grid-mode #gridScroll{opacity:1}
 
-#gridHead{position:sticky;top:0;z-index:2;display:flex;align-items:flex-end;justify-content:space-between;
+#gridHead{position:sticky;top:0;z-index:2;display:flex;align-items:flex-end;justify-content:space-between;gap:16px;
   padding:clamp(28px,5vh,52px) 0 26px;background:linear-gradient(to bottom,rgba(6,6,8,.9),transparent)}
 #gridHead .gh-title{font-size:clamp(22px,3vw,34px);font-weight:300;letter-spacing:-.02em}
 #gridHead .gh-sub{font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:6px;letter-spacing:.06em}
 #gridHead .gh-actions{display:flex;gap:8px;align-items:center}
+@media (max-width:700px){
+  #gridHead{flex-wrap:wrap}
+  #gridHead .gh-actions{width:100%;justify-content:space-between}
+}
 
 #grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));
   gap:clamp(14px,1.6vw,22px)}

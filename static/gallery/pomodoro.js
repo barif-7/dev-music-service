@@ -24,12 +24,7 @@
   /* The clock bundle (and its geolocation prompt) has no business loading for
      a timer, and the iframe would otherwise sit behind the panel. */
   $('#clockFrame')?.remove();
-  root.hidden = false;
-
-  const clockEl = $('#pomodoroClock'), phaseEl = $('#pomodoroPhase'), statusEl = $('#pomodoroStatus'),
-    listEl = $('#pomodoroPlaylist'), startBtn = $('#pomodoroStart'), pauseBtn = $('#pomodoroPause'),
-    resetBtn = $('#pomodoroReset');
-  const presetButtons = [...root.querySelectorAll('.pom-preset')];
+  const renderView = window.PhasePomodoroView.create({ root });
 
   let minutes = DEFAULT_MINUTES;
   let remaining = minutes * 60000;
@@ -37,6 +32,8 @@
   let running = false;
   let building = false;
   let ticker = null;
+  let tracks = [];
+  let status = { text:'', hidden:true, error:false };
   const playback = ()=>window.recommendationClient?.player;
 
   const clamp = ms => Math.max(0, Math.round(ms));
@@ -51,47 +48,41 @@
   }
 
   function setStatus(message, error=false){
-    if(!statusEl) return;
-    statusEl.textContent = message || '';
-    statusEl.hidden = !message;
-    statusEl.classList.toggle('error', Boolean(message) && error);
+    status = { text:message || '', hidden:!message, error:Boolean(message) && error };
+    paint();
   }
 
-  function paintClock(){
-    if(!clockEl) return;
-    clockEl.textContent = format(remaining);
-    clockEl.setAttribute('aria-label', spokenTime(remaining));
+  function projectConfig(){
+    return {
+      hidden:false,
+      clock:{ text:format(remaining), label:spokenTime(remaining) },
+      phase:building ? 'Curating' : running ? 'Focusing'
+        : remaining === 0 ? 'Complete' : remaining < minutes * 60000 ? 'Paused' : 'Ready',
+      status,
+      start:{
+        hidden:running,
+        disabled:building,
+        text:building ? 'Building playlist…'
+          : remaining > 0 && remaining < minutes * 60000 ? 'Resume session' : `Start ${minutes} minute session`
+      },
+      pause:{ hidden:!running },
+      reset:{ hidden:!running && remaining === minutes * 60000, disabled:building },
+      presets:PRESETS.map(value => ({ minutes:value, pressed:value === minutes, disabled:building })),
+      running,
+      tracks,
+      actions
+    };
   }
 
-  function paintControls(){
-    startBtn.hidden = running;
-    startBtn.disabled = building;
-    startBtn.textContent = building ? 'Building playlist…'
-      : remaining > 0 && remaining < minutes * 60000 ? 'Resume session' : `Start ${minutes} minute session`;
-    pauseBtn.hidden = !running;
-    resetBtn.hidden = !running && remaining === minutes * 60000;
-    resetBtn.disabled = building;
-    for(const preset of presetButtons){
-      const value = Number(preset.dataset.minutes);
-      preset.setAttribute('aria-pressed', value === minutes ? 'true' : 'false');
-      preset.disabled = building;
-    }
-    phaseEl.textContent = building ? 'Curating' : running ? 'Focusing'
-      : remaining === 0 ? 'Complete' : remaining < minutes * 60000 ? 'Paused' : 'Ready';
-    panel.classList.toggle('pom-running', running);
-  }
-
-  function paint(){ paintClock(); paintControls(); }
+  function paint(){ dock.updateConfig(projectConfig()); }
 
   function tick(){
     remaining = clamp(endsAt - Date.now());
-    paintClock();
-    if(remaining > 0) return;
+    if(remaining > 0){ paint(); return; }
     stopTicker();
     running = false;
     playback()?.pause();
     setStatus(`${minutes} minute session complete. Nicely done.`);
-    paintControls();
   }
 
   function stopTicker(){ clearInterval(ticker); ticker = null; }
@@ -111,29 +102,17 @@
     stopTicker();
     running = false;
     remaining = minutes * 60000;
-    listEl.replaceChildren();
+    tracks = [];
     setStatus('');
-    paint();
   }
 
   function renderSession(session){
-    listEl.replaceChildren();
-    for(const track of session.tracks){
-      const row = document.createElement('li');
-      row.className = 'pom-track';
-      const copy = document.createElement('span');
-      copy.className = 'pom-track-copy';
-      const title = document.createElement('strong');
-      title.textContent = track.title || 'Untitled track';
-      const artist = document.createElement('span');
-      artist.textContent = track.artist || '—';
-      copy.append(title, artist);
-      const length = document.createElement('span');
-      length.className = 'pom-track-length';
-      length.textContent = Number.isFinite(Number(track.duration)) ? format(Number(track.duration) * 1000) : '—';
-      row.append(copy, length);
-      listEl.append(row);
-    }
+    tracks = session.tracks.map(track => ({
+      title:track.title || 'Untitled track',
+      artist:track.artist || '—',
+      length:Number.isFinite(Number(track.duration)) ? format(Number(track.duration) * 1000) : '—'
+    }));
+    paint();
   }
 
   function sessionSummary(session){
@@ -147,7 +126,7 @@
     /* A paused session resumes on the playlist it was launched with. */
     if(remaining < minutes * 60000 && remaining > 0){
       building = true;
-      paintControls();
+      paint();
       try{
         const player = playback();
         if(!player?.hasSource) throw new Error('This session no longer has a playable song. Reset to build a new playlist.');
@@ -158,7 +137,7 @@
         setStatus(error?.message || 'Playback could not resume. Try again.', true);
       }finally{
         building = false;
-        paintControls();
+        paint();
       }
       return;
     }
@@ -169,7 +148,6 @@
     }
     building = true;
     setStatus('Building a focus playlist for this session…');
-    paintControls();
     try{
       const session = await client.createFocusSession(minutes);
       renderSession(session);
@@ -186,7 +164,7 @@
       setStatus(error?.message || 'This session could not be started. Try again.', true);
     }finally{
       building = false;
-      paintControls();
+      paint();
     }
   }
 
@@ -197,7 +175,6 @@
     running = false;
     playback()?.pause();
     setStatus('Session paused.');
-    paint();
   }
 
   function reset(){
@@ -206,22 +183,16 @@
     running = false;
     building = false;
     remaining = minutes * 60000;
-    listEl.replaceChildren();
+    tracks = [];
     setStatus('');
     playback()?.pause();
-    paint();
   }
 
-  for(const preset of presetButtons){
-    preset.addEventListener('click', ()=>selectPreset(Number(preset.dataset.minutes)));
-  }
-  startBtn.addEventListener('click', start);
-  pauseBtn.addEventListener('click', pause);
-  resetBtn.addEventListener('click', reset);
+  const actions = { start, pause, reset, selectPreset };
 
   /* Placement, sizing, stacking, Escape and the toggle's pressed state come
      from the dock, exactly as they did for the clock. */
-  const dock = PluginDock.register({ id:'clock', el:panel, toggle:btn });
+  const dock = PluginDock.register({ id:'clock', el:panel, toggle:btn, config:projectConfig(), render:renderView });
   btn.addEventListener('click', ()=> dock.toggle());
   $('#clockModalCloseBtn')?.addEventListener('click', ()=> dock.close());
 
