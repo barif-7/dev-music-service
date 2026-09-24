@@ -121,6 +121,20 @@ Track metadata
 
 The parent shell owns timing and sends stable line indices, current time, translation state, and live audio values to the reader. The reader sends intents such as seek, retry translation, or playback-rate changes back to the host.
 
+Localized lines are cached in memory and in `DMS_DATA_DIR/translation-cache.sqlite3`.
+Eager loading, background fills, and playback windows share those entries across
+restarts. Each entry identifies the normalized track, target locale, source line,
+timing, source locale, localizer URL, and adaptation options. Changed inputs
+trigger a new translation; overlapping windows reuse unchanged lines. Use a
+persistent writable data directory. If SQLite is unavailable, translation still
+works with the in-memory cache. Background work is still an in-process thread;
+the database's job table does not yet provide a resumable worker queue.
+
+For a frontend hosted separately from this service, set
+`DEV_MUSIC_FRONTEND_ORIGIN` to its exact origin. The default is
+`http://127.0.0.1:8000`. The native wrapper is documented in
+[`clients/ipad/README.md`](clients/ipad/README.md).
+
 ### Audio-reactive visuals
 
 ```text

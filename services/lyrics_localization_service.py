@@ -62,7 +62,9 @@ class LyricsLocalizationService:
     def _item_segment(item: LyricItem, position: int) -> dict:
         index = item[0]
         text = item[1]
-        start = item[2] if len(item) > 2 and item[2] is not None else position * 4000
+        # The stable lyric index makes synthetic timing independent of the
+        # current window's position and matches _segment_for for plain lyrics.
+        start = item[2] if len(item) > 2 and item[2] is not None else index * 4000
         end = item[3] if len(item) > 3 and item[3] is not None else start + 4000
         return {"index": index, "start_ms": start, "end_ms": end, "text": text}
 

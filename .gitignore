@@ -32,3 +32,8 @@ weekly-summary-*.html
 
 # Lyric availability memory (services/lyrics_availability.py)
 *.sqlite3
+
+# Xcode per-user workspace state and local build products
+xcuserdata/
+*.xcuserstate
+DerivedData/
